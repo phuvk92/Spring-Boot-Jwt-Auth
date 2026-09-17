@@ -29,7 +29,7 @@ public class FileStorageServiceImpl implements FileStorageService {
 
     private final Path rootLocation;
 
-    public FileStorageServiceImpl(@Value("${app.file.upload-dir:./uploads/svg}") String uploadDir) {
+    public FileStorageServiceImpl(@Value("${app.file.storage-path:${app.file.upload-dir:./uploads/svg}}") String uploadDir) {
         this.rootLocation = Paths.get(uploadDir).toAbsolutePath().normalize();
     }
 
