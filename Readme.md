@@ -1,4 +1,4 @@
-# SVG Manager Backend REST API
+# Cutting Admin Backend REST API
 
 Production-ready backend REST API built with **Java 21**, **Spring Boot 3.3.5**, **PostgreSQL**, **JWT Authentication**, and **Docker** for enterprise-grade User and SVG File Management with advanced XSS & XXE protection.
 
@@ -85,7 +85,7 @@ com.example.svgmanager
 │   ├── RefreshTokenService.java
 │   ├── SvgSanitizerService.java
 │   ├── SvgService.java
-│   ├── UserService.java
+│   └── UserService.java
 │   └── impl                    # Service Implementations
 ├── util                        # Helper Utilities (SHA-256 Checksum, Path Traversal)
 │   ├── ChecksumUtils.java
@@ -143,7 +143,7 @@ Khi khởi động ứng dụng, Flyway migration tự động tạo tài khoả
 
 - **Username:** `admin`
 - **Email:** `admin@example.com`
-- **Password:** `Admin@123456`
+- **Password:** `Password123!`
 - **Role:** `ADMIN`
 
 ---

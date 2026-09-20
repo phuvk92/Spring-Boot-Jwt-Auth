@@ -13,8 +13,7 @@ WORKDIR /app
 RUN addgroup -S appgroup && adduser -S appuser -G appgroup
 RUN mkdir -p /data/svg && chown -R appuser:appgroup /data/svg
 
-COPY --from=build /app/target/svgmanager-*.jar app.jar
-RUN chown appuser:appgroup app.jar
+COPY --chown=appuser:appgroup --from=build /app/target/cutting-admin-*.jar app.jar
 
 USER appuser
 

@@ -16,7 +16,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.HttpHeaders;
-import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.ActiveProfiles;
@@ -163,6 +162,30 @@ class SvgIntegrationTest {
         mockMvc.perform(get("/api/svg/{id}", svgId)
                         .header("Authorization", "Bearer " + adminToken))
                 .andExpect(status().isNotFound());
+    }
+
+    @Test
+    @DisplayName("Integration: Uploading standard SVG with DOCTYPE should succeed and sanitize properly")
+    void uploadSvg_AllowStandardDoctype() throws Exception {
+        String svgWithDoctype = "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n" +
+                "<!DOCTYPE svg PUBLIC \"-//W3C//DTD SVG 1.1//EN\" \"http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd\">\n" +
+                "<svg width=\"200\" height=\"200\" xmlns=\"http://www.w3.org/2000/svg\">\n" +
+                "<rect width=\"100\" height=\"100\" fill=\"green\"/>\n" +
+                "</svg>";
+
+        MockMultipartFile file = new MockMultipartFile(
+                "file",
+                "standard_logo.svg",
+                "image/svg+xml",
+                svgWithDoctype.getBytes(StandardCharsets.UTF_8)
+        );
+
+        mockMvc.perform(multipart("/api/svg/upload")
+                        .file(file)
+                        .header("Authorization", "Bearer " + agentToken))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.id").isNotEmpty())
+                .andExpect(jsonPath("$.originalFilename").value("standard_logo.svg"));
     }
 
     @Test

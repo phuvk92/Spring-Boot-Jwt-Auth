@@ -11,16 +11,7 @@ import org.jsoup.select.Elements;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
-import org.xml.sax.InputSource;
-import org.xml.sax.SAXException;
 
-import javax.xml.XMLConstants;
-import javax.xml.parsers.DocumentBuilder;
-import javax.xml.parsers.DocumentBuilderFactory;
-import javax.xml.parsers.ParserConfigurationException;
-import java.io.ByteArrayInputStream;
-import java.io.IOException;
-import java.io.StringReader;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.HashSet;
@@ -43,6 +34,17 @@ public class SvgSanitizerServiceImpl implements SvgSanitizerService {
 
     private static final Pattern CSS_EXPRESSION_PATTERN =
             Pattern.compile("(?i)(expression|url\\s*\\(\\s*['\"]?\\s*javascript|behavior|vbscript)");
+
+    private static final Pattern MALICIOUS_XXE_PATTERNS = Pattern.compile(
+            "(?i)(" +
+            "<!ENTITY\\s+[^>]*\\bSYSTEM\\b|" +
+            "<!ENTITY\\s+[^>]*\\bPUBLIC\\b\\s*[\"'][^\"']*[\"']\\s*[\"'](file:|http:|https:|ftp:|gopher:|php:|expect:|data:)|" +
+            "<!ENTITY\\s+%|" +
+            "<!DOCTYPE\\s+[^>]*\\bSYSTEM\\b|" +
+            "%[a-zA-Z0-9_\\-\\.]+;|" +
+            "\\bSYSTEM\\s+[\"'](file:|http:|https:|ftp:|gopher:|php:|expect:)" +
+            ")"
+    );
 
     @Override
     public byte[] sanitizeAndValidateSvg(byte[] rawSvgBytes) {
@@ -82,29 +84,17 @@ public class SvgSanitizerServiceImpl implements SvgSanitizerService {
     }
 
     private void validateAgainstXxe(String content) {
-        try {
-            DocumentBuilderFactory dbf = DocumentBuilderFactory.newInstance();
-            dbf.setNamespaceAware(true);
-            dbf.setXIncludeAware(false);
-            dbf.setExpandEntityReferences(false);
-
-            dbf.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
-            dbf.setFeature("http://xml.org/sax/features/external-general-entities", false);
-            dbf.setFeature("http://xml.org/sax/features/external-parameter-entities", false);
-            dbf.setFeature("http://apache.org/xml/features/nonvalidating/load-external-dtd", false);
-            dbf.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true);
-
-            DocumentBuilder db = dbf.newDocumentBuilder();
-            db.setErrorHandler(null);
-            db.parse(new InputSource(new StringReader(content)));
-        } catch (ParserConfigurationException | SAXException | IOException e) {
-            if (content.toUpperCase(Locale.ROOT).contains("!DOCTYPE") ||
-                    content.toUpperCase(Locale.ROOT).contains("!ENTITY") ||
-                    content.toUpperCase(Locale.ROOT).contains("SYSTEM")) {
-                log.warn("XXE or malicious DOCTYPE rejected: {}", e.getMessage());
-                throw new InvalidSvgException("SVG contains prohibited DOCTYPE or Entity definitions (XXE protection)", e);
-            }
+        if (isMaliciousXxe(content)) {
+            log.warn("Malicious XXE entity pattern detected in SVG content");
+            throw new InvalidSvgException("SVG contains prohibited DOCTYPE or Entity definitions (XXE protection)");
         }
+    }
+
+    private boolean isMaliciousXxe(String content) {
+        if (content == null) {
+            return false;
+        }
+        return MALICIOUS_XXE_PATTERNS.matcher(content).find();
     }
 
     private void sanitizeElementTree(Element element) {

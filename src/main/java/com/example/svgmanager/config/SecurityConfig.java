@@ -6,6 +6,7 @@ import com.example.svgmanager.security.JwtAuthenticationEntryPoint;
 import com.example.svgmanager.security.JwtAuthenticationFilter;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
@@ -36,7 +37,7 @@ public class SecurityConfig {
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
 
     public SecurityConfig(
-            CustomUserDetailsService userDetailsService,
+            @Lazy CustomUserDetailsService userDetailsService,
             JwtAuthenticationEntryPoint unauthorizedHandler,
             JwtAccessDeniedHandler accessDeniedHandler,
             JwtAuthenticationFilter jwtAuthenticationFilter

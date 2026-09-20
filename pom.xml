@@ -9,10 +9,10 @@
         <relativePath/>
     </parent>
     <groupId>com.example</groupId>
-    <artifactId>svgmanager</artifactId>
+    <artifactId>cutting-admin</artifactId>
     <version>1.0.0</version>
-    <name>SVG Manager Backend</name>
-    <description>Production-ready REST API for User and SVG File Management with Spring Boot 3 and JWT</description>
+    <name>cutting-admin</name>
+    <description>Cutting Admin Backend REST API - Production-ready REST API for User and SVG File Management with Spring Boot 3 and JWT</description>
 
     <properties>
         <java.version>21</java.version>

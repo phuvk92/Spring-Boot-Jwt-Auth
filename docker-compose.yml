@@ -17,11 +17,11 @@ services:
       timeout: 5s
       retries: 5
 
-  svg-backend:
+  cutting-admin:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: svg-backend
+    container_name: cutting-admin
     restart: unless-stopped
     depends_on:
       svg-postgres:

