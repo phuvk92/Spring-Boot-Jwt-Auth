@@ -123,11 +123,11 @@ public class SvgController {
     }
 
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
-    @Operation(summary = "Delete SVG file", description = "Deletes physical file and database metadata. ADMIN only.")
+    @PreAuthorize("hasAnyRole('ADMIN', 'AGENT')")
+    @Operation(summary = "Delete SVG file", description = "Deletes physical file and database metadata. ADMIN or AGENT (scoped).")
     @ApiResponses(value = {
             @ApiResponse(responseCode = "204", description = "SVG file deleted successfully"),
-            @ApiResponse(responseCode = "403", description = "Forbidden - Requires ADMIN role",
+            @ApiResponse(responseCode = "403", description = "Forbidden - Requires ADMIN or AGENT role",
                     content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
             @ApiResponse(responseCode = "404", description = "SVG file not found",
                     content = @Content(schema = @Schema(implementation = ErrorResponse.class)))

@@ -17,13 +17,18 @@ public class SvgMapper {
         if (svgFile == null) {
             return null;
         }
+
+        Long agentId = svgFile.getAgent() != null ? svgFile.getAgent().getId() : null;
+
         return SvgResponse.builder()
                 .id(svgFile.getId())
                 .originalFilename(svgFile.getOriginalFilename())
+                .storedFilename(svgFile.getStoredFilename())
                 .fileSize(svgFile.getFileSize())
                 .contentType(svgFile.getContentType())
                 .checksum(svgFile.getChecksum())
                 .uploadedBy(userMapper.toUserSummaryResponse(svgFile.getUploadedBy()))
+                .agentId(agentId)
                 .createdAt(svgFile.getCreatedAt())
                 .updatedAt(svgFile.getUpdatedAt())
                 .build();

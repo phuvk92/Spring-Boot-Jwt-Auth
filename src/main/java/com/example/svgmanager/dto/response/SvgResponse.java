@@ -7,40 +7,48 @@ import java.time.LocalDateTime;
 @Schema(description = "SVG file metadata response")
 public class SvgResponse {
 
-    @Schema(example = "1")
+    @Schema(description = "Unique SVG file ID", example = "1")
     private Long id;
 
-    @Schema(example = "logo.svg")
+    @Schema(description = "Original uploaded filename", example = "logo.svg")
     private String originalFilename;
 
-    @Schema(example = "102400", description = "File size in bytes")
+    @Schema(description = "Unique internal stored filename", example = "d3b07384-d113-40a2-a9a3-a0e28f323c68.svg")
+    private String storedFilename;
+
+    @Schema(description = "File size in bytes", example = "15360")
     private Long fileSize;
 
-    @Schema(example = "image/svg+xml")
+    @Schema(description = "MIME content type", example = "image/svg+xml")
     private String contentType;
 
-    @Schema(example = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", description = "SHA-256 Checksum")
+    @Schema(description = "SHA-256 checksum of sanitized content", example = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855")
     private String checksum;
 
-    @Schema(description = "Information of user who uploaded the SVG")
+    @Schema(description = "User who uploaded the SVG")
     private UserSummaryResponse uploadedBy;
 
-    @Schema(example = "2026-09-13T10:00:00")
+    @Schema(description = "Agent ID associated with this SVG", example = "2")
+    private Long agentId;
+
+    @Schema(description = "Upload timestamp", example = "2026-03-30T10:00:00")
     private LocalDateTime createdAt;
 
-    @Schema(example = "2026-09-13T10:00:00")
+    @Schema(description = "Last update timestamp", example = "2026-03-30T10:00:00")
     private LocalDateTime updatedAt;
 
     public SvgResponse() {
     }
 
-    public SvgResponse(Long id, String originalFilename, Long fileSize, String contentType, String checksum, UserSummaryResponse uploadedBy, LocalDateTime createdAt, LocalDateTime updatedAt) {
+    public SvgResponse(Long id, String originalFilename, String storedFilename, Long fileSize, String contentType, String checksum, UserSummaryResponse uploadedBy, Long agentId, LocalDateTime createdAt, LocalDateTime updatedAt) {
         this.id = id;
         this.originalFilename = originalFilename;
+        this.storedFilename = storedFilename;
         this.fileSize = fileSize;
         this.contentType = contentType;
         this.checksum = checksum;
         this.uploadedBy = uploadedBy;
+        this.agentId = agentId;
         this.createdAt = createdAt;
         this.updatedAt = updatedAt;
     }
@@ -52,10 +60,12 @@ public class SvgResponse {
     public static class Builder {
         private Long id;
         private String originalFilename;
+        private String storedFilename;
         private Long fileSize;
         private String contentType;
         private String checksum;
         private UserSummaryResponse uploadedBy;
+        private Long agentId;
         private LocalDateTime createdAt;
         private LocalDateTime updatedAt;
 
@@ -66,6 +76,11 @@ public class SvgResponse {
 
         public Builder originalFilename(String originalFilename) {
             this.originalFilename = originalFilename;
+            return this;
+        }
+
+        public Builder storedFilename(String storedFilename) {
+            this.storedFilename = storedFilename;
             return this;
         }
 
@@ -89,6 +104,11 @@ public class SvgResponse {
             return this;
         }
 
+        public Builder agentId(Long agentId) {
+            this.agentId = agentId;
+            return this;
+        }
+
         public Builder createdAt(LocalDateTime createdAt) {
             this.createdAt = createdAt;
             return this;
@@ -100,7 +120,7 @@ public class SvgResponse {
         }
 
         public SvgResponse build() {
-            return new SvgResponse(id, originalFilename, fileSize, contentType, checksum, uploadedBy, createdAt, updatedAt);
+            return new SvgResponse(id, originalFilename, storedFilename, fileSize, contentType, checksum, uploadedBy, agentId, createdAt, updatedAt);
         }
     }
 
@@ -118,6 +138,14 @@ public class SvgResponse {
 
     public void setOriginalFilename(String originalFilename) {
         this.originalFilename = originalFilename;
+    }
+
+    public String getStoredFilename() {
+        return storedFilename;
+    }
+
+    public void setStoredFilename(String storedFilename) {
+        this.storedFilename = storedFilename;
     }
 
     public Long getFileSize() {
@@ -150,6 +178,14 @@ public class SvgResponse {
 
     public void setUploadedBy(UserSummaryResponse uploadedBy) {
         this.uploadedBy = uploadedBy;
+    }
+
+    public Long getAgentId() {
+        return agentId;
+    }
+
+    public void setAgentId(Long agentId) {
+        this.agentId = agentId;
     }
 
     public LocalDateTime getCreatedAt() {

@@ -4,7 +4,6 @@ import com.example.svgmanager.entity.Role;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
@@ -17,13 +16,11 @@ public class UpdateUserRequest {
     @Schema(example = "updated_user@example.com", description = "User email address")
     private String email;
 
-    @NotNull(message = "Role is required")
-    @Schema(example = "AGENT", description = "User role")
+    @Schema(example = "USER", description = "User role (optional, ADMIN only for promotion)")
     private Role role;
 
-    @NotNull(message = "Enabled status is required")
     @Schema(example = "true", description = "Account active status")
-    private Boolean enabled;
+    private Boolean enabled = true;
 
     @Pattern(
             regexp = "^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)(?=.*[@$!%*?&#^()_+\\-=\\[\\]{};':\"\\\\|,.<>\\/?]).{8,}$",
@@ -38,7 +35,7 @@ public class UpdateUserRequest {
     public UpdateUserRequest(String email, Role role, Boolean enabled, String password) {
         this.email = email;
         this.role = role;
-        this.enabled = enabled;
+        this.enabled = enabled != null ? enabled : true;
         this.password = password;
     }
 
@@ -49,7 +46,7 @@ public class UpdateUserRequest {
     public static class Builder {
         private String email;
         private Role role;
-        private Boolean enabled;
+        private Boolean enabled = true;
         private String password;
 
         public Builder email(String email) {

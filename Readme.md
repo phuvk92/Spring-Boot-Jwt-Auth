@@ -1,6 +1,6 @@
 # Cutting Admin Backend REST API
 
-Production-ready backend REST API built with **Java 21**, **Spring Boot 3.3.5**, **PostgreSQL**, **JWT Authentication**, and **Docker** for enterprise-grade User and SVG File Management with advanced XSS & XXE protection.
+Production-ready backend REST API built with **Java 21**, **Spring Boot 3.3.5**, **PostgreSQL**, **Keycloak / JWT Authentication**, and **Docker** for enterprise-grade User and SVG File Management with advanced XSS & XXE protection.
 
 ---
 
@@ -8,7 +8,7 @@ Production-ready backend REST API built with **Java 21**, **Spring Boot 3.3.5**,
 
 SVG Manager Backend cung cấp một hệ sinh thái an toàn để:
 - Quản lý tài khoản người dùng và phân quyền RBAC (`ADMIN`, `AGENT`, `USER`).
-- Xác thực và phân quyền bằng JWT Token và Refresh Token xoay vòng (rotating refresh tokens).
+- Xác thực và phân quyền bằng JWT Token & Refresh Token qua Keycloak Identity Provider.
 - Tải lên, xử lý khử độc (sanitization) chống mã độc XSS / XXE cho các file SVG.
 - Lưu trữ file theo cấu trúc phân cấp thời gian `/data/svg/YYYY/MM/<uuid>.svg`.
 - Xem trước trực tiếp (inline preview) an toàn với header bảo mật (`X-Content-Type-Options: nosniff`).
@@ -23,12 +23,12 @@ SVG Manager Backend cung cấp một hệ sinh thái an toàn để:
 - **Khung ứng dụng:**
   - Spring Web (REST API)
   - Spring Data JPA (PostgreSQL Persistence & Dynamic Specifications)
-  - Spring Security (Stateless JWT & Method Security `@PreAuthorize`)
+  - Spring Security (Stateless OAuth2 Resource Server & Method Security `@PreAuthorize`)
   - Spring Validation (Jakarta Bean Validation)
   - Spring Boot Actuator (Healthcheck & Metrics)
 - **Cơ sở dữ liệu:** PostgreSQL 16 & Flyway Database Migration
 - **Bảo mật & Parser:**
-  - JJWT 0.12.6 (HMAC SHA-256)
+  - Keycloak 25 (Identity & Access Management)
   - Jsoup 1.18.1 (DOM SVG Sanitizer)
   - DOM XML SAX Parser (Chặn tuyệt đối XXE, DTDs & External Entities)
 - **Tài liệu API:** OpenAPI 3 / SpringDoc Swagger UI
@@ -45,14 +45,13 @@ com.example.svgmanager
 │   ├── OpenApiConfig.java
 │   └── SecurityConfig.java
 ├── controller                  # REST API Endpoints
-│   ├── AuthController.java     # /api/auth (Login, Register, Refresh, Me)
+│   ├── AuthController.java     # /api/auth (Login, Refresh, Me, Change Password)
 │   ├── SvgController.java      # /api/svg (Upload, List, Preview, Download, Delete)
 │   └── UserController.java     # /api/users (Admin CRUD, Role, Status)
 ├── dto
-│   ├── request                 # DTO đầu vào (Register, Login, Update, Create)
-│   └── response                # DTO đầu ra (Auth, User, Svg, Page, Error)
+│   ├── request                 # DTO đầu vào (Login, Update, Create, Change Password)
+│   └── response                # DTO đầu ra (Auth, User, Svg, Page, Error, Message)
 ├── entity                      # JPA Entities
-│   ├── RefreshToken.java
 │   ├── Role.java               # Enum: ADMIN, AGENT, USER
 │   ├── SvgFile.java
 │   └── User.java
@@ -69,20 +68,16 @@ com.example.svgmanager
 │   ├── SvgMapper.java
 │   └── UserMapper.java
 ├── repository                  # Spring Data JPA Repositories
-│   ├── RefreshTokenRepository.java
 │   ├── SvgFileRepository.java
 │   └── UserRepository.java
-├── security                    # JWT Provider, Security Filters, Principal
-│   ├── CustomUserDetailsService.java
+├── security                    # Security Filters, Handlers, Converter
+│   ├── CurrentUserService.java
 │   ├── JwtAccessDeniedHandler.java
 │   ├── JwtAuthenticationEntryPoint.java
-│   ├── JwtAuthenticationFilter.java
-│   ├── JwtTokenProvider.java
-│   └── UserPrincipal.java
+│   └── KeycloakJwtAuthenticationConverter.java
 ├── service                     # Business Logic Interfaces
 │   ├── AuthService.java
 │   ├── FileStorageService.java
-│   ├── RefreshTokenService.java
 │   ├── SvgSanitizerService.java
 │   ├── SvgService.java
 │   └── UserService.java
@@ -100,10 +95,10 @@ com.example.svgmanager
 
 | Chức năng | Endpoint | ADMIN | AGENT | USER | Unauthenticated |
 | :--- | :--- | :---: | :---: | :---: | :---: |
-| **Đăng ký tài khoản** | `POST /api/auth/register` | ✅ | ✅ | ✅ | ✅ |
 | **Đăng nhập** | `POST /api/auth/login` | ✅ | ✅ | ✅ | ✅ |
 | **Refresh Token** | `POST /api/auth/refresh` | ✅ | ✅ | ✅ | ✅ |
 | **Thông tin cá nhân** | `GET /api/auth/me` | ✅ | ✅ | ✅ | ❌ |
+| **Đổi mật khẩu** | `POST /api/auth/change-password` | ✅ | ✅ | ✅ | ❌ |
 | **Danh sách User** | `GET /api/users` | ✅ | ❌ (403) | ❌ (403) | ❌ (401) |
 | **Chi tiết User** | `GET /api/users/{id}` | ✅ | ❌ (403) | ❌ (403) | ❌ (401) |
 | **Tạo User mới** | `POST /api/users` | ✅ | ❌ (403) | ❌ (403) | ❌ (401) |
@@ -139,7 +134,7 @@ Hệ thống triển khai cơ chế kiểm tra và làm sạch nhiều lớp tr�
 
 ## 🔑 6. Tài khoản khởi tạo mặc định (Seed Data)
 
-Khi khởi động ứng dụng, Flyway migration tự động tạo tài khoản quản trị viên:
+Khi khởi động ứng dụng, Keycloak và Flyway migration tự động tạo tài khoản quản trị viên:
 
 - **Username:** `admin`
 - **Email:** `admin@example.com`
@@ -155,7 +150,7 @@ Khi khởi động ứng dụng, Flyway migration tự động tạo tài khoả
 
 ### Khởi chạy:
 ```bash
-# Khởi động PostgreSQL và Backend Service
+# Khởi động PostgreSQL, Keycloak và Backend Service
 docker compose up --build -d
 
 # Xem log khởi động
@@ -178,18 +173,8 @@ docker compose down
 
 ### Yêu cầu:
 - Java JDK 21 trở lên.
-- PostgreSQL chạy ở `localhost:5432` với database `svgdb`.
-
-### Thiết lập biến môi trường (hoặc dùng mặc định trong application.yml):
-```bash
-export DB_HOST=localhost
-export DB_PORT=5432
-export DB_NAME=svgdb
-export DB_USERNAME=postgres
-export DB_PASSWORD=postgres
-export JWT_SECRET=404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970
-export FILE_UPLOAD_DIR=./uploads/svg
-```
+- PostgreSQL chạy ở `localhost:5432` với database `svg_manager`.
+- Keycloak chạy ở `localhost:8180` với realm `cutting`.
 
 ### Khởi chạy ứng dụng:
 ```bash
@@ -205,20 +190,3 @@ Khi ứng dụng đang chạy, truy cập tài liệu API trực quan tại:
 - **OpenAPI JSON Spec:** [http://localhost:8080/v3/api-docs](http://localhost:8080/v3/api-docs)
 
 > **Cách xác thực trên Swagger:** Nhấn nút **Authorize** ở góc trên bên phải, nhập chuỗi `Bearer <accessToken>` của bạn.
-
----
-
-## 🧪 10. Hướng dẫn chạy Kiểm thử (Tests)
-
-Chạy toàn bộ 31 bài Unit Tests và Integration Tests với H2 in-memory:
-```bash
-./mvnw clean test
-```
-
-### Danh mục bài test:
-- `AuthServiceTest`: Kiểm tra quy trình đăng ký, đăng nhập, xoay vòng token và xử lý ngoại lệ.
-- `SvgSanitizerServiceTest`: Kiểm tra việc loại bỏ XSS script, sự kiện `on*`, URL javascript, và chặn đứng tấn công XXE injection.
-- `FileStorageServiceTest`: Kiểm tra lưu trữ theo cây thư mục `YYYY/MM`, tải file, xoá file, và chặn path traversal.
-- `AuthIntegrationTest`: Kiểm tra toàn diện luồng REST API `/api/auth/*`.
-- `SvgIntegrationTest`: Kiểm tra quy trình đầy đủ: Upload SVG độc hại -> Sanitize -> List -> Detail -> Preview -> Streaming Download -> Xóa file.
-- `RoleAuthorizationIntegrationTest`: Kiểm tra phân quyền truy cập nghiêm ngặt cho `ADMIN`, `AGENT`, và `USER`.

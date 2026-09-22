@@ -2,27 +2,37 @@ spring:
   application:
     name: cutting-admin-test
   datasource:
-    url: jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE;MODE=PostgreSQL
-    driver-class-name: org.h2.Driver
+    url: jdbc:h2:mem:svg_manager_test;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE;MODE=PostgreSQL
     username: sa
     password: ""
+    driver-class-name: org.h2.Driver
   jpa:
     hibernate:
       ddl-auto: create-drop
     show-sql: false
+    properties:
+      hibernate:
+        format_sql: false
     open-in-view: false
   flyway:
     enabled: false
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: https://mock-keycloak/realms/cutting
+          jwk-set-uri: https://mock-keycloak/realms/cutting/protocol/openid-connect/certs
   servlet:
     multipart:
       max-file-size: 10MB
       max-request-size: 10MB
 
 app:
-  jwt:
-    secret: 404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970
-    access-token-expiration: 3600000
-    refresh-token-expiration: 604800000
   file:
-    storage-path: ./target/test-svg-storage
+    storage-path: target/test-svg-storage
     max-file-size-bytes: 10485760
+
+logging:
+  level:
+    root: WARN
+    com.example.svgmanager: DEBUG

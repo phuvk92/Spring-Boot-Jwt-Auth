@@ -38,6 +38,10 @@ public class SvgFile {
     @JoinColumn(name = "uploaded_by", nullable = false)
     private User uploadedBy;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "agent_id")
+    private User agent;
+
     @CreatedDate
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
@@ -49,7 +53,7 @@ public class SvgFile {
     public SvgFile() {
     }
 
-    public SvgFile(Long id, String originalFilename, String storedFilename, String filePath, Long fileSize, String contentType, String checksum, User uploadedBy, LocalDateTime createdAt, LocalDateTime updatedAt) {
+    public SvgFile(Long id, String originalFilename, String storedFilename, String filePath, Long fileSize, String contentType, String checksum, User uploadedBy, User agent, LocalDateTime createdAt, LocalDateTime updatedAt) {
         this.id = id;
         this.originalFilename = originalFilename;
         this.storedFilename = storedFilename;
@@ -58,6 +62,7 @@ public class SvgFile {
         this.contentType = contentType;
         this.checksum = checksum;
         this.uploadedBy = uploadedBy;
+        this.agent = agent;
         this.createdAt = createdAt;
         this.updatedAt = updatedAt;
     }
@@ -75,6 +80,7 @@ public class SvgFile {
         private String contentType;
         private String checksum;
         private User uploadedBy;
+        private User agent;
         private LocalDateTime createdAt;
         private LocalDateTime updatedAt;
 
@@ -118,6 +124,11 @@ public class SvgFile {
             return this;
         }
 
+        public Builder agent(User agent) {
+            this.agent = agent;
+            return this;
+        }
+
         public Builder createdAt(LocalDateTime createdAt) {
             this.createdAt = createdAt;
             return this;
@@ -129,7 +140,7 @@ public class SvgFile {
         }
 
         public SvgFile build() {
-            return new SvgFile(id, originalFilename, storedFilename, filePath, fileSize, contentType, checksum, uploadedBy, createdAt, updatedAt);
+            return new SvgFile(id, originalFilename, storedFilename, filePath, fileSize, contentType, checksum, uploadedBy, agent, createdAt, updatedAt);
         }
     }
 
@@ -195,6 +206,14 @@ public class SvgFile {
 
     public void setUploadedBy(User uploadedBy) {
         this.uploadedBy = uploadedBy;
+    }
+
+    public User getAgent() {
+        return agent;
+    }
+
+    public void setAgent(User agent) {
+        this.agent = agent;
     }
 
     public LocalDateTime getCreatedAt() {

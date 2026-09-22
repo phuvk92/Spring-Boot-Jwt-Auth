@@ -1,16 +1,11 @@
 package com.example.svgmanager.config;
 
-import com.example.svgmanager.security.CustomUserDetailsService;
 import com.example.svgmanager.security.JwtAccessDeniedHandler;
 import com.example.svgmanager.security.JwtAuthenticationEntryPoint;
-import com.example.svgmanager.security.JwtAuthenticationFilter;
+import com.example.svgmanager.security.KeycloakJwtAuthenticationConverter;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.context.annotation.Lazy;
 import org.springframework.http.HttpMethod;
-import org.springframework.security.authentication.AuthenticationManager;
-import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
-import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
@@ -19,7 +14,6 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
-import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
@@ -31,39 +25,23 @@ import java.util.List;
 @EnableMethodSecurity(prePostEnabled = true)
 public class SecurityConfig {
 
-    private final CustomUserDetailsService userDetailsService;
     private final JwtAuthenticationEntryPoint unauthorizedHandler;
     private final JwtAccessDeniedHandler accessDeniedHandler;
-    private final JwtAuthenticationFilter jwtAuthenticationFilter;
+    private final KeycloakJwtAuthenticationConverter keycloakJwtAuthenticationConverter;
 
     public SecurityConfig(
-            @Lazy CustomUserDetailsService userDetailsService,
             JwtAuthenticationEntryPoint unauthorizedHandler,
             JwtAccessDeniedHandler accessDeniedHandler,
-            JwtAuthenticationFilter jwtAuthenticationFilter
+            KeycloakJwtAuthenticationConverter keycloakJwtAuthenticationConverter
     ) {
-        this.userDetailsService = userDetailsService;
         this.unauthorizedHandler = unauthorizedHandler;
         this.accessDeniedHandler = accessDeniedHandler;
-        this.jwtAuthenticationFilter = jwtAuthenticationFilter;
+        this.keycloakJwtAuthenticationConverter = keycloakJwtAuthenticationConverter;
     }
 
     @Bean
     public PasswordEncoder passwordEncoder() {
         return new BCryptPasswordEncoder();
-    }
-
-    @Bean
-    public DaoAuthenticationProvider authenticationProvider() {
-        DaoAuthenticationProvider authProvider = new DaoAuthenticationProvider();
-        authProvider.setUserDetailsService(userDetailsService);
-        authProvider.setPasswordEncoder(passwordEncoder());
-        return authProvider;
-    }
-
-    @Bean
-    public AuthenticationManager authenticationManager(AuthenticationConfiguration authConfig) throws Exception {
-        return authConfig.getAuthenticationManager();
     }
 
     @Bean
@@ -79,12 +57,8 @@ public class SecurityConfig {
                         .sessionCreationPolicy(SessionCreationPolicy.STATELESS)
                 )
                 .authorizeHttpRequests(auth -> auth
-                        // Public auth endpoints
-                        .requestMatchers(
-                                "/api/auth/login",
-                                "/api/auth/register",
-                                "/api/auth/refresh"
-                        ).permitAll()
+                        // Public Auth endpoints
+                        .requestMatchers("/api/auth/**").permitAll()
                         // Public Swagger / OpenAPI endpoints
                         .requestMatchers(
                                 "/swagger-ui/**",
@@ -96,18 +70,20 @@ public class SecurityConfig {
                         ).permitAll()
                         // Actuator health endpoint
                         .requestMatchers("/actuator/health", "/actuator/info").permitAll()
-                        // User management endpoints (ADMIN only)
-                        .requestMatchers("/api/users/**").hasRole("ADMIN")
+                        // User management endpoints (ADMIN and AGENT)
+                        .requestMatchers("/api/users/**").hasAnyRole("ADMIN", "AGENT")
                         // SVG endpoints
                         .requestMatchers(HttpMethod.POST, "/api/svg/upload").hasAnyRole("ADMIN", "AGENT")
-                        .requestMatchers(HttpMethod.DELETE, "/api/svg/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.DELETE, "/api/svg/**").hasAnyRole("ADMIN", "AGENT")
                         .requestMatchers(HttpMethod.GET, "/api/svg/**").hasAnyRole("ADMIN", "AGENT", "USER")
                         // All other endpoints require authentication
                         .anyRequest().authenticated()
+                )
+                .oauth2ResourceServer(oauth2 -> oauth2
+                        .jwt(jwt -> jwt.jwtAuthenticationConverter(keycloakJwtAuthenticationConverter))
+                        .authenticationEntryPoint(unauthorizedHandler)
+                        .accessDeniedHandler(accessDeniedHandler)
                 );
-
-        http.authenticationProvider(authenticationProvider());
-        http.addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
     }

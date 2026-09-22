@@ -12,11 +12,18 @@ public class UserMapper {
         if (user == null) {
             return null;
         }
+
+        Long agentId = user.getAgent() != null ? user.getAgent().getId() : null;
+        String agentUsername = user.getAgent() != null ? user.getAgent().getUsername() : null;
+
         return UserResponse.builder()
                 .id(user.getId())
+                .keycloakUserId(user.getKeycloakUserId())
                 .username(user.getUsername())
                 .email(user.getEmail())
                 .role(user.getRole())
+                .agentId(agentId)
+                .agentUsername(agentUsername)
                 .enabled(user.isEnabled())
                 .createdAt(user.getCreatedAt())
                 .updatedAt(user.getUpdatedAt())
@@ -27,6 +34,7 @@ public class UserMapper {
         if (user == null) {
             return null;
         }
+
         return UserSummaryResponse.builder()
                 .id(user.getId())
                 .username(user.getUsername())

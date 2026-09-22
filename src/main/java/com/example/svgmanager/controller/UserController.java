@@ -25,9 +25,9 @@ import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/api/users")
-@PreAuthorize("hasRole('ADMIN')")
+@PreAuthorize("hasAnyRole('ADMIN', 'AGENT')")
 @SecurityRequirement(name = "bearerAuth")
-@Tag(name = "User Management", description = "Admin-only operations for managing user accounts, statuses, and roles")
+@Tag(name = "User Management", description = "Operations for managing user accounts, scoped by Agent or unrestricted for Admin")
 public class UserController {
 
     private final UserService userService;
@@ -37,11 +37,11 @@ public class UserController {
     }
 
     @GetMapping
-    @Operation(summary = "List users with filters and pagination", description = "Returns a paginated list of users with optional filtering.")
+    @Operation(summary = "List users with filters and pagination", description = "Returns a paginated list of users. ADMIN sees all, AGENT sees own users.")
     @ApiResponses(value = {
             @ApiResponse(responseCode = "200", description = "Users retrieved successfully"),
             @ApiResponse(responseCode = "401", description = "Unauthorized", content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
-            @ApiResponse(responseCode = "403", description = "Forbidden - Requires ADMIN role", content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+            @ApiResponse(responseCode = "403", description = "Forbidden - Requires ADMIN or AGENT role", content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
     })
     public ResponseEntity<PageResponse<UserResponse>> getUsers(
             @Parameter(description = "Filter by username (partial match)") @RequestParam(required = false) String username,
@@ -58,13 +58,13 @@ public class UserController {
     }
 
     @GetMapping("/{id}")
-    @Operation(summary = "Get user details by ID", description = "Retrieves specific user information.")
+    @Operation(summary = "Get user details by ID", description = "Retrieves specific user information within role scope.")
     @ApiResponses(value = {
             @ApiResponse(responseCode = "200", description = "User details retrieved successfully",
                     content = @Content(schema = @Schema(implementation = UserResponse.class))),
             @ApiResponse(responseCode = "404", description = "User not found",
                     content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
-            @ApiResponse(responseCode = "403", description = "Forbidden - Requires ADMIN role",
+            @ApiResponse(responseCode = "403", description = "Forbidden - Insufficient privileges",
                     content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
     })
     public ResponseEntity<UserResponse> getUserById(@PathVariable Long id) {
@@ -73,7 +73,7 @@ public class UserController {
     }
 
     @PostMapping
-    @Operation(summary = "Create a new user", description = "Creates a new user with specified role and details.")
+    @Operation(summary = "Create a new user", description = "Creates a new user. AGENT creates USER under own scope; ADMIN creates any role.")
     @ApiResponses(value = {
             @ApiResponse(responseCode = "201", description = "User created successfully",
                     content = @Content(schema = @Schema(implementation = UserResponse.class))),
@@ -88,7 +88,7 @@ public class UserController {
     }
 
     @PutMapping("/{id}")
-    @Operation(summary = "Update user details", description = "Updates email, role, enabled status, and optionally password.")
+    @Operation(summary = "Update user details", description = "Updates email, enabled status, and optionally password within allowed scope.")
     @ApiResponses(value = {
             @ApiResponse(responseCode = "200", description = "User updated successfully",
                     content = @Content(schema = @Schema(implementation = UserResponse.class))),
@@ -108,7 +108,7 @@ public class UserController {
     }
 
     @PatchMapping("/{id}/status")
-    @Operation(summary = "Enable/disable user account", description = "Updates user enabled status.")
+    @Operation(summary = "Enable/disable user account", description = "Updates user enabled status within allowed scope.")
     @ApiResponses(value = {
             @ApiResponse(responseCode = "200", description = "User status updated successfully",
                     content = @Content(schema = @Schema(implementation = UserResponse.class))),
@@ -124,11 +124,14 @@ public class UserController {
     }
 
     @PatchMapping("/{id}/role")
-    @Operation(summary = "Change user role", description = "Assigns a new role to the user.")
+    @PreAuthorize("hasRole('ADMIN')")
+    @Operation(summary = "Change user role", description = "Assigns a new role to the user. ADMIN only.")
     @ApiResponses(value = {
             @ApiResponse(responseCode = "200", description = "User role updated successfully",
                     content = @Content(schema = @Schema(implementation = UserResponse.class))),
             @ApiResponse(responseCode = "404", description = "User not found",
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+            @ApiResponse(responseCode = "403", description = "Forbidden - Requires ADMIN role",
                     content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
     })
     public ResponseEntity<UserResponse> updateUserRole(
@@ -143,7 +146,7 @@ public class UserController {
     @Operation(summary = "Delete user account", description = "Deletes a user account. Cannot delete self or user with uploaded SVGs.")
     @ApiResponses(value = {
             @ApiResponse(responseCode = "204", description = "User deleted successfully"),
-            @ApiResponse(responseCode = "400", description = "Admin attempting to delete self",
+            @ApiResponse(responseCode = "400", description = "Attempting to delete self",
                     content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
             @ApiResponse(responseCode = "404", description = "User not found",
                     content = @Content(schema = @Schema(implementation = ErrorResponse.class))),

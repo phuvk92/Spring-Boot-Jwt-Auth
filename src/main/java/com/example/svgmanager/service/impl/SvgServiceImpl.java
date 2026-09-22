@@ -2,19 +2,20 @@ package com.example.svgmanager.service.impl;
 
 import com.example.svgmanager.dto.response.PageResponse;
 import com.example.svgmanager.dto.response.SvgResponse;
+import com.example.svgmanager.entity.Role;
 import com.example.svgmanager.entity.SvgFile;
 import com.example.svgmanager.entity.User;
 import com.example.svgmanager.exception.BadRequestException;
+import com.example.svgmanager.exception.ForbiddenException;
 import com.example.svgmanager.exception.ResourceNotFoundException;
 import com.example.svgmanager.mapper.SvgMapper;
 import com.example.svgmanager.repository.SvgFileRepository;
-import com.example.svgmanager.repository.UserRepository;
+import com.example.svgmanager.security.CurrentUserService;
 import com.example.svgmanager.service.FileStorageService;
 import com.example.svgmanager.service.SvgSanitizerService;
 import com.example.svgmanager.service.SvgService;
 import com.example.svgmanager.util.ChecksumUtils;
 import com.example.svgmanager.util.FileUtils;
-import com.example.svgmanager.util.SecurityUtils;
 import jakarta.persistence.criteria.Predicate;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -41,25 +42,25 @@ public class SvgServiceImpl implements SvgService {
     private static final Logger log = LoggerFactory.getLogger(SvgServiceImpl.class);
 
     private final SvgFileRepository svgFileRepository;
-    private final UserRepository userRepository;
     private final FileStorageService fileStorageService;
     private final SvgSanitizerService svgSanitizerService;
     private final SvgMapper svgMapper;
+    private final CurrentUserService currentUserService;
     private final long maxFileSizeBytes;
 
     public SvgServiceImpl(
             SvgFileRepository svgFileRepository,
-            UserRepository userRepository,
             FileStorageService fileStorageService,
             SvgSanitizerService svgSanitizerService,
             SvgMapper svgMapper,
+            CurrentUserService currentUserService,
             @Value("${app.file.max-file-size-bytes:10485760}") long maxFileSizeBytes
     ) {
         this.svgFileRepository = svgFileRepository;
-        this.userRepository = userRepository;
         this.fileStorageService = fileStorageService;
         this.svgSanitizerService = svgSanitizerService;
         this.svgMapper = svgMapper;
+        this.currentUserService = currentUserService;
         this.maxFileSizeBytes = maxFileSizeBytes;
     }
 
@@ -81,7 +82,6 @@ public class SvgServiceImpl implements SvgService {
             throw new BadRequestException("Only SVG files are allowed (.svg)");
         }
 
-        // Validate content-type if provided
         String contentType = file.getContentType();
         if (contentType != null && !contentType.isBlank()) {
             String lowerType = contentType.toLowerCase();
@@ -97,22 +97,21 @@ public class SvgServiceImpl implements SvgService {
             throw new BadRequestException("Could not read uploaded file content");
         }
 
-        // Sanitize and validate SVG content against XSS / XXE
         byte[] sanitizedBytes = svgSanitizerService.sanitizeAndValidateSvg(rawBytes);
-
-        // Generate safe unique stored filename
         String storedFilename = UUID.randomUUID().toString() + ".svg";
-
-        // Store physical file
         String filePath = fileStorageService.storeFile(sanitizedBytes, storedFilename);
-
-        // Compute checksum
         String checksum = ChecksumUtils.calculateSha256(sanitizedBytes);
 
-        // Get currently authenticated user
-        Long currentUserId = SecurityUtils.getCurrentUserId();
-        User currentUser = userRepository.findById(currentUserId)
-                .orElseThrow(() -> new ResourceNotFoundException("User not found with id: " + currentUserId));
+        User currentUser = currentUserService.getCurrentUser();
+        boolean isAdmin = currentUserService.isAdmin();
+        boolean isAgent = currentUserService.isAgent();
+
+        User assignedAgent = null;
+        if (isAgent && !isAdmin) {
+            assignedAgent = currentUser;
+        } else if (currentUser.getRole() == Role.USER && currentUser.getAgent() != null) {
+            assignedAgent = currentUser.getAgent();
+        }
 
         SvgFile svgFile = SvgFile.builder()
                 .originalFilename(safeOriginalFilename)
@@ -122,11 +121,13 @@ public class SvgServiceImpl implements SvgService {
                 .contentType("image/svg+xml")
                 .checksum(checksum)
                 .uploadedBy(currentUser)
+                .agent(assignedAgent)
                 .build();
 
         SvgFile saved = svgFileRepository.save(svgFile);
-        log.info("[SVG_UPLOADED] SVG file uploaded: id={}, originalName='{}', storedName='{}', uploadedBy='{}'",
-                saved.getId(), saved.getOriginalFilename(), saved.getStoredFilename(), currentUser.getUsername());
+        log.info("[SVG_UPLOADED] SVG uploaded: id={}, originalName='{}', uploadedBy='{}', agentId={}",
+                saved.getId(), saved.getOriginalFilename(), currentUser.getUsername(),
+                assignedAgent != null ? assignedAgent.getId() : null);
 
         return svgMapper.toSvgResponse(saved);
     }
@@ -141,12 +142,30 @@ public class SvgServiceImpl implements SvgService {
             String sortBy,
             String sortDirection
     ) {
+        User currentUser = currentUserService.getCurrentUser();
+        boolean isAdmin = currentUserService.isAdmin();
+        boolean isAgent = currentUserService.isAgent();
+
         Sort.Direction direction = "ASC".equalsIgnoreCase(sortDirection) ? Sort.Direction.ASC : Sort.Direction.DESC;
         String validSortBy = StringUtils.hasText(sortBy) ? sortBy : "createdAt";
         Pageable pageable = PageRequest.of(Math.max(0, page), Math.max(1, size), Sort.by(direction, validSortBy));
 
         Specification<SvgFile> spec = (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
+
+            // Data scope isolation
+            if (!isAdmin) {
+                if (isAgent) {
+                    predicates.add(cb.equal(root.get("agent").get("id"), currentUser.getId()));
+                } else if (currentUser.getRole() == Role.USER) {
+                    if (currentUser.getAgent() != null) {
+                        predicates.add(cb.equal(root.get("agent").get("id"), currentUser.getAgent().getId()));
+                    } else {
+                        predicates.add(cb.equal(root.get("uploadedBy").get("id"), currentUser.getId()));
+                    }
+                }
+            }
+
             if (StringUtils.hasText(keyword)) {
                 predicates.add(cb.like(cb.lower(root.get("originalFilename")), "%" + keyword.toLowerCase() + "%"));
             }
@@ -163,17 +182,14 @@ public class SvgServiceImpl implements SvgService {
     @Override
     @Transactional(readOnly = true)
     public SvgResponse getSvgFileById(Long id) {
-        SvgFile svgFile = svgFileRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("SVG file not found with id: " + id));
+        SvgFile svgFile = findScopedSvgById(id);
         return svgMapper.toSvgResponse(svgFile);
     }
 
     @Override
     @Transactional(readOnly = true)
     public Resource previewSvg(Long id) {
-        SvgFile svgFile = svgFileRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("SVG file not found with id: " + id));
-
+        SvgFile svgFile = findScopedSvgById(id);
         Resource resource = fileStorageService.loadFileAsResource(svgFile.getFilePath());
         log.info("[SVG_PREVIEWED] SVG file previewed: id={}, originalName='{}'", id, svgFile.getOriginalFilename());
         return resource;
@@ -182,9 +198,7 @@ public class SvgServiceImpl implements SvgService {
     @Override
     @Transactional(readOnly = true)
     public Resource downloadSvg(Long id) {
-        SvgFile svgFile = svgFileRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("SVG file not found with id: " + id));
-
+        SvgFile svgFile = findScopedSvgById(id);
         Resource resource = fileStorageService.loadFileAsResource(svgFile.getFilePath());
         log.info("[SVG_DOWNLOADED] SVG file downloaded: id={}, originalName='{}'", id, svgFile.getOriginalFilename());
         return resource;
@@ -193,22 +207,41 @@ public class SvgServiceImpl implements SvgService {
     @Override
     @Transactional(readOnly = true)
     public String getOriginalFilename(Long id) {
-        return svgFileRepository.findById(id)
-                .map(SvgFile::getOriginalFilename)
-                .orElseThrow(() -> new ResourceNotFoundException("SVG file not found with id: " + id));
+        return findScopedSvgById(id).getOriginalFilename();
     }
 
     @Override
     @Transactional
     public void deleteSvg(Long id) {
-        SvgFile svgFile = svgFileRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("SVG file not found with id: " + id));
+        SvgFile svgFile = findScopedSvgById(id);
 
-        // Delete physical file
         fileStorageService.deleteFile(svgFile.getFilePath());
-
-        // Delete metadata in DB
         svgFileRepository.delete(svgFile);
         log.info("[SVG_DELETED] SVG file deleted: id={}, originalName='{}'", id, svgFile.getOriginalFilename());
+    }
+
+    private SvgFile findScopedSvgById(Long id) {
+        if (currentUserService.isAdmin()) {
+            return svgFileRepository.findById(id)
+                    .orElseThrow(() -> new ResourceNotFoundException("SVG file not found with id: " + id));
+        }
+
+        User currentUser = currentUserService.getCurrentUser();
+        if (currentUserService.isAgent()) {
+            return svgFileRepository.findByIdAndAgentId(id, currentUser.getId())
+                    .orElseThrow(() -> new ResourceNotFoundException("SVG file not found with id: " + id));
+        }
+
+        if (currentUser.getRole() == Role.USER) {
+            if (currentUser.getAgent() != null) {
+                return svgFileRepository.findByIdAndAgentId(id, currentUser.getAgent().getId())
+                        .orElseThrow(() -> new ResourceNotFoundException("SVG file not found with id: " + id));
+            }
+            return svgFileRepository.findById(id)
+                    .filter(s -> s.getUploadedBy().getId().equals(currentUser.getId()))
+                    .orElseThrow(() -> new ResourceNotFoundException("SVG file not found with id: " + id));
+        }
+
+        throw new ForbiddenException("Access denied: insufficient privileges");
     }
 }
