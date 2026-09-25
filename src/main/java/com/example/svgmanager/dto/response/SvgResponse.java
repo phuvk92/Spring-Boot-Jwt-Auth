@@ -25,6 +25,9 @@ public class SvgResponse {
     @Schema(description = "SHA-256 checksum of sanitized content", example = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855")
     private String checksum;
 
+    @Schema(description = "Assigned Category metadata")
+    private CategorySummaryResponse category;
+
     @Schema(description = "User who uploaded the SVG")
     private UserSummaryResponse uploadedBy;
 
@@ -40,13 +43,14 @@ public class SvgResponse {
     public SvgResponse() {
     }
 
-    public SvgResponse(Long id, String originalFilename, String storedFilename, Long fileSize, String contentType, String checksum, UserSummaryResponse uploadedBy, Long agentId, LocalDateTime createdAt, LocalDateTime updatedAt) {
+    public SvgResponse(Long id, String originalFilename, String storedFilename, Long fileSize, String contentType, String checksum, CategorySummaryResponse category, UserSummaryResponse uploadedBy, Long agentId, LocalDateTime createdAt, LocalDateTime updatedAt) {
         this.id = id;
         this.originalFilename = originalFilename;
         this.storedFilename = storedFilename;
         this.fileSize = fileSize;
         this.contentType = contentType;
         this.checksum = checksum;
+        this.category = category;
         this.uploadedBy = uploadedBy;
         this.agentId = agentId;
         this.createdAt = createdAt;
@@ -64,6 +68,7 @@ public class SvgResponse {
         private Long fileSize;
         private String contentType;
         private String checksum;
+        private CategorySummaryResponse category;
         private UserSummaryResponse uploadedBy;
         private Long agentId;
         private LocalDateTime createdAt;
@@ -99,6 +104,11 @@ public class SvgResponse {
             return this;
         }
 
+        public Builder category(CategorySummaryResponse category) {
+            this.category = category;
+            return this;
+        }
+
         public Builder uploadedBy(UserSummaryResponse uploadedBy) {
             this.uploadedBy = uploadedBy;
             return this;
@@ -120,7 +130,7 @@ public class SvgResponse {
         }
 
         public SvgResponse build() {
-            return new SvgResponse(id, originalFilename, storedFilename, fileSize, contentType, checksum, uploadedBy, agentId, createdAt, updatedAt);
+            return new SvgResponse(id, originalFilename, storedFilename, fileSize, contentType, checksum, category, uploadedBy, agentId, createdAt, updatedAt);
         }
     }
 
@@ -170,6 +180,14 @@ public class SvgResponse {
 
     public void setChecksum(String checksum) {
         this.checksum = checksum;
+    }
+
+    public CategorySummaryResponse getCategory() {
+        return category;
+    }
+
+    public void setCategory(CategorySummaryResponse category) {
+        this.category = category;
     }
 
     public UserSummaryResponse getUploadedBy() {

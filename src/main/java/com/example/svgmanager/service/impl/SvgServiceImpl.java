@@ -2,6 +2,7 @@ package com.example.svgmanager.service.impl;
 
 import com.example.svgmanager.dto.response.PageResponse;
 import com.example.svgmanager.dto.response.SvgResponse;
+import com.example.svgmanager.entity.Category;
 import com.example.svgmanager.entity.Role;
 import com.example.svgmanager.entity.SvgFile;
 import com.example.svgmanager.entity.User;
@@ -11,6 +12,7 @@ import com.example.svgmanager.exception.ResourceNotFoundException;
 import com.example.svgmanager.mapper.SvgMapper;
 import com.example.svgmanager.repository.SvgFileRepository;
 import com.example.svgmanager.security.CurrentUserService;
+import com.example.svgmanager.service.CategoryService;
 import com.example.svgmanager.service.FileStorageService;
 import com.example.svgmanager.service.SvgSanitizerService;
 import com.example.svgmanager.service.SvgService;
@@ -46,6 +48,7 @@ public class SvgServiceImpl implements SvgService {
     private final SvgSanitizerService svgSanitizerService;
     private final SvgMapper svgMapper;
     private final CurrentUserService currentUserService;
+    private final CategoryService categoryService;
     private final long maxFileSizeBytes;
 
     public SvgServiceImpl(
@@ -54,6 +57,7 @@ public class SvgServiceImpl implements SvgService {
             SvgSanitizerService svgSanitizerService,
             SvgMapper svgMapper,
             CurrentUserService currentUserService,
+            CategoryService categoryService,
             @Value("${app.file.max-file-size-bytes:10485760}") long maxFileSizeBytes
     ) {
         this.svgFileRepository = svgFileRepository;
@@ -61,23 +65,28 @@ public class SvgServiceImpl implements SvgService {
         this.svgSanitizerService = svgSanitizerService;
         this.svgMapper = svgMapper;
         this.currentUserService = currentUserService;
+        this.categoryService = categoryService;
         this.maxFileSizeBytes = maxFileSizeBytes;
     }
 
     @Override
     @Transactional
-    public SvgResponse uploadSvg(MultipartFile file) {
+    public SvgResponse uploadSvg(MultipartFile file, Long categoryId) {
+        if (categoryId == null) {
+            throw new BadRequestException("Category ID is required for SVG upload");
+        }
+
+        Category category = categoryService.getCategoryById(categoryId);
+
         if (file == null || file.isEmpty()) {
             throw new BadRequestException("Uploaded file is empty");
         }
 
         if (file.getSize() > maxFileSizeBytes) {
-            throw new BadRequestException("File size exceeds the allowed limit of " + (maxFileSizeBytes / (1024 * 1024)) + "MB");
+            throw new BadRequestException("File size exceeds maximum allowed limit (" + (maxFileSizeBytes / (1024 * 1024)) + " MB)");
         }
 
-        String rawOriginalFilename = file.getOriginalFilename();
-        String safeOriginalFilename = FileUtils.getCleanFilename(rawOriginalFilename);
-
+        String safeOriginalFilename = FileUtils.getCleanFilename(file.getOriginalFilename());
         if (!FileUtils.isSvgExtension(safeOriginalFilename)) {
             throw new BadRequestException("Only SVG files are allowed (.svg)");
         }
@@ -85,8 +94,8 @@ public class SvgServiceImpl implements SvgService {
         String contentType = file.getContentType();
         if (contentType != null && !contentType.isBlank()) {
             String lowerType = contentType.toLowerCase();
-            if (!lowerType.contains("svg") && !lowerType.contains("xml") && !lowerType.contains("octet-stream")) {
-                throw new BadRequestException("Invalid content type for SVG: " + contentType);
+            if (!lowerType.contains("svg") && !lowerType.contains("xml")) {
+                throw new BadRequestException("Invalid content type for SVG file: " + contentType);
             }
         }
 
@@ -94,6 +103,7 @@ public class SvgServiceImpl implements SvgService {
         try {
             rawBytes = file.getBytes();
         } catch (IOException e) {
+            log.error("Failed to read bytes from uploaded file: {}", safeOriginalFilename, e);
             throw new BadRequestException("Could not read uploaded file content");
         }
 
@@ -120,13 +130,14 @@ public class SvgServiceImpl implements SvgService {
                 .fileSize((long) sanitizedBytes.length)
                 .contentType("image/svg+xml")
                 .checksum(checksum)
+                .category(category)
                 .uploadedBy(currentUser)
                 .agent(assignedAgent)
                 .build();
 
         SvgFile saved = svgFileRepository.save(svgFile);
-        log.info("[SVG_UPLOADED] SVG uploaded: id={}, originalName='{}', uploadedBy='{}', agentId={}",
-                saved.getId(), saved.getOriginalFilename(), currentUser.getUsername(),
+        log.info("[SVG_UPLOADED] SVG uploaded: id={}, originalName='{}', categoryId={}, uploadedBy='{}', agentId={}",
+                saved.getId(), saved.getOriginalFilename(), category.getId(), currentUser.getUsername(),
                 assignedAgent != null ? assignedAgent.getId() : null);
 
         return svgMapper.toSvgResponse(saved);
@@ -136,6 +147,7 @@ public class SvgServiceImpl implements SvgService {
     @Transactional(readOnly = true)
     public PageResponse<SvgResponse> getSvgFiles(
             String keyword,
+            Long categoryId,
             Long uploadedBy,
             int page,
             int size,
@@ -166,6 +178,9 @@ public class SvgServiceImpl implements SvgService {
                 }
             }
 
+            if (categoryId != null) {
+                predicates.add(cb.equal(root.get("category").get("id"), categoryId));
+            }
             if (StringUtils.hasText(keyword)) {
                 predicates.add(cb.like(cb.lower(root.get("originalFilename")), "%" + keyword.toLowerCase() + "%"));
             }
@@ -184,6 +199,22 @@ public class SvgServiceImpl implements SvgService {
     public SvgResponse getSvgFileById(Long id) {
         SvgFile svgFile = findScopedSvgById(id);
         return svgMapper.toSvgResponse(svgFile);
+    }
+
+    @Override
+    @Transactional
+    public SvgResponse updateSvg(Long id, Long categoryId) {
+        if (!currentUserService.isAdmin()) {
+            throw new ForbiddenException("Only ADMIN can update SVG category");
+        }
+        SvgFile svgFile = findScopedSvgById(id);
+        if (categoryId != null) {
+            Category category = categoryService.getCategoryById(categoryId);
+            svgFile.setCategory(category);
+        }
+        SvgFile updated = svgFileRepository.save(svgFile);
+        log.info("[SVG_UPDATED] SVG updated: id={}, categoryId={}", updated.getId(), categoryId);
+        return svgMapper.toSvgResponse(updated);
     }
 
     @Override

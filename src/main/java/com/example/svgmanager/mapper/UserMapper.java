@@ -21,6 +21,8 @@ public class UserMapper {
                 .keycloakUserId(user.getKeycloakUserId())
                 .username(user.getUsername())
                 .email(user.getEmail())
+                .fullName(user.getFullName())
+                .phone(user.getPhone())
                 .role(user.getRole())
                 .agentId(agentId)
                 .agentUsername(agentUsername)

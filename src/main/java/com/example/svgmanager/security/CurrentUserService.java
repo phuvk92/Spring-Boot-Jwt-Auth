@@ -58,6 +58,27 @@ public class CurrentUserService {
                 .anyMatch("ROLE_USER"::equals);
     }
 
+    public Role getCurrentRole() {
+        if (isAdmin()) {
+            return Role.ADMIN;
+        }
+        if (isAgent()) {
+            return Role.AGENT;
+        }
+        return Role.USER;
+    }
+
+    public String getCurrentKeycloakUserId() {
+        return getCurrentJwt()
+                .map(Jwt::getSubject)
+                .orElse(null);
+    }
+
+    @Transactional
+    public Long getCurrentUserId() {
+        return getCurrentUser().getId();
+    }
+
     @Transactional
     public User getCurrentUser() {
         Jwt jwt = getCurrentJwt()
@@ -68,25 +89,18 @@ public class CurrentUserService {
         if (username == null || username.isBlank()) {
             username = keycloakUserId;
         }
-        String email = jwt.getClaimAsString("email");
-        if (email == null || email.isBlank()) {
-            email = username + "@keycloak.local";
-        }
 
-        Role role = Role.USER;
-        if (isAdmin()) {
-            role = Role.ADMIN;
-        } else if (isAgent()) {
-            role = Role.AGENT;
-        }
+        Role role = getCurrentRole();
 
-        // Find by Keycloak sub
+        // 1. Find by Keycloak sub
         Optional<User> userOpt = userRepository.findByKeycloakUserId(keycloakUserId);
         if (userOpt.isPresent()) {
             User existing = userOpt.get();
+            if (existing.isDeleted()) {
+                throw new UnauthorizedException("User account has been deactivated/deleted");
+            }
             boolean changed = false;
             if (!username.equals(existing.getUsername())) {
-                // If username not in conflict, update it
                 if (!userRepository.existsByUsernameAndIdNot(username, existing.getId())) {
                     existing.setUsername(username);
                     changed = true;
@@ -102,26 +116,22 @@ public class CurrentUserService {
             return existing;
         }
 
-        // If not found by keycloakUserId, check if username exists (e.g. seeded admin)
+        // 2. Fallback check by username for seeded accounts (e.g., initial Admin / Agent)
         Optional<User> byUsernameOpt = userRepository.findByUsername(username);
         if (byUsernameOpt.isPresent()) {
             User existing = byUsernameOpt.get();
+            if (existing.isDeleted()) {
+                throw new UnauthorizedException("User account has been deactivated/deleted");
+            }
             existing.setKeycloakUserId(keycloakUserId);
             existing.setRole(role);
             return userRepository.save(existing);
         }
 
-        // Provision user on the fly from Keycloak token
-        User newUser = User.builder()
-                .keycloakUserId(keycloakUserId)
-                .username(username)
-                .email(email)
-                .role(role)
-                .enabled(true)
-                .build();
-
-        log.info("[USER_SYNC] Provisioned user from Keycloak JWT: username='{}', sub='{}', role={}", username, keycloakUserId, role);
-        return userRepository.save(newUser);
+        // 3. User was created directly in Keycloak console without application registration
+        // Strict boundary: Do NOT auto-provision unknown Keycloak users into PostgreSQL
+        log.warn("[UNREGISTERED_USER_REJECTED] Rejected access for unmapped Keycloak user: username='{}', sub='{}'", username, keycloakUserId);
+        throw new UnauthorizedException("User account '" + username + "' is not registered in the application. Users must be created through the Admin Application.");
     }
 
     @Transactional

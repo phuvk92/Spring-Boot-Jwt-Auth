@@ -16,8 +16,19 @@ public class UpdateUserRequest {
     @Schema(example = "updated_user@example.com", description = "User email address")
     private String email;
 
+    @Schema(example = "Nguyen Van A", description = "Full name of the user")
+    @Size(max = 255, message = "Full name cannot exceed 255 characters")
+    private String fullName;
+
+    @Schema(example = "+84901234567", description = "Contact phone number")
+    @Size(max = 50, message = "Phone number cannot exceed 50 characters")
+    private String phone;
+
     @Schema(example = "USER", description = "User role (optional, ADMIN only for promotion)")
     private Role role;
+
+    @Schema(example = "2", description = "Managing Agent ID when role is USER (optional, for Admin)")
+    private Long agentId;
 
     @Schema(example = "true", description = "Account active status")
     private Boolean enabled = true;
@@ -32,9 +43,12 @@ public class UpdateUserRequest {
     public UpdateUserRequest() {
     }
 
-    public UpdateUserRequest(String email, Role role, Boolean enabled, String password) {
+    public UpdateUserRequest(String email, String fullName, String phone, Role role, Long agentId, Boolean enabled, String password) {
         this.email = email;
+        this.fullName = fullName;
+        this.phone = phone;
         this.role = role;
+        this.agentId = agentId;
         this.enabled = enabled != null ? enabled : true;
         this.password = password;
     }
@@ -45,7 +59,10 @@ public class UpdateUserRequest {
 
     public static class Builder {
         private String email;
+        private String fullName;
+        private String phone;
         private Role role;
+        private Long agentId;
         private Boolean enabled = true;
         private String password;
 
@@ -54,8 +71,23 @@ public class UpdateUserRequest {
             return this;
         }
 
+        public Builder fullName(String fullName) {
+            this.fullName = fullName;
+            return this;
+        }
+
+        public Builder phone(String phone) {
+            this.phone = phone;
+            return this;
+        }
+
         public Builder role(Role role) {
             this.role = role;
+            return this;
+        }
+
+        public Builder agentId(Long agentId) {
+            this.agentId = agentId;
             return this;
         }
 
@@ -70,7 +102,7 @@ public class UpdateUserRequest {
         }
 
         public UpdateUserRequest build() {
-            return new UpdateUserRequest(email, role, enabled, password);
+            return new UpdateUserRequest(email, fullName, phone, role, agentId, enabled, password);
         }
     }
 
@@ -82,12 +114,36 @@ public class UpdateUserRequest {
         this.email = email;
     }
 
+    public String getFullName() {
+        return fullName;
+    }
+
+    public void setFullName(String fullName) {
+        this.fullName = fullName;
+    }
+
+    public String getPhone() {
+        return phone;
+    }
+
+    public void setPhone(String phone) {
+        this.phone = phone;
+    }
+
     public Role getRole() {
         return role;
     }
 
     public void setRole(Role role) {
         this.role = role;
+    }
+
+    public Long getAgentId() {
+        return agentId;
+    }
+
+    public void setAgentId(Long agentId) {
+        this.agentId = agentId;
     }
 
     public Boolean getEnabled() {

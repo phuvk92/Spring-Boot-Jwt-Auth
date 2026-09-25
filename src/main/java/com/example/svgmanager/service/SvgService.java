@@ -7,10 +7,11 @@ import org.springframework.web.multipart.MultipartFile;
 
 public interface SvgService {
 
-    SvgResponse uploadSvg(MultipartFile file);
+    SvgResponse uploadSvg(MultipartFile file, Long categoryId);
 
     PageResponse<SvgResponse> getSvgFiles(
             String keyword,
+            Long categoryId,
             Long uploadedBy,
             int page,
             int size,
@@ -19,6 +20,8 @@ public interface SvgService {
     );
 
     SvgResponse getSvgFileById(Long id);
+
+    SvgResponse updateSvg(Long id, Long categoryId);
 
     Resource previewSvg(Long id);
 

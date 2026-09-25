@@ -24,4 +24,8 @@ public interface SvgFileRepository extends JpaRepository<SvgFile, Long>, JpaSpec
     long countByUploadedBy(User user);
 
     boolean existsByAgent(User agent);
+
+    boolean existsByCategoryId(Long categoryId);
+
+    long countByCategoryId(Long categoryId);
 }

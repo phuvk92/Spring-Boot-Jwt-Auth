@@ -20,6 +20,12 @@ public class UserResponse {
     @Schema(description = "Email address", example = "john@example.com")
     private String email;
 
+    @Schema(description = "Full name of the user", example = "John Doe")
+    private String fullName;
+
+    @Schema(description = "Contact phone number", example = "+84901234567")
+    private String phone;
+
     @Schema(description = "Assigned user role", example = "USER")
     private Role role;
 
@@ -41,11 +47,14 @@ public class UserResponse {
     public UserResponse() {
     }
 
-    public UserResponse(Long id, String keycloakUserId, String username, String email, Role role, Long agentId, String agentUsername, boolean enabled, LocalDateTime createdAt, LocalDateTime updatedAt) {
+    public UserResponse(Long id, String keycloakUserId, String username, String email, String fullName, String phone,
+                        Role role, Long agentId, String agentUsername, boolean enabled, LocalDateTime createdAt, LocalDateTime updatedAt) {
         this.id = id;
         this.keycloakUserId = keycloakUserId;
         this.username = username;
         this.email = email;
+        this.fullName = fullName;
+        this.phone = phone;
         this.role = role;
         this.agentId = agentId;
         this.agentUsername = agentUsername;
@@ -63,6 +72,8 @@ public class UserResponse {
         private String keycloakUserId;
         private String username;
         private String email;
+        private String fullName;
+        private String phone;
         private Role role;
         private Long agentId;
         private String agentUsername;
@@ -87,6 +98,16 @@ public class UserResponse {
 
         public Builder email(String email) {
             this.email = email;
+            return this;
+        }
+
+        public Builder fullName(String fullName) {
+            this.fullName = fullName;
+            return this;
+        }
+
+        public Builder phone(String phone) {
+            this.phone = phone;
             return this;
         }
 
@@ -121,7 +142,7 @@ public class UserResponse {
         }
 
         public UserResponse build() {
-            return new UserResponse(id, keycloakUserId, username, email, role, agentId, agentUsername, enabled, createdAt, updatedAt);
+            return new UserResponse(id, keycloakUserId, username, email, fullName, phone, role, agentId, agentUsername, enabled, createdAt, updatedAt);
         }
     }
 
@@ -155,6 +176,22 @@ public class UserResponse {
 
     public void setEmail(String email) {
         this.email = email;
+    }
+
+    public String getFullName() {
+        return fullName;
+    }
+
+    public void setFullName(String fullName) {
+        this.fullName = fullName;
+    }
+
+    public String getPhone() {
+        return phone;
+    }
+
+    public void setPhone(String phone) {
+        this.phone = phone;
     }
 
     public Role getRole() {

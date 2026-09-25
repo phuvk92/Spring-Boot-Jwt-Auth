@@ -3,6 +3,7 @@ package com.example.svgmanager.config;
 import com.example.svgmanager.security.JwtAccessDeniedHandler;
 import com.example.svgmanager.security.JwtAuthenticationEntryPoint;
 import com.example.svgmanager.security.KeycloakJwtAuthenticationConverter;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -13,6 +14,16 @@ import org.springframework.security.config.annotation.web.configurers.AbstractHt
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.oauth2.core.DelegatingOAuth2TokenValidator;
+import org.springframework.security.oauth2.core.OAuth2Error;
+import org.springframework.security.oauth2.core.OAuth2ErrorCodes;
+import org.springframework.security.oauth2.core.OAuth2TokenValidator;
+import org.springframework.security.oauth2.core.OAuth2TokenValidatorResult;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.oauth2.jwt.JwtClaimNames;
+import org.springframework.security.oauth2.jwt.JwtDecoder;
+import org.springframework.security.oauth2.jwt.JwtTimestampValidator;
+import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
@@ -45,14 +56,34 @@ public class SecurityConfig {
     }
 
     @Bean
+    public JwtDecoder jwtDecoder(
+            @Value("${spring.security.oauth2.resourceserver.jwt.jwk-set-uri}") String jwkSetUri,
+            @Value("${app.keycloak.realm:cutting}") String realm
+    ) {
+        NimbusJwtDecoder jwtDecoder = NimbusJwtDecoder.withJwkSetUri(jwkSetUri).build();
+        OAuth2TokenValidator<Jwt> issuerValidator = token -> {
+            String issuer = token.getClaimAsString(JwtClaimNames.ISS);
+            if (issuer != null && issuer.contains("/realms/" + realm)) {
+                return OAuth2TokenValidatorResult.success();
+            }
+            return OAuth2TokenValidatorResult.failure(new OAuth2Error(
+                    OAuth2ErrorCodes.INVALID_REQUEST,
+                    "The iss claim does not match allowed realm",
+                    null
+            ));
+        };
+        jwtDecoder.setJwtValidator(new DelegatingOAuth2TokenValidator<>(
+                new JwtTimestampValidator(),
+                issuerValidator
+        ));
+        return jwtDecoder;
+    }
+
+    @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http
-                .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .csrf(AbstractHttpConfigurer::disable)
-                .exceptionHandling(exception -> exception
-                        .authenticationEntryPoint(unauthorizedHandler)
-                        .accessDeniedHandler(accessDeniedHandler)
-                )
+                .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .sessionManagement(session -> session
                         .sessionCreationPolicy(SessionCreationPolicy.STATELESS)
                 )
@@ -64,16 +95,19 @@ public class SecurityConfig {
                                 "/swagger-ui/**",
                                 "/swagger-ui.html",
                                 "/v3/api-docs/**",
-                                "/v3/api-docs.yaml",
                                 "/swagger-resources/**",
                                 "/webjars/**"
                         ).permitAll()
                         // Actuator health endpoint
                         .requestMatchers("/actuator/health", "/actuator/info").permitAll()
+                        // Category endpoints - Read for authenticated users, mutation for ADMIN only
+                        .requestMatchers(HttpMethod.GET, "/api/categories/**").hasAnyRole("ADMIN", "AGENT", "USER")
+                        .requestMatchers("/api/categories/**").hasRole("ADMIN")
+                        .requestMatchers("/api/v1/catalog/**").hasAnyRole("ADMIN", "AGENT", "USER")
                         // User management endpoints (ADMIN and AGENT)
                         .requestMatchers("/api/users/**").hasAnyRole("ADMIN", "AGENT")
                         // SVG endpoints
-                        .requestMatchers(HttpMethod.POST, "/api/svg/upload").hasAnyRole("ADMIN", "AGENT")
+                        .requestMatchers(HttpMethod.POST, "/api/svg/**").hasAnyRole("ADMIN", "AGENT")
                         .requestMatchers(HttpMethod.DELETE, "/api/svg/**").hasAnyRole("ADMIN", "AGENT")
                         .requestMatchers(HttpMethod.GET, "/api/svg/**").hasAnyRole("ADMIN", "AGENT", "USER")
                         // All other endpoints require authentication

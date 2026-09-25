@@ -28,6 +28,12 @@ public class User {
     @Column(length = 255)
     private String password;
 
+    @Column(name = "full_name", length = 255)
+    private String fullName;
+
+    @Column(length = 50)
+    private String phone;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     private Role role;
@@ -38,6 +44,9 @@ public class User {
 
     @Column(nullable = false)
     private boolean enabled = true;
+
+    @Column(nullable = false)
+    private boolean deleted = false;
 
     @CreatedDate
     @Column(name = "created_at", nullable = false, updatable = false)
@@ -50,15 +59,20 @@ public class User {
     public User() {
     }
 
-    public User(Long id, String keycloakUserId, String username, String email, String password, Role role, User agent, boolean enabled, LocalDateTime createdAt, LocalDateTime updatedAt) {
+    public User(Long id, String keycloakUserId, String username, String email, String password,
+                String fullName, String phone, Role role, User agent, boolean enabled, boolean deleted,
+                LocalDateTime createdAt, LocalDateTime updatedAt) {
         this.id = id;
         this.keycloakUserId = keycloakUserId;
         this.username = username;
         this.email = email;
         this.password = password;
+        this.fullName = fullName;
+        this.phone = phone;
         this.role = role;
         this.agent = agent;
         this.enabled = enabled;
+        this.deleted = deleted;
         this.createdAt = createdAt;
         this.updatedAt = updatedAt;
     }
@@ -73,9 +87,12 @@ public class User {
         private String username;
         private String email;
         private String password;
+        private String fullName;
+        private String phone;
         private Role role;
         private User agent;
         private boolean enabled = true;
+        private boolean deleted = false;
         private LocalDateTime createdAt;
         private LocalDateTime updatedAt;
 
@@ -104,6 +121,16 @@ public class User {
             return this;
         }
 
+        public Builder fullName(String fullName) {
+            this.fullName = fullName;
+            return this;
+        }
+
+        public Builder phone(String phone) {
+            this.phone = phone;
+            return this;
+        }
+
         public Builder role(Role role) {
             this.role = role;
             return this;
@@ -119,6 +146,11 @@ public class User {
             return this;
         }
 
+        public Builder deleted(boolean deleted) {
+            this.deleted = deleted;
+            return this;
+        }
+
         public Builder createdAt(LocalDateTime createdAt) {
             this.createdAt = createdAt;
             return this;
@@ -130,7 +162,7 @@ public class User {
         }
 
         public User build() {
-            return new User(id, keycloakUserId, username, email, password, role, agent, enabled, createdAt, updatedAt);
+            return new User(id, keycloakUserId, username, email, password, fullName, phone, role, agent, enabled, deleted, createdAt, updatedAt);
         }
     }
 
@@ -174,6 +206,22 @@ public class User {
         this.password = password;
     }
 
+    public String getFullName() {
+        return fullName;
+    }
+
+    public void setFullName(String fullName) {
+        this.fullName = fullName;
+    }
+
+    public String getPhone() {
+        return phone;
+    }
+
+    public void setPhone(String phone) {
+        this.phone = phone;
+    }
+
     public Role getRole() {
         return role;
     }
@@ -196,6 +244,14 @@ public class User {
 
     public void setEnabled(boolean enabled) {
         this.enabled = enabled;
+    }
+
+    public boolean isDeleted() {
+        return deleted;
+    }
+
+    public void setDeleted(boolean deleted) {
+        this.deleted = deleted;
     }
 
     public LocalDateTime getCreatedAt() {

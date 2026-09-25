@@ -2,15 +2,18 @@ package com.example.svgmanager.mapper;
 
 import com.example.svgmanager.dto.response.SvgResponse;
 import com.example.svgmanager.entity.SvgFile;
+import com.example.svgmanager.service.CategoryService;
 import org.springframework.stereotype.Component;
 
 @Component
 public class SvgMapper {
 
     private final UserMapper userMapper;
+    private final CategoryService categoryService;
 
-    public SvgMapper(UserMapper userMapper) {
+    public SvgMapper(UserMapper userMapper, CategoryService categoryService) {
         this.userMapper = userMapper;
+        this.categoryService = categoryService;
     }
 
     public SvgResponse toSvgResponse(SvgFile svgFile) {
@@ -27,6 +30,7 @@ public class SvgMapper {
                 .fileSize(svgFile.getFileSize())
                 .contentType(svgFile.getContentType())
                 .checksum(svgFile.getChecksum())
+                .category(svgFile.getCategory() != null ? categoryService.toSummary(svgFile.getCategory()) : null)
                 .uploadedBy(userMapper.toUserSummaryResponse(svgFile.getUploadedBy()))
                 .agentId(agentId)
                 .createdAt(svgFile.getCreatedAt())

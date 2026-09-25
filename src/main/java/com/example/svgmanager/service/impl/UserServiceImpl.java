@@ -16,6 +16,7 @@ import com.example.svgmanager.mapper.UserMapper;
 import com.example.svgmanager.repository.SvgFileRepository;
 import com.example.svgmanager.repository.UserRepository;
 import com.example.svgmanager.security.CurrentUserService;
+import com.example.svgmanager.service.KeycloakUserService;
 import com.example.svgmanager.service.UserService;
 import jakarta.persistence.criteria.Predicate;
 import org.slf4j.Logger;
@@ -25,7 +26,6 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -40,22 +40,22 @@ public class UserServiceImpl implements UserService {
 
     private final UserRepository userRepository;
     private final SvgFileRepository svgFileRepository;
-    private final PasswordEncoder passwordEncoder;
     private final UserMapper userMapper;
     private final CurrentUserService currentUserService;
+    private final KeycloakUserService keycloakUserService;
 
     public UserServiceImpl(
             UserRepository userRepository,
             SvgFileRepository svgFileRepository,
-            PasswordEncoder passwordEncoder,
             UserMapper userMapper,
-            CurrentUserService currentUserService
+            CurrentUserService currentUserService,
+            KeycloakUserService keycloakUserService
     ) {
         this.userRepository = userRepository;
         this.svgFileRepository = svgFileRepository;
-        this.passwordEncoder = passwordEncoder;
         this.userMapper = userMapper;
         this.currentUserService = currentUserService;
+        this.keycloakUserService = keycloakUserService;
     }
 
     @Override
@@ -80,6 +80,9 @@ public class UserServiceImpl implements UserService {
 
         Specification<User> spec = (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
+
+            // Filter out soft-deleted users
+            predicates.add(cb.or(cb.isNull(root.get("deleted")), cb.isFalse(root.get("deleted"))));
 
             // Data scope isolation: AGENT only sees users where agent_id = currentAgentId
             if (!isAdmin && isAgent) {
@@ -136,32 +139,66 @@ public class UserServiceImpl implements UserService {
 
         if (isAgent && !isAdmin) {
             // AGENT can only create USER under own agent scope
+            if (request.getRole() != null && request.getRole() != Role.USER) {
+                throw new ForbiddenException("Agent cannot create user with role: " + request.getRole());
+            }
             assignedRole = Role.USER;
             assignedAgent = currentUser;
         } else {
             // ADMIN can create any role
             assignedRole = request.getRole() != null ? request.getRole() : Role.USER;
+            if (request.getAgentId() != null) {
+                assignedAgent = userRepository.findById(request.getAgentId())
+                        .filter(u -> u.getRole() == Role.AGENT && !u.isDeleted())
+                        .orElseThrow(() -> new BadRequestException("Assigned agent not found with id: " + request.getAgentId()));
+            }
         }
 
-        String encodedPassword = StringUtils.hasText(request.getPassword())
-                ? passwordEncoder.encode(request.getPassword())
-                : null;
+        boolean enabled = request.getEnabled() != null ? request.getEnabled() : true;
 
-        User user = User.builder()
-                .username(request.getUsername())
-                .email(request.getEmail())
-                .password(encodedPassword)
-                .role(assignedRole)
-                .agent(assignedAgent)
-                .enabled(request.getEnabled() != null ? request.getEnabled() : true)
-                .build();
+        // Step 1: Create user in Keycloak (Identity Source of Truth)
+        String keycloakUserId = keycloakUserService.createUser(
+                request.getUsername(),
+                request.getEmail(),
+                request.getPassword(),
+                assignedRole,
+                enabled,
+                request.getFullName()
+        );
 
-        User savedUser = userRepository.save(user);
-        log.info("[USER_CREATED] Created user: username='{}', id={}, role={}, agentId={}",
-                savedUser.getUsername(), savedUser.getId(), savedUser.getRole(),
-                assignedAgent != null ? assignedAgent.getId() : null);
+        // Step 2: Create application user in PostgreSQL (Business Profile Source of Truth)
+        // With rollback compensation if DB operation fails
+        try {
+            User user = User.builder()
+                    .keycloakUserId(keycloakUserId)
+                    .username(request.getUsername())
+                    .email(request.getEmail())
+                    .fullName(request.getFullName())
+                    .phone(request.getPhone())
+                    .role(assignedRole)
+                    .agent(assignedAgent)
+                    .enabled(enabled)
+                    .deleted(false)
+                    .build();
 
-        return userMapper.toUserResponse(savedUser);
+            User savedUser = userRepository.save(user);
+            log.info("[USER_CREATED] Created user: username='{}', id={}, keycloakId='{}', role={}, agentId={}",
+                    savedUser.getUsername(), savedUser.getId(), keycloakUserId, savedUser.getRole(),
+                    assignedAgent != null ? assignedAgent.getId() : null);
+
+            return userMapper.toUserResponse(savedUser);
+        } catch (Exception e) {
+            log.error("[COMPENSATION] PostgreSQL save failed for user '{}'. Rolling back Keycloak user: {}",
+                    request.getUsername(), keycloakUserId, e);
+            try {
+                keycloakUserService.deleteUser(keycloakUserId);
+                log.info("[COMPENSATION_SUCCESS] Deleted orphaned Keycloak user: {}", keycloakUserId);
+            } catch (Exception rollbackEx) {
+                log.error("[COMPENSATION_FAILED] Failed to delete orphaned Keycloak user {}: {}",
+                        keycloakUserId, rollbackEx.getMessage());
+            }
+            throw e;
+        }
     }
 
     @Override
@@ -180,7 +217,15 @@ public class UserServiceImpl implements UserService {
         boolean oldEnabled = user.isEnabled();
 
         user.setEmail(request.getEmail());
-        user.setEnabled(request.getEnabled());
+        if (request.getEnabled() != null) {
+            user.setEnabled(request.getEnabled());
+        }
+        if (request.getFullName() != null) {
+            user.setFullName(request.getFullName());
+        }
+        if (request.getPhone() != null) {
+            user.setPhone(request.getPhone());
+        }
 
         if (isAdmin && request.getRole() != null) {
             user.setRole(request.getRole());
@@ -188,8 +233,23 @@ public class UserServiceImpl implements UserService {
             throw new ForbiddenException("Agent cannot promote user to role: " + request.getRole());
         }
 
-        if (StringUtils.hasText(request.getPassword())) {
-            user.setPassword(passwordEncoder.encode(request.getPassword()));
+        if (isAdmin && request.getAgentId() != null) {
+            User assignedAgent = userRepository.findById(request.getAgentId())
+                    .filter(u -> u.getRole() == Role.AGENT && !u.isDeleted())
+                    .orElseThrow(() -> new BadRequestException("Assigned agent not found with id: " + request.getAgentId()));
+            user.setAgent(assignedAgent);
+        }
+
+        // Sync with Keycloak
+        if (StringUtils.hasText(user.getKeycloakUserId())) {
+            keycloakUserService.updateUser(user.getKeycloakUserId(), request.getEmail(), request.getEnabled());
+
+            if (oldRole != user.getRole()) {
+                keycloakUserService.updateRole(user.getKeycloakUserId(), oldRole, user.getRole());
+            }
+            if (StringUtils.hasText(request.getPassword())) {
+                keycloakUserService.resetPassword(user.getKeycloakUserId(), request.getPassword());
+            }
         }
 
         User updatedUser = userRepository.save(user);
@@ -214,6 +274,14 @@ public class UserServiceImpl implements UserService {
         user.setEnabled(request.getEnabled());
         User updatedUser = userRepository.save(user);
 
+        if (StringUtils.hasText(user.getKeycloakUserId())) {
+            if (request.getEnabled()) {
+                keycloakUserService.enableUser(user.getKeycloakUserId());
+            } else {
+                keycloakUserService.disableUser(user.getKeycloakUserId());
+            }
+        }
+
         if (oldStatus && !request.getEnabled()) {
             log.info("[USER_DISABLED] User id={} ({}) has been disabled", user.getId(), user.getUsername());
         } else {
@@ -233,8 +301,12 @@ public class UserServiceImpl implements UserService {
         User user = findScopedUserById(id);
         Role oldRole = user.getRole();
         user.setRole(request.getRole());
-        User updatedUser = userRepository.save(user);
 
+        if (StringUtils.hasText(user.getKeycloakUserId())) {
+            keycloakUserService.updateRole(user.getKeycloakUserId(), oldRole, request.getRole());
+        }
+
+        User updatedUser = userRepository.save(user);
         log.info("[ROLE_CHANGED] User id={} ({}) role changed from {} to {}", user.getId(), user.getUsername(), oldRole, request.getRole());
         return userMapper.toUserResponse(updatedUser);
     }
@@ -249,33 +321,48 @@ public class UserServiceImpl implements UserService {
 
         User user = findScopedUserById(id);
 
-        // Check if user has uploaded SVG files
-        if (svgFileRepository.existsByUploadedBy(user)) {
-            long svgCount = svgFileRepository.countByUploadedBy(user);
-            throw new ConflictException("Cannot delete user who owns " + svgCount + " SVG file(s). Please delete or reassign files first.");
+        boolean hasSvg = svgFileRepository.existsByUploadedBy(user);
+        boolean hasChildUsers = userRepository.existsByAgent(user);
+
+        // Soft-delete if user has business references (SVGs, child users) to preserve audit/history
+        if (hasSvg || hasChildUsers) {
+            user.setDeleted(true);
+            user.setEnabled(false);
+            userRepository.save(user);
+
+            if (StringUtils.hasText(user.getKeycloakUserId())) {
+                keycloakUserService.disableUser(user.getKeycloakUserId());
+            }
+            log.info("[USER_SOFT_DELETED] User soft-deleted to maintain business history: id={}, username='{}', hasSvg={}, hasChildUsers={}",
+                    user.getId(), user.getUsername(), hasSvg, hasChildUsers);
+            return;
         }
 
-        // Check if user is an agent that owns child users
-        if (userRepository.existsByAgent(user)) {
-            throw new ConflictException("Cannot delete agent who manages other users. Please reassign or delete child users first.");
-        }
-
+        // Hard-delete if no business references exist
         userRepository.delete(user);
-        log.info("[USER_DELETED] User deleted successfully: id={}, username='{}'", id, user.getUsername());
+        if (StringUtils.hasText(user.getKeycloakUserId())) {
+            keycloakUserService.deleteUser(user.getKeycloakUserId());
+        }
+        log.info("[USER_DELETED] User hard-deleted successfully: id={}, username='{}'", id, user.getUsername());
     }
 
     private User findScopedUserById(Long id) {
+        User user;
         if (currentUserService.isAdmin()) {
-            return userRepository.findById(id)
+            user = userRepository.findById(id)
                     .orElseThrow(() -> new ResourceNotFoundException("User not found with id: " + id));
-        }
-
-        if (currentUserService.isAgent()) {
+        } else if (currentUserService.isAgent()) {
             Long currentAgentId = currentUserService.getCurrentUser().getId();
-            return userRepository.findByIdAndAgentId(id, currentAgentId)
+            user = userRepository.findByIdAndAgentId(id, currentAgentId)
                     .orElseThrow(() -> new ResourceNotFoundException("User not found with id: " + id));
+        } else {
+            throw new ForbiddenException("Access denied: insufficient privileges");
         }
 
-        throw new ForbiddenException("Access denied: insufficient privileges");
+        if (user.isDeleted()) {
+            throw new ResourceNotFoundException("User not found with id: " + id);
+        }
+
+        return user;
     }
 }

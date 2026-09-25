@@ -35,6 +35,10 @@ public class SvgFile {
     private String checksum;
 
     @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "category_id")
+    private Category category;
+
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "uploaded_by", nullable = false)
     private User uploadedBy;
 
@@ -53,7 +57,7 @@ public class SvgFile {
     public SvgFile() {
     }
 
-    public SvgFile(Long id, String originalFilename, String storedFilename, String filePath, Long fileSize, String contentType, String checksum, User uploadedBy, User agent, LocalDateTime createdAt, LocalDateTime updatedAt) {
+    public SvgFile(Long id, String originalFilename, String storedFilename, String filePath, Long fileSize, String contentType, String checksum, Category category, User uploadedBy, User agent, LocalDateTime createdAt, LocalDateTime updatedAt) {
         this.id = id;
         this.originalFilename = originalFilename;
         this.storedFilename = storedFilename;
@@ -61,6 +65,7 @@ public class SvgFile {
         this.fileSize = fileSize;
         this.contentType = contentType;
         this.checksum = checksum;
+        this.category = category;
         this.uploadedBy = uploadedBy;
         this.agent = agent;
         this.createdAt = createdAt;
@@ -79,6 +84,7 @@ public class SvgFile {
         private Long fileSize;
         private String contentType;
         private String checksum;
+        private Category category;
         private User uploadedBy;
         private User agent;
         private LocalDateTime createdAt;
@@ -119,6 +125,11 @@ public class SvgFile {
             return this;
         }
 
+        public Builder category(Category category) {
+            this.category = category;
+            return this;
+        }
+
         public Builder uploadedBy(User uploadedBy) {
             this.uploadedBy = uploadedBy;
             return this;
@@ -140,7 +151,7 @@ public class SvgFile {
         }
 
         public SvgFile build() {
-            return new SvgFile(id, originalFilename, storedFilename, filePath, fileSize, contentType, checksum, uploadedBy, agent, createdAt, updatedAt);
+            return new SvgFile(id, originalFilename, storedFilename, filePath, fileSize, contentType, checksum, category, uploadedBy, agent, createdAt, updatedAt);
         }
     }
 
@@ -198,6 +209,14 @@ public class SvgFile {
 
     public void setChecksum(String checksum) {
         this.checksum = checksum;
+    }
+
+    public Category getCategory() {
+        return category;
+    }
+
+    public void setCategory(Category category) {
+        this.category = category;
     }
 
     public User getUploadedBy() {
