@@ -44,11 +44,18 @@ public class UserMapper {
             return null;
         }
 
+        Long dealerId = user.getDealer() != null ? user.getDealer().getId() : null;
+        String dealerName = user.getDealer() != null ? user.getDealer().getName() : null;
+        String dealerCode = user.getDealer() != null ? user.getDealer().getCode() : null;
+
         return UserSummaryResponse.builder()
                 .id(user.getId())
                 .username(user.getUsername())
                 .email(user.getEmail())
                 .role(user.getRole())
+                .dealerId(dealerId)
+                .dealerName(dealerName)
+                .dealerCode(dealerCode)
                 .build();
     }
 }

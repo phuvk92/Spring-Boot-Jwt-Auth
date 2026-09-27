@@ -332,12 +332,19 @@ public class SvgServiceImpl implements SvgService {
         boolean isAdmin = currentUserService.isAdmin();
         boolean isAgent = currentUserService.isAgent();
 
-        // Enforce USER security scope
-        if (!isAdmin && !isAgent) {
-            // Role USER
-            if (currentUser.getDealer() == null) {
-                // User has no dealer -> cannot view any files
-                return PageResponse.of(Page.empty());
+        // Enforce USER / AGENT security scope
+        if (!isAdmin) {
+            if (isAgent) {
+                // Agent must belong to a dealer or have uploaded SVGs
+                if (currentUser.getDealer() == null && !svgFileRepository.existsByAgent(currentUser)) {
+                    return PageResponse.of(Page.empty());
+                }
+            } else {
+                // Role USER
+                if (currentUser.getDealer() == null) {
+                    // User has no dealer -> cannot view any files
+                    return PageResponse.of(Page.empty());
+                }
             }
         }
 
@@ -358,8 +365,19 @@ public class SvgServiceImpl implements SvgService {
                     predicates.add(cb.isTrue(dpJoin.get("canView")));
                 }
             } else if (isAgent) {
-                // Agent scope: sees SVGs assigned to this agent
-                predicates.add(cb.equal(root.get("agent").get("id"), currentUser.getId()));
+                // Agent scope: sees SVGs assigned to their dealer (canView = true) OR uploaded by the agent
+                Long agentDealerId = currentUser.getDealer() != null ? currentUser.getDealer().getId() : null;
+                if (agentDealerId != null) {
+                    Join<SvgFile, SvgFileDealerPermission> dpJoin = root.join("dealerPermissions", JoinType.LEFT);
+                    Predicate hasDealerView = cb.and(
+                            cb.equal(dpJoin.get("dealer").get("id"), agentDealerId),
+                            cb.isTrue(dpJoin.get("canView"))
+                    );
+                    Predicate isOwnUploaded = cb.equal(root.get("agent").get("id"), currentUser.getId());
+                    predicates.add(cb.or(hasDealerView, isOwnUploaded));
+                } else {
+                    predicates.add(cb.equal(root.get("agent").get("id"), currentUser.getId()));
+                }
             } else {
                 // USER scope: based on dealer permissions
                 Long userDealerId = currentUser.getDealer().getId();
@@ -656,7 +674,7 @@ public class SvgServiceImpl implements SvgService {
     /**
      * Authorizes and retrieves the SVG file:
      * - ADMIN: full access.
-     * - AGENT: can access only files belonging to own agent scope.
+     * - AGENT: can access files belonging to own agent upload OR files granted to the agent's dealer.
      * - USER:
      *     - Must have a dealer.
      *     - Must have canView = true in svg_file_dealer_permissions.
@@ -670,12 +688,16 @@ public class SvgServiceImpl implements SvgService {
 
         User currentUser = currentUserService.getCurrentUser();
 
+        // 1. If agent uploaded this SVG themselves, they have full view & download access
         if (currentUserService.isAgent()) {
-            return svgFileRepository.findByIdAndAgentId(id, currentUser.getId())
-                    .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy file SVG với ID: " + id));
+            Optional<SvgFile> ownSvg = svgFileRepository.findByIdAndAgentId(id, currentUser.getId());
+            if (ownSvg.isPresent()) {
+                return ownSvg.get();
+            }
         }
 
-        if (currentUser.getRole() != Role.USER || currentUser.getDealer() == null) {
+        // 2. Check dealer permission (applies to both AGENT and USER belonging to a dealer)
+        if (currentUser.getDealer() == null) {
             throw new ResourceNotFoundException("Không tìm thấy file SVG với ID: " + id);
         }
 

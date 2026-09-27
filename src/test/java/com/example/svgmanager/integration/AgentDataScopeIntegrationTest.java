@@ -12,6 +12,10 @@ import com.example.svgmanager.entity.SvgFile;
 import com.example.svgmanager.entity.User;
 import com.example.svgmanager.repository.CategoryRepository;
 import com.example.svgmanager.repository.SvgFileRepository;
+import com.example.svgmanager.entity.Dealer;
+import com.example.svgmanager.entity.SvgFileDealerPermission;
+import com.example.svgmanager.repository.DealerRepository;
+import com.example.svgmanager.repository.SvgFileDealerPermissionRepository;
 import com.example.svgmanager.repository.UserRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.persistence.EntityManager;
@@ -55,6 +59,12 @@ class AgentDataScopeIntegrationTest {
 
     @Autowired
     private CategoryRepository categoryRepository;
+
+    @Autowired
+    private DealerRepository dealerRepository;
+
+    @Autowired
+    private SvgFileDealerPermissionRepository svgFileDealerPermissionRepository;
 
     @Autowired
     private ObjectMapper objectMapper;
@@ -698,5 +708,96 @@ class AgentDataScopeIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(req)))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @DisplayName("Case 36: Agent creating user defaults to agent's dealer -> 201 Created with dealer populated")
+    void agentCreateUser_DefaultsToAgentDealer() throws Exception {
+        Dealer dealerA = dealerRepository.save(Dealer.builder()
+                .code("DEALER_AGENT_A")
+                .name("Alpha Auto Film")
+                .status("ACTIVE")
+                .build());
+        agentA.setDealer(dealerA);
+        userRepository.save(agentA);
+
+        CreateUserRequest req = CreateUserRequest.builder()
+                .email("tech_cutter@alpha.com")
+                .fullName("Tho Cat Alpha")
+                .password("Password123!")
+                .role(Role.USER)
+                .build();
+
+        mockMvc.perform(post("/api/users")
+                        .with(jwtAgentA())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(req)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.username").value("tech_cutter@alpha.com"))
+                .andExpect(jsonPath("$.email").value("tech_cutter@alpha.com"))
+                .andExpect(jsonPath("$.dealerId").value(dealerA.getId()))
+                .andExpect(jsonPath("$.dealerName").value("Alpha Auto Film"));
+    }
+
+    @Test
+    @DisplayName("Case 37: Agent can see SVG files permitted to agent's dealer by Admin -> 200 OK")
+    void agent_CanSeeSvgFilesPermittedToDealer() throws Exception {
+        Dealer dealerA = dealerRepository.save(Dealer.builder()
+                .code("DEALER_AGENT_A2")
+                .name("Alpha Auto Film 2")
+                .status("ACTIVE")
+                .build());
+        agentA.setDealer(dealerA);
+        userRepository.save(agentA);
+
+        SvgFile adminSvg = svgFileRepository.save(SvgFile.builder()
+                .originalFilename("dealer_assigned_pattern.svg")
+                .storedFilename("dealer_assigned_pattern_stored.svg")
+                .filePath("/tmp/dealer_assigned_pattern.svg")
+                .fileSize(2048L)
+                .contentType("image/svg+xml")
+                .category(submodelHatchback)
+                .uploadedBy(admin)
+                .agent(admin)
+                .build());
+
+        svgFileDealerPermissionRepository.save(new SvgFileDealerPermission(adminSvg, dealerA, true, false));
+        entityManager.flush();
+        entityManager.clear();
+
+        mockMvc.perform(get("/api/svg").with(jwtAgentA()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[?(@.originalFilename == 'dealer_assigned_pattern.svg')]").isNotEmpty())
+                .andExpect(jsonPath("$.content[?(@.originalFilename == 'dealer_assigned_pattern.svg')].canView").value(true));
+    }
+
+    @Test
+    @DisplayName("Case 38: Agent cannot create user for another dealer -> 403 Forbidden")
+    void agent_CannotCreateUserForAnotherDealer() throws Exception {
+        Dealer dealerA = dealerRepository.save(Dealer.builder()
+                .code("DEALER_A3")
+                .name("Alpha Auto Film 3")
+                .status("ACTIVE")
+                .build());
+        Dealer dealerB = dealerRepository.save(Dealer.builder()
+                .code("DEALER_B3")
+                .name("Beta Auto Film 3")
+                .status("ACTIVE")
+                .build());
+        agentA.setDealer(dealerA);
+        userRepository.save(agentA);
+
+        CreateUserRequest req = new CreateUserRequest();
+        req.setEmail("intruder@beta.com");
+        req.setPassword("Secret@123456");
+        req.setFullName("Intruder");
+        req.setRole(Role.USER);
+        req.setDealerId(dealerB.getId()); // Attempting to assign user to dealerB
+
+        mockMvc.perform(post("/api/users")
+                        .with(jwtAgentA())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(req)))
+                .andExpect(status().isForbidden());
     }
 }

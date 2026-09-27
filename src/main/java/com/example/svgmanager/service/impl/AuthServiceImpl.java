@@ -19,6 +19,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
 import org.springframework.stereotype.Service;
@@ -61,6 +62,7 @@ public class AuthServiceImpl implements AuthService {
     private final ObjectMapper objectMapper;
     private final RestClient restClient;
 
+    @Autowired
     public AuthServiceImpl(
             UserRepository userRepository,
             UserMapper userMapper,
@@ -74,9 +76,25 @@ public class AuthServiceImpl implements AuthService {
         this.restClient = RestClient.builder().build();
     }
 
+    public AuthServiceImpl(
+            UserRepository userRepository,
+            UserMapper userMapper,
+            CurrentUserService currentUserService,
+            ObjectMapper objectMapper,
+            RestClient restClient
+    ) {
+        this.userRepository = userRepository;
+        this.userMapper = userMapper;
+        this.currentUserService = currentUserService;
+        this.objectMapper = objectMapper;
+        this.restClient = restClient;
+    }
+
     @Override
     @Transactional
     public AuthResponse login(LoginRequest request) {
+        log.info("Attempting login for user: {}", request.getUsername());
+
         MultiValueMap<String, String> formData = new LinkedMultiValueMap<>();
         formData.add("grant_type", "password");
         formData.add("client_id", clientId);
@@ -192,12 +210,7 @@ public class AuthServiceImpl implements AuthService {
                 }
             }
 
-            return UserSummaryResponse.builder()
-                    .id(user.getId())
-                    .username(user.getUsername())
-                    .email(user.getEmail())
-                    .role(user.getRole())
-                    .build();
+            return userMapper.toUserSummaryResponse(user);
         } catch (Exception e) {
             log.warn("Failed to parse user claims from token: {}", e.getMessage());
             return null;

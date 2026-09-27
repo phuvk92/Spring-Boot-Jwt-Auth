@@ -89,9 +89,17 @@ public class UserServiceImpl implements UserService {
             // Filter out soft-deleted users
             predicates.add(cb.or(cb.isNull(root.get("deleted")), cb.isFalse(root.get("deleted"))));
 
-            // Data scope isolation: AGENT only sees users where agent_id = currentAgentId
+            // Data scope isolation: AGENT sees users where agent_id = currentAgentId OR dealer_id = currentDealerId
             if (!isAdmin && isAgent) {
-                predicates.add(cb.equal(root.get("agent").get("id"), currentUser.getId()));
+                Long agentDealerId = currentUser.getDealer() != null ? currentUser.getDealer().getId() : null;
+                if (agentDealerId != null) {
+                    predicates.add(cb.or(
+                            cb.equal(root.get("agent").get("id"), currentUser.getId()),
+                            cb.equal(root.get("dealer").get("id"), agentDealerId)
+                    ));
+                } else {
+                    predicates.add(cb.equal(root.get("agent").get("id"), currentUser.getId()));
+                }
             }
 
             if (StringUtils.hasText(username)) {
@@ -152,14 +160,31 @@ public class UserServiceImpl implements UserService {
 
         Role assignedRole;
         User assignedAgent = null;
+        Dealer assignedDealer = null;
 
         if (isAgent && !isAdmin) {
             // AGENT can only create USER under own agent scope
             if (request.getRole() != null && request.getRole() != Role.USER) {
                 throw new ForbiddenException("Agent cannot create user with role: " + request.getRole());
             }
+            if (request.getAgentId() != null && !request.getAgentId().equals(currentUser.getId())) {
+                throw new ForbiddenException("Đại lý không được phép gán người dùng cho đại lý khác");
+            }
             assignedRole = Role.USER;
             assignedAgent = currentUser;
+
+            // Đại lý (agent) khi thêm user ->> mặc định thông tin là chính mình, không cho chọn thuộc đại lý khác
+            if (currentUser.getDealer() != null) {
+                if (request.getDealerId() != null && !request.getDealerId().equals(currentUser.getDealer().getId())) {
+                    throw new ForbiddenException("Đại lý không được phép thêm người dùng thuộc đại lý khác");
+                }
+                assignedDealer = currentUser.getDealer();
+            } else {
+                if (request.getDealerId() != null) {
+                    throw new ForbiddenException("Tài khoản đại lý chưa được gán vào đại lý nào, không thể gán đại lý khác");
+                }
+                assignedDealer = null;
+            }
         } else {
             // ADMIN can create any role
             assignedRole = request.getRole() != null ? request.getRole() : Role.USER;
@@ -168,12 +193,10 @@ public class UserServiceImpl implements UserService {
                         .filter(u -> u.getRole() == Role.AGENT && !u.isDeleted())
                         .orElseThrow(() -> new BadRequestException("Assigned agent not found with id: " + request.getAgentId()));
             }
-        }
-
-        Dealer assignedDealer = null;
-        if (request.getDealerId() != null && request.getDealerId() > 0) {
-            assignedDealer = dealerRepository.findByIdAndDeletedFalse(request.getDealerId())
-                    .orElseThrow(() -> new BadRequestException("Đại lý không tồn tại với ID: " + request.getDealerId()));
+            if (request.getDealerId() != null && request.getDealerId() > 0) {
+                assignedDealer = dealerRepository.findByIdAndDeletedFalse(request.getDealerId())
+                        .orElseThrow(() -> new BadRequestException("Đại lý không tồn tại với ID: " + request.getDealerId()));
+            }
         }
 
         boolean enabled = request.getEnabled() != null ? request.getEnabled() : true;
@@ -211,17 +234,18 @@ public class UserServiceImpl implements UserService {
                     assignedDealer != null ? assignedDealer.getId() : null);
 
             return userMapper.toUserResponse(savedUser);
-        } catch (Exception e) {
-            log.error("[COMPENSATION] PostgreSQL save failed for user '{}'. Rolling back Keycloak user: {}",
-                    effectiveUsername, keycloakUserId, e);
+        } catch (Exception ex) {
+            log.error("[COMPENSATION_REQUIRED] Database save failed for user '{}' after Keycloak creation. Initiating rollback in Keycloak...",
+                    effectiveUsername, ex);
             try {
                 keycloakUserService.deleteUser(keycloakUserId);
-                log.info("[COMPENSATION_SUCCESS] Deleted orphaned Keycloak user: {}", keycloakUserId);
-            } catch (Exception rollbackEx) {
-                log.error("[COMPENSATION_FAILED] Failed to delete orphaned Keycloak user {}: {}",
-                        keycloakUserId, rollbackEx.getMessage());
+                log.info("[COMPENSATION_SUCCESS] Cleaned up orphaned Keycloak user: '{}' (ID: {})",
+                        effectiveUsername, keycloakUserId);
+            } catch (Exception cleanupEx) {
+                log.error("[COMPENSATION_FAILED] CRITICAL: Failed to delete orphaned Keycloak user: '{}' (ID: {}). Manual cleanup required!",
+                        effectiveUsername, keycloakUserId, cleanupEx);
             }
-            throw e;
+            throw ex;
         }
     }
 
@@ -288,15 +312,11 @@ public class UserServiceImpl implements UserService {
         User updatedUser = userRepository.save(user);
 
         if (StringUtils.hasText(user.getKeycloakUserId())) {
-            if (request.getEnabled()) {
-                keycloakUserService.enableUser(user.getKeycloakUserId());
-            } else {
-                keycloakUserService.disableUser(user.getKeycloakUserId());
-            }
+            keycloakUserService.updateUser(user.getKeycloakUserId(), user.getEmail(), request.getEnabled());
         }
 
-        if (oldStatus && !request.getEnabled()) {
-            log.info("[USER_DISABLED] User id={} ({}) has been disabled", user.getId(), user.getUsername());
+        if (!request.getEnabled()) {
+            log.info("[USER_DISABLED] User id={} has been disabled", user.getId());
         } else {
             log.info("[USER_UPDATED] User id={} enabled status set to {}", user.getId(), request.getEnabled());
         }
@@ -364,8 +384,13 @@ public class UserServiceImpl implements UserService {
             user = userRepository.findById(id)
                     .orElseThrow(() -> new ResourceNotFoundException("User not found with id: " + id));
         } else if (currentUserService.isAgent()) {
-            Long currentAgentId = currentUserService.getCurrentUser().getId();
-            user = userRepository.findByIdAndAgentId(id, currentAgentId)
+            User currentUser = currentUserService.getCurrentUser();
+            Long currentAgentId = currentUser.getId();
+            Long agentDealerId = currentUser.getDealer() != null ? currentUser.getDealer().getId() : null;
+
+            user = userRepository.findById(id)
+                    .filter(u -> (u.getAgent() != null && u.getAgent().getId().equals(currentAgentId))
+                            || (agentDealerId != null && u.getDealer() != null && u.getDealer().getId().equals(agentDealerId)))
                     .orElseThrow(() -> new ResourceNotFoundException("User not found with id: " + id));
         } else {
             throw new ForbiddenException("Access denied: insufficient privileges");

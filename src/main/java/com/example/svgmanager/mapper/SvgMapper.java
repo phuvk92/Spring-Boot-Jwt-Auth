@@ -83,19 +83,28 @@ public class SvgMapper {
                         ));
                     }
                 }
-            } else if (currentUser != null && currentUser.getDealer() != null) {
-                Long userDealerId = currentUser.getDealer().getId();
-                Optional<SvgFileDealerPermission> permOpt = svgFile.getDealerPermissions().stream()
-                        .filter(dp -> dp.getDealer() != null && dp.getDealer().getId().equals(userDealerId))
-                        .findFirst();
-                if (permOpt.isPresent()) {
-                    canView = permOpt.get().isCanView();
-                    canDownload = permOpt.get().isCanDownload();
-                } else {
-                    canView = false;
-                    canDownload = false;
+            } else if (currentUser != null) {
+                // If own uploaded file (agent)
+                if (svgFile.getAgent() != null && svgFile.getAgent().getId().equals(currentUser.getId())) {
+                    canView = true;
+                    canDownload = true;
+                } else if (currentUser.getDealer() != null) {
+                    Long userDealerId = currentUser.getDealer().getId();
+                    Optional<SvgFileDealerPermission> permOpt = svgFile.getDealerPermissions().stream()
+                            .filter(dp -> dp.getDealer() != null && dp.getDealer().getId().equals(userDealerId))
+                            .findFirst();
+                    if (permOpt.isPresent()) {
+                        canView = permOpt.get().isCanView();
+                        canDownload = permOpt.get().isCanDownload();
+                    } else {
+                        canView = false;
+                        canDownload = false;
+                    }
                 }
             }
+        } else if (!isAdmin && currentUser != null && svgFile.getAgent() != null && svgFile.getAgent().getId().equals(currentUser.getId())) {
+            canView = true;
+            canDownload = true;
         }
 
         return SvgResponse.builder()

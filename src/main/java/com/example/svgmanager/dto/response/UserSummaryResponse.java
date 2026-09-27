@@ -18,6 +18,15 @@ public class UserSummaryResponse {
     @Schema(example = "USER")
     private Role role;
 
+    @Schema(example = "1", description = "ID của đại lý trực thuộc")
+    private Long dealerId;
+
+    @Schema(example = "Decal Ô Tô Sài Gòn", description = "Tên đại lý")
+    private String dealerName;
+
+    @Schema(example = "DL-0104", description = "Mã đại lý")
+    private String dealerCode;
+
     public UserSummaryResponse() {
     }
 
@@ -26,6 +35,16 @@ public class UserSummaryResponse {
         this.username = username;
         this.email = email;
         this.role = role;
+    }
+
+    public UserSummaryResponse(Long id, String username, String email, Role role, Long dealerId, String dealerName, String dealerCode) {
+        this.id = id;
+        this.username = username;
+        this.email = email;
+        this.role = role;
+        this.dealerId = dealerId;
+        this.dealerName = dealerName;
+        this.dealerCode = dealerCode;
     }
 
     public static Builder builder() {
@@ -37,6 +56,9 @@ public class UserSummaryResponse {
         private String username;
         private String email;
         private Role role;
+        private Long dealerId;
+        private String dealerName;
+        private String dealerCode;
 
         public Builder id(Long id) {
             this.id = id;
@@ -58,8 +80,23 @@ public class UserSummaryResponse {
             return this;
         }
 
+        public Builder dealerId(Long dealerId) {
+            this.dealerId = dealerId;
+            return this;
+        }
+
+        public Builder dealerName(String dealerName) {
+            this.dealerName = dealerName;
+            return this;
+        }
+
+        public Builder dealerCode(String dealerCode) {
+            this.dealerCode = dealerCode;
+            return this;
+        }
+
         public UserSummaryResponse build() {
-            return new UserSummaryResponse(id, username, email, role);
+            return new UserSummaryResponse(id, username, email, role, dealerId, dealerName, dealerCode);
         }
     }
 
@@ -93,5 +130,29 @@ public class UserSummaryResponse {
 
     public void setRole(Role role) {
         this.role = role;
+    }
+
+    public Long getDealerId() {
+        return dealerId;
+    }
+
+    public void setDealerId(Long dealerId) {
+        this.dealerId = dealerId;
+    }
+
+    public String getDealerName() {
+        return dealerName;
+    }
+
+    public void setDealerName(String dealerName) {
+        this.dealerName = dealerName;
+    }
+
+    public String getDealerCode() {
+        return dealerCode;
+    }
+
+    public void setDealerCode(String dealerCode) {
+        this.dealerCode = dealerCode;
     }
 }
