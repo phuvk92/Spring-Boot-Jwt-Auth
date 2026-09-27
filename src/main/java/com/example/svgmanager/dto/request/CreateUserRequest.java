@@ -11,15 +11,14 @@ import jakarta.validation.constraints.Size;
 @Schema(description = "Request object for creating a new user by Admin or Agent")
 public class CreateUserRequest {
 
-    @NotBlank(message = "Username cannot be blank")
-    @Size(min = 3, max = 100, message = "Username must be between 3 and 100 characters")
-    @Schema(example = "agent01", description = "Unique username")
+    @Size(max = 255, message = "Username cannot exceed 255 characters")
+    @Schema(example = "agent01@gmail.com", description = "Tên đăng nhập (tùy chọn, nếu để trống sẽ tự động lấy theo email/gmail)")
     private String username;
 
-    @NotBlank(message = "Email cannot be blank")
-    @Email(message = "Email must be a valid email address")
-    @Size(max = 255, message = "Email cannot exceed 255 characters")
-    @Schema(example = "agent01@example.com", description = "Unique email address")
+    @NotBlank(message = "Địa chỉ email/gmail là bắt buộc")
+    @Email(message = "Địa chỉ email/gmail không hợp lệ")
+    @Size(max = 255, message = "Email/gmail không được vượt quá 255 ký tự")
+    @Schema(example = "agent01@gmail.com", description = "Địa chỉ email/gmail bắt buộc")
     private String email;
 
     @Schema(example = "Nguyen Van A", description = "Full name of the user")

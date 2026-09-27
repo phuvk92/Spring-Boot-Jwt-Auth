@@ -135,6 +135,14 @@ public class CurrentUserService {
     }
 
     @Transactional
+    public Long getCurrentDealerId() {
+        if (isAdmin()) {
+            return null; // Admin has unrestricted data scope
+        }
+        User user = getCurrentUser();
+        return user.getDealer() != null ? user.getDealer().getId() : null;
+    }
+
     public Long getCurrentAgentId() {
         if (isAdmin()) {
             return null; // Admin has unrestricted data scope

@@ -19,7 +19,7 @@ public class User {
     @Column(name = "keycloak_user_id", unique = true, length = 64)
     private String keycloakUserId;
 
-    @Column(nullable = false, unique = true, length = 100)
+    @Column(nullable = false, unique = true, length = 255)
     private String username;
 
     @Column(nullable = false, unique = true, length = 255)

@@ -662,4 +662,41 @@ class AgentDataScopeIntegrationTest {
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("not registered in the application")));
     }
+
+    @Test
+    @DisplayName("Case 34: Creating user without username automatically uses email as username -> 201 Created")
+    void createUser_WithoutUsername_DefaultsToEmail() throws Exception {
+        CreateUserRequest req = CreateUserRequest.builder()
+                .email("auto_email_user@example.com")
+                .fullName("Auto Email User")
+                .password("Password123!")
+                .role(Role.USER)
+                .agentId(agentA.getId())
+                .enabled(true)
+                .build();
+
+        mockMvc.perform(post("/api/users")
+                        .with(jwtAdmin())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(req)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.username").value("auto_email_user@example.com"))
+                .andExpect(jsonPath("$.email").value("auto_email_user@example.com"));
+    }
+
+    @Test
+    @DisplayName("Case 35: Creating user without email fails validation -> 400 Bad Request")
+    void createUser_WithoutEmail_FailsValidation() throws Exception {
+        CreateUserRequest req = CreateUserRequest.builder()
+                .username("no_email_user")
+                .password("Password123!")
+                .role(Role.USER)
+                .build();
+
+        mockMvc.perform(post("/api/users")
+                        .with(jwtAdmin())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(req)))
+                .andExpect(status().isBadRequest());
+    }
 }

@@ -131,12 +131,23 @@ public class UserServiceImpl implements UserService {
             throw new ForbiddenException("Access denied: only ADMIN or AGENT can create users");
         }
 
-        if (userRepository.existsByUsername(request.getUsername())) {
-            throw new ConflictException("Username is already taken: " + request.getUsername());
+        if (request.getEmail() == null || request.getEmail().isBlank()) {
+            throw new BadRequestException("Địa chỉ email/gmail là bắt buộc");
         }
 
-        if (userRepository.existsByEmail(request.getEmail())) {
-            throw new ConflictException("Email is already in use: " + request.getEmail());
+        String normalizedEmail = request.getEmail().trim().toLowerCase();
+
+        // If username is not provided, use email/gmail as the login username
+        String effectiveUsername = (request.getUsername() != null && !request.getUsername().trim().isBlank())
+                ? request.getUsername().trim()
+                : normalizedEmail;
+
+        if (userRepository.existsByUsername(effectiveUsername)) {
+            throw new ConflictException("Tên đăng nhập đã tồn tại: " + effectiveUsername);
+        }
+
+        if (userRepository.existsByEmail(normalizedEmail)) {
+            throw new ConflictException("Email/Gmail đã được sử dụng: " + normalizedEmail);
         }
 
         Role assignedRole;
@@ -169,8 +180,8 @@ public class UserServiceImpl implements UserService {
 
         // Step 1: Create user in Keycloak (Identity Source of Truth)
         String keycloakUserId = keycloakUserService.createUser(
-                request.getUsername(),
-                request.getEmail(),
+                effectiveUsername,
+                normalizedEmail,
                 request.getPassword(),
                 assignedRole,
                 enabled,
@@ -182,8 +193,8 @@ public class UserServiceImpl implements UserService {
         try {
             User user = User.builder()
                     .keycloakUserId(keycloakUserId)
-                    .username(request.getUsername())
-                    .email(request.getEmail())
+                    .username(effectiveUsername)
+                    .email(normalizedEmail)
                     .fullName(request.getFullName())
                     .phone(request.getPhone())
                     .role(assignedRole)
@@ -194,15 +205,15 @@ public class UserServiceImpl implements UserService {
                     .build();
 
             User savedUser = userRepository.save(user);
-            log.info("[USER_CREATED] Created user: username='{}', id={}, keycloakId='{}', role={}, agentId={}, dealerId={}",
-                    savedUser.getUsername(), savedUser.getId(), keycloakUserId, savedUser.getRole(),
+            log.info("[USER_CREATED] Created user: username='{}', email='{}', id={}, keycloakId='{}', role={}, agentId={}, dealerId={}",
+                    savedUser.getUsername(), savedUser.getEmail(), savedUser.getId(), keycloakUserId, savedUser.getRole(),
                     assignedAgent != null ? assignedAgent.getId() : null,
                     assignedDealer != null ? assignedDealer.getId() : null);
 
             return userMapper.toUserResponse(savedUser);
         } catch (Exception e) {
             log.error("[COMPENSATION] PostgreSQL save failed for user '{}'. Rolling back Keycloak user: {}",
-                    request.getUsername(), keycloakUserId, e);
+                    effectiveUsername, keycloakUserId, e);
             try {
                 keycloakUserService.deleteUser(keycloakUserId);
                 log.info("[COMPENSATION_SUCCESS] Deleted orphaned Keycloak user: {}", keycloakUserId);
@@ -223,67 +234,47 @@ public class UserServiceImpl implements UserService {
             throw new ConflictException("Email is already in use by another user: " + request.getEmail());
         }
 
-        boolean isAdmin = currentUserService.isAdmin();
-        boolean isAgent = currentUserService.isAgent();
-
-        Role oldRole = user.getRole();
-        boolean oldEnabled = user.isEnabled();
-
+        String oldEmail = user.getEmail();
         user.setEmail(request.getEmail());
+        user.setFullName(request.getFullName());
+        user.setPhone(request.getPhone());
+
         if (request.getEnabled() != null) {
             user.setEnabled(request.getEnabled());
         }
-        if (request.getFullName() != null) {
-            user.setFullName(request.getFullName());
-        }
-        if (request.getPhone() != null) {
-            user.setPhone(request.getPhone());
-        }
 
-        if (isAdmin && request.getRole() != null) {
-            user.setRole(request.getRole());
-        } else if (isAgent && request.getRole() != null && request.getRole() != Role.USER) {
-            throw new ForbiddenException("Agent cannot promote user to role: " + request.getRole());
-        }
-
-        if (isAdmin && request.getAgentId() != null) {
-            User assignedAgent = userRepository.findById(request.getAgentId())
-                    .filter(u -> u.getRole() == Role.AGENT && !u.isDeleted())
-                    .orElseThrow(() -> new BadRequestException("Assigned agent not found with id: " + request.getAgentId()));
-            user.setAgent(assignedAgent);
-        }
-
-        if (request.getDealerId() != null) {
-            if (request.getDealerId() <= 0) {
-                user.setDealer(null);
-            } else {
-                Dealer assignedDealer = dealerRepository.findByIdAndDeletedFalse(request.getDealerId())
-                        .orElseThrow(() -> new BadRequestException("Đại lý không tồn tại với ID: " + request.getDealerId()));
-                user.setDealer(assignedDealer);
+        if (currentUserService.isAdmin()) {
+            if (request.getRole() != null) {
+                user.setRole(request.getRole());
+            }
+            if (request.getAgentId() != null) {
+                User agent = userRepository.findById(request.getAgentId())
+                        .filter(u -> u.getRole() == Role.AGENT && !u.isDeleted())
+                        .orElseThrow(() -> new BadRequestException("Assigned agent not found with id: " + request.getAgentId()));
+                user.setAgent(agent);
+            }
+            if (request.getDealerId() != null) {
+                if (request.getDealerId() > 0) {
+                    Dealer dealer = dealerRepository.findByIdAndDeletedFalse(request.getDealerId())
+                            .orElseThrow(() -> new BadRequestException("Đại lý không tồn tại với ID: " + request.getDealerId()));
+                    user.setDealer(dealer);
+                } else {
+                    user.setDealer(null);
+                }
             }
         }
 
-        // Sync with Keycloak
+        // Sync updates to Keycloak
         if (StringUtils.hasText(user.getKeycloakUserId())) {
             keycloakUserService.updateUser(user.getKeycloakUserId(), request.getEmail(), request.getEnabled());
-
-            if (oldRole != user.getRole()) {
-                keycloakUserService.updateRole(user.getKeycloakUserId(), oldRole, user.getRole());
-            }
             if (StringUtils.hasText(request.getPassword())) {
                 keycloakUserService.resetPassword(user.getKeycloakUserId(), request.getPassword());
             }
         }
 
         User updatedUser = userRepository.save(user);
-        log.info("[USER_UPDATED] User updated: id={}, username='{}'", updatedUser.getId(), updatedUser.getUsername());
-
-        if (oldRole != updatedUser.getRole()) {
-            log.info("[ROLE_CHANGED] User id={} role changed from {} to {}", updatedUser.getId(), oldRole, updatedUser.getRole());
-        }
-        if (oldEnabled && !updatedUser.isEnabled()) {
-            log.info("[USER_DISABLED] User id={} has been disabled", updatedUser.getId());
-        }
+        log.info("[USER_UPDATED] User id={} ({}) updated successfully. Email changed: {} -> {}",
+                user.getId(), user.getUsername(), oldEmail, request.getEmail());
 
         return userMapper.toUserResponse(updatedUser);
     }
@@ -292,7 +283,6 @@ public class UserServiceImpl implements UserService {
     @Transactional
     public UserResponse updateUserStatus(Long id, UpdateUserStatusRequest request) {
         User user = findScopedUserById(id);
-
         boolean oldStatus = user.isEnabled();
         user.setEnabled(request.getEnabled());
         User updatedUser = userRepository.save(user);
@@ -356,8 +346,7 @@ public class UserServiceImpl implements UserService {
             if (StringUtils.hasText(user.getKeycloakUserId())) {
                 keycloakUserService.disableUser(user.getKeycloakUserId());
             }
-            log.info("[USER_SOFT_DELETED] User soft-deleted to maintain business history: id={}, username='{}', hasSvg={}, hasChildUsers={}",
-                    user.getId(), user.getUsername(), hasSvg, hasChildUsers);
+            log.info("[USER_SOFT_DELETED] User soft-deleted to maintain business history: id={}, username='{}', hasSvg={}, hasChildUsers={}", user.getId(), user.getUsername(), hasSvg, hasChildUsers);
             return;
         }
 

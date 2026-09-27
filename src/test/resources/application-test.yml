@@ -2,7 +2,7 @@ spring:
   application:
     name: cutting-admin-test
   datasource:
-    url: jdbc:h2:mem:svg_manager_test;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE;MODE=PostgreSQL
+    url: jdbc:h2:mem:svg_manager_test;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH
     username: sa
     password: ""
     driver-class-name: org.h2.Driver
@@ -12,6 +12,7 @@ spring:
     show-sql: false
     properties:
       hibernate:
+        dialect: org.hibernate.dialect.H2Dialect
         format_sql: false
     open-in-view: false
   flyway:

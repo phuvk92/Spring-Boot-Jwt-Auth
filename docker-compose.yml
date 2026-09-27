@@ -43,6 +43,7 @@ services:
       MAX_REQUEST_SIZE: 10MB
       KEYCLOAK_BASE_URL: http://host.docker.internal:8180
       KEYCLOAK_TOKEN_URI: http://host.docker.internal:8180/realms/cutting/protocol/openid-connect/token
+      KEYCLOAK_LOGOUT_URI: http://host.docker.internal:8180/realms/cutting/protocol/openid-connect/logout
       KEYCLOAK_ISSUER_URI: http://localhost:8180/realms/cutting
       KEYCLOAK_JWK_SET_URI: http://host.docker.internal:8180/realms/cutting/protocol/openid-connect/certs
     extra_hosts:

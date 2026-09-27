@@ -89,7 +89,15 @@ public class SecurityConfig {
                 )
                 .authorizeHttpRequests(auth -> auth
                         // Public Auth endpoints
-                        .requestMatchers("/api/auth/**").permitAll()
+                        .requestMatchers(
+                                "/api/auth/**",
+                                "/api/internal/auth/login",
+                                "/api/internal/auth/refresh-token",
+                                "/api/internal/auth/refresh",
+                                "/api/internal/auth/logout"
+                        ).permitAll()
+                        // Internal client endpoints
+                        .requestMatchers("/api/internal/**").hasAnyRole("ADMIN", "AGENT", "USER")
                         // Public Swagger / OpenAPI endpoints
                         .requestMatchers(
                                 "/swagger-ui/**",
@@ -116,6 +124,9 @@ public class SecurityConfig {
                 .oauth2ResourceServer(oauth2 -> oauth2
                         .jwt(jwt -> jwt.jwtAuthenticationConverter(keycloakJwtAuthenticationConverter))
                         .authenticationEntryPoint(unauthorizedHandler)
+                )
+                .exceptionHandling(exception -> exception
+                        .authenticationEntryPoint(unauthorizedHandler)
                         .accessDeniedHandler(accessDeniedHandler)
                 );
 
@@ -128,6 +139,7 @@ public class SecurityConfig {
         configuration.setAllowedOriginPatterns(List.of("*"));
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         configuration.setAllowedHeaders(List.of("*"));
+        configuration.setExposedHeaders(List.of("Authorization", "Content-Disposition"));
         configuration.setAllowCredentials(true);
         configuration.setMaxAge(3600L);
 
