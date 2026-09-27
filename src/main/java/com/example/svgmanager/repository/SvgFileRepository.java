@@ -6,6 +6,8 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.util.Optional;
@@ -28,4 +30,12 @@ public interface SvgFileRepository extends JpaRepository<SvgFile, Long>, JpaSpec
     boolean existsByCategoryId(Long categoryId);
 
     long countByCategoryId(Long categoryId);
+
+    boolean existsByVehicleConfigurationId(Long vehicleConfigurationId);
+
+    long countByVehicleConfigurationId(Long vehicleConfigurationId);
+
+    @Query("SELECT CASE WHEN COUNT(svc) > 0 THEN true ELSE false END " +
+           "FROM SvgFileVehicleConfiguration svc WHERE svc.vehicleConfiguration.id = :configId")
+    boolean existsByAssignedVehicleConfigurationId(@Param("configId") Long configId);
 }

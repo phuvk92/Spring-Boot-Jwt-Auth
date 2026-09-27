@@ -26,6 +26,15 @@ public class CategoryResponse {
     @Schema(description = "Display order", example = "1")
     private Integer displayOrder;
 
+    @Schema(description = "Vehicle brand / make (Hãng xe)", example = "Toyota")
+    private String brand;
+
+    @Schema(description = "Vehicle model / line (Dòng xe)", example = "Camry")
+    private String model;
+
+    @Schema(description = "Vehicle manufacturing year (Năm sản xuất)", example = "2024")
+    private String year;
+
     @Schema(description = "Children subcategories")
     private List<CategoryResponse> children = new ArrayList<>();
 
@@ -33,6 +42,10 @@ public class CategoryResponse {
     }
 
     public CategoryResponse(Long id, String value, String label, String level, Long parentId, Integer displayOrder, List<CategoryResponse> children) {
+        this(id, value, label, level, parentId, displayOrder, children, null, null, null);
+    }
+
+    public CategoryResponse(Long id, String value, String label, String level, Long parentId, Integer displayOrder, List<CategoryResponse> children, String brand, String model, String year) {
         this.id = id;
         this.value = value;
         this.label = label;
@@ -40,6 +53,9 @@ public class CategoryResponse {
         this.parentId = parentId;
         this.displayOrder = displayOrder != null ? displayOrder : 0;
         this.children = children != null ? children : new ArrayList<>();
+        this.brand = brand;
+        this.model = model;
+        this.year = year;
     }
 
     public Long getId() {
@@ -88,6 +104,30 @@ public class CategoryResponse {
 
     public void setDisplayOrder(Integer displayOrder) {
         this.displayOrder = displayOrder;
+    }
+
+    public String getBrand() {
+        return brand;
+    }
+
+    public void setBrand(String brand) {
+        this.brand = brand;
+    }
+
+    public String getModel() {
+        return model;
+    }
+
+    public void setModel(String model) {
+        this.model = model;
+    }
+
+    public String getYear() {
+        return year;
+    }
+
+    public void setYear(String year) {
+        this.year = year;
     }
 
     public List<CategoryResponse> getChildren() {

@@ -3,6 +3,8 @@ package com.example.svgmanager.dto.response;
 import io.swagger.v3.oas.annotations.media.Schema;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 
 @Schema(description = "SVG file metadata response")
 public class SvgResponse {
@@ -25,8 +27,26 @@ public class SvgResponse {
     @Schema(description = "SHA-256 checksum of sanitized content", example = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855")
     private String checksum;
 
+    @Schema(description = "Status of SVG file", example = "ACTIVE")
+    private String status;
+
     @Schema(description = "Assigned Category metadata")
     private CategorySummaryResponse category;
+
+    @Schema(description = "Assigned Vehicle Configurations")
+    private List<VehicleConfigurationResponse> vehicleConfigurations = new ArrayList<>();
+
+    @Schema(description = "Number of dealers with active view permissions", example = "3")
+    private int dealerPermissionCount;
+
+    @Schema(description = "Detailed dealer permissions (ADMIN only)")
+    private List<SvgFileDealerPermissionResponse> dealerPermissions;
+
+    @Schema(description = "Whether current user is authorized to download this file", example = "true")
+    private Boolean canDownload;
+
+    @Schema(description = "Whether current user is authorized to view this file", example = "true")
+    private Boolean canView;
 
     @Schema(description = "User who uploaded the SVG")
     private UserSummaryResponse uploadedBy;
@@ -43,14 +63,25 @@ public class SvgResponse {
     public SvgResponse() {
     }
 
-    public SvgResponse(Long id, String originalFilename, String storedFilename, Long fileSize, String contentType, String checksum, CategorySummaryResponse category, UserSummaryResponse uploadedBy, Long agentId, LocalDateTime createdAt, LocalDateTime updatedAt) {
+    public SvgResponse(Long id, String originalFilename, String storedFilename, Long fileSize,
+                       String contentType, String checksum, String status, CategorySummaryResponse category,
+                       List<VehicleConfigurationResponse> vehicleConfigurations, int dealerPermissionCount,
+                       List<SvgFileDealerPermissionResponse> dealerPermissions, Boolean canDownload,
+                       Boolean canView, UserSummaryResponse uploadedBy, Long agentId,
+                       LocalDateTime createdAt, LocalDateTime updatedAt) {
         this.id = id;
         this.originalFilename = originalFilename;
         this.storedFilename = storedFilename;
         this.fileSize = fileSize;
         this.contentType = contentType;
         this.checksum = checksum;
+        this.status = status;
         this.category = category;
+        this.vehicleConfigurations = vehicleConfigurations != null ? vehicleConfigurations : new ArrayList<>();
+        this.dealerPermissionCount = dealerPermissionCount;
+        this.dealerPermissions = dealerPermissions;
+        this.canDownload = canDownload;
+        this.canView = canView;
         this.uploadedBy = uploadedBy;
         this.agentId = agentId;
         this.createdAt = createdAt;
@@ -68,7 +99,13 @@ public class SvgResponse {
         private Long fileSize;
         private String contentType;
         private String checksum;
+        private String status;
         private CategorySummaryResponse category;
+        private List<VehicleConfigurationResponse> vehicleConfigurations = new ArrayList<>();
+        private int dealerPermissionCount;
+        private List<SvgFileDealerPermissionResponse> dealerPermissions;
+        private Boolean canDownload;
+        private Boolean canView;
         private UserSummaryResponse uploadedBy;
         private Long agentId;
         private LocalDateTime createdAt;
@@ -104,8 +141,38 @@ public class SvgResponse {
             return this;
         }
 
+        public Builder status(String status) {
+            this.status = status;
+            return this;
+        }
+
         public Builder category(CategorySummaryResponse category) {
             this.category = category;
+            return this;
+        }
+
+        public Builder vehicleConfigurations(List<VehicleConfigurationResponse> vehicleConfigurations) {
+            this.vehicleConfigurations = vehicleConfigurations;
+            return this;
+        }
+
+        public Builder dealerPermissionCount(int dealerPermissionCount) {
+            this.dealerPermissionCount = dealerPermissionCount;
+            return this;
+        }
+
+        public Builder dealerPermissions(List<SvgFileDealerPermissionResponse> dealerPermissions) {
+            this.dealerPermissions = dealerPermissions;
+            return this;
+        }
+
+        public Builder canDownload(Boolean canDownload) {
+            this.canDownload = canDownload;
+            return this;
+        }
+
+        public Builder canView(Boolean canView) {
+            this.canView = canView;
             return this;
         }
 
@@ -130,7 +197,9 @@ public class SvgResponse {
         }
 
         public SvgResponse build() {
-            return new SvgResponse(id, originalFilename, storedFilename, fileSize, contentType, checksum, category, uploadedBy, agentId, createdAt, updatedAt);
+            return new SvgResponse(id, originalFilename, storedFilename, fileSize, contentType, checksum, status,
+                    category, vehicleConfigurations, dealerPermissionCount, dealerPermissions, canDownload, canView,
+                    uploadedBy, agentId, createdAt, updatedAt);
         }
     }
 
@@ -182,12 +251,60 @@ public class SvgResponse {
         this.checksum = checksum;
     }
 
+    public String getStatus() {
+        return status;
+    }
+
+    public void setStatus(String status) {
+        this.status = status;
+    }
+
     public CategorySummaryResponse getCategory() {
         return category;
     }
 
     public void setCategory(CategorySummaryResponse category) {
         this.category = category;
+    }
+
+    public List<VehicleConfigurationResponse> getVehicleConfigurations() {
+        return vehicleConfigurations;
+    }
+
+    public void setVehicleConfigurations(List<VehicleConfigurationResponse> vehicleConfigurations) {
+        this.vehicleConfigurations = vehicleConfigurations;
+    }
+
+    public int getDealerPermissionCount() {
+        return dealerPermissionCount;
+    }
+
+    public void setDealerPermissionCount(int dealerPermissionCount) {
+        this.dealerPermissionCount = dealerPermissionCount;
+    }
+
+    public List<SvgFileDealerPermissionResponse> getDealerPermissions() {
+        return dealerPermissions;
+    }
+
+    public void setDealerPermissions(List<SvgFileDealerPermissionResponse> dealerPermissions) {
+        this.dealerPermissions = dealerPermissions;
+    }
+
+    public Boolean getCanDownload() {
+        return canDownload;
+    }
+
+    public void setCanDownload(Boolean canDownload) {
+        this.canDownload = canDownload;
+    }
+
+    public Boolean getCanView() {
+        return canView;
+    }
+
+    public void setCanView(Boolean canView) {
+        this.canView = canView;
     }
 
     public UserSummaryResponse getUploadedBy() {

@@ -35,6 +35,15 @@ public class UserResponse {
     @Schema(description = "Username of the managing Agent if role is USER", example = "agent_smith")
     private String agentUsername;
 
+    @Schema(description = "ID của đại lý / chi nhánh trực thuộc", example = "1")
+    private Long dealerId;
+
+    @Schema(description = "Tên đại lý / chi nhánh", example = "Decal Ô Tô Sài Gòn")
+    private String dealerName;
+
+    @Schema(description = "Mã đại lý", example = "DL-0104")
+    private String dealerCode;
+
     @Schema(description = "Account enabled status", example = "true")
     private boolean enabled;
 
@@ -48,7 +57,8 @@ public class UserResponse {
     }
 
     public UserResponse(Long id, String keycloakUserId, String username, String email, String fullName, String phone,
-                        Role role, Long agentId, String agentUsername, boolean enabled, LocalDateTime createdAt, LocalDateTime updatedAt) {
+                        Role role, Long agentId, String agentUsername, Long dealerId, String dealerName, String dealerCode,
+                        boolean enabled, LocalDateTime createdAt, LocalDateTime updatedAt) {
         this.id = id;
         this.keycloakUserId = keycloakUserId;
         this.username = username;
@@ -58,6 +68,9 @@ public class UserResponse {
         this.role = role;
         this.agentId = agentId;
         this.agentUsername = agentUsername;
+        this.dealerId = dealerId;
+        this.dealerName = dealerName;
+        this.dealerCode = dealerCode;
         this.enabled = enabled;
         this.createdAt = createdAt;
         this.updatedAt = updatedAt;
@@ -77,6 +90,9 @@ public class UserResponse {
         private Role role;
         private Long agentId;
         private String agentUsername;
+        private Long dealerId;
+        private String dealerName;
+        private String dealerCode;
         private boolean enabled;
         private LocalDateTime createdAt;
         private LocalDateTime updatedAt;
@@ -126,6 +142,21 @@ public class UserResponse {
             return this;
         }
 
+        public Builder dealerId(Long dealerId) {
+            this.dealerId = dealerId;
+            return this;
+        }
+
+        public Builder dealerName(String dealerName) {
+            this.dealerName = dealerName;
+            return this;
+        }
+
+        public Builder dealerCode(String dealerCode) {
+            this.dealerCode = dealerCode;
+            return this;
+        }
+
         public Builder enabled(boolean enabled) {
             this.enabled = enabled;
             return this;
@@ -142,7 +173,8 @@ public class UserResponse {
         }
 
         public UserResponse build() {
-            return new UserResponse(id, keycloakUserId, username, email, fullName, phone, role, agentId, agentUsername, enabled, createdAt, updatedAt);
+            return new UserResponse(id, keycloakUserId, username, email, fullName, phone, role, agentId, agentUsername,
+                    dealerId, dealerName, dealerCode, enabled, createdAt, updatedAt);
         }
     }
 
@@ -216,6 +248,30 @@ public class UserResponse {
 
     public void setAgentUsername(String agentUsername) {
         this.agentUsername = agentUsername;
+    }
+
+    public Long getDealerId() {
+        return dealerId;
+    }
+
+    public void setDealerId(Long dealerId) {
+        this.dealerId = dealerId;
+    }
+
+    public String getDealerName() {
+        return dealerName;
+    }
+
+    public void setDealerName(String dealerName) {
+        this.dealerName = dealerName;
+    }
+
+    public String getDealerCode() {
+        return dealerCode;
+    }
+
+    public void setDealerCode(String dealerCode) {
+        this.dealerCode = dealerCode;
     }
 
     public boolean isEnabled() {

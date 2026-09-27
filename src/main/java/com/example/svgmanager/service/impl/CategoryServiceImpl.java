@@ -63,7 +63,10 @@ public class CategoryServiceImpl implements CategoryService {
                 category.getLevel(),
                 category.getParent() != null ? category.getParent().getId() : null,
                 category.getDisplayOrder(),
-                childResponses
+                childResponses,
+                category.getBrand(),
+                category.getModel(),
+                category.getYear()
         );
     }
 
@@ -77,7 +80,10 @@ public class CategoryServiceImpl implements CategoryService {
                 category.getDisplayOrder(),
                 category.getChildren() != null
                         ? category.getChildren().stream().map(this::mapToTreeResponse).collect(Collectors.toList())
-                        : new ArrayList<>()
+                        : new ArrayList<>(),
+                category.getBrand(),
+                category.getModel(),
+                category.getYear()
         );
     }
 
@@ -181,12 +187,19 @@ public class CategoryServiceImpl implements CategoryService {
             }
         }
 
+        String resolvedBrand = resolveBrand(request.getBrand(), level, value, parent);
+        String resolvedModel = resolveModel(request.getModel(), level, value, parent);
+        String resolvedYear = resolveYear(request.getYear(), level, value, parent);
+
         Category category = Category.builder()
                 .value(value)
                 .label(label)
                 .level(level)
                 .parent(parent)
                 .displayOrder(request.getDisplayOrder() != null ? request.getDisplayOrder() : 0)
+                .brand(resolvedBrand)
+                .model(resolvedModel)
+                .year(resolvedYear)
                 .build();
 
         Category saved = categoryRepository.save(category);
@@ -195,9 +208,10 @@ public class CategoryServiceImpl implements CategoryService {
                 .map(j -> j.getClaimAsString("preferred_username"))
                 .orElse("system");
 
-        log.info("[CATEGORY_CREATED] Category created: id={}, value='{}', label='{}', level='{}', parentId={}, actor='{}'",
+        log.info("[CATEGORY_CREATED] Category created: id={}, value='{}', label='{}', level='{}', parentId={}, brand='{}', model='{}', year='{}', actor='{}'",
                 saved.getId(), saved.getValue(), saved.getLabel(), saved.getLevel(),
-                saved.getParent() != null ? saved.getParent().getId() : null, actor);
+                saved.getParent() != null ? saved.getParent().getId() : null,
+                saved.getBrand(), saved.getModel(), saved.getYear(), actor);
 
         return mapToSingleResponse(saved);
     }
@@ -253,6 +267,13 @@ public class CategoryServiceImpl implements CategoryService {
         if (request.getDisplayOrder() != null) {
             category.setDisplayOrder(request.getDisplayOrder());
         }
+        String resolvedBrand = resolveBrand(request.getBrand(), category.getLevel(), value, category.getParent());
+        String resolvedModel = resolveModel(request.getModel(), category.getLevel(), value, category.getParent());
+        String resolvedYear = resolveYear(request.getYear(), category.getLevel(), value, category.getParent());
+
+        category.setBrand(resolvedBrand);
+        category.setModel(resolvedModel);
+        category.setYear(resolvedYear);
 
         Category saved = categoryRepository.save(category);
 
@@ -260,9 +281,10 @@ public class CategoryServiceImpl implements CategoryService {
                 .map(j -> j.getClaimAsString("preferred_username"))
                 .orElse("system");
 
-        log.info("[CATEGORY_UPDATED] Category updated: id={}, value='{}', label='{}', level='{}', parentId={}, actor='{}'",
+        log.info("[CATEGORY_UPDATED] Category updated: id={}, value='{}', label='{}', level='{}', parentId={}, brand='{}', model='{}', year='{}', actor='{}'",
                 saved.getId(), saved.getValue(), saved.getLabel(), saved.getLevel(),
-                saved.getParent() != null ? saved.getParent().getId() : null, actor);
+                saved.getParent() != null ? saved.getParent().getId() : null,
+                saved.getBrand(), saved.getModel(), saved.getYear(), actor);
 
         return mapToSingleResponse(saved);
     }
@@ -304,6 +326,66 @@ public class CategoryServiceImpl implements CategoryService {
                 id, category.getValue(), category.getLabel(), actor);
     }
 
+    private String resolveBrand(String explicitBrand, String level, String value, Category parent) {
+        if (explicitBrand != null && !explicitBrand.trim().isEmpty()) {
+            return explicitBrand.trim();
+        }
+        if ("brand".equalsIgnoreCase(level)) {
+            return value;
+        }
+        Category curr = parent;
+        while (curr != null) {
+            if (curr.getBrand() != null && !curr.getBrand().trim().isEmpty()) {
+                return curr.getBrand().trim();
+            }
+            if ("brand".equalsIgnoreCase(curr.getLevel())) {
+                return curr.getValue();
+            }
+            curr = curr.getParent();
+        }
+        return null;
+    }
+
+    private String resolveModel(String explicitModel, String level, String value, Category parent) {
+        if (explicitModel != null && !explicitModel.trim().isEmpty()) {
+            return explicitModel.trim();
+        }
+        if ("model".equalsIgnoreCase(level)) {
+            return value;
+        }
+        Category curr = parent;
+        while (curr != null) {
+            if (curr.getModel() != null && !curr.getModel().trim().isEmpty()) {
+                return curr.getModel().trim();
+            }
+            if ("model".equalsIgnoreCase(curr.getLevel())) {
+                return curr.getValue();
+            }
+            curr = curr.getParent();
+        }
+        return null;
+    }
+
+    private String resolveYear(String explicitYear, String level, String value, Category parent) {
+        if (explicitYear != null && !explicitYear.trim().isEmpty()) {
+            return explicitYear.trim();
+        }
+        if ("year".equalsIgnoreCase(level)) {
+            return value;
+        }
+        Category curr = parent;
+        while (curr != null) {
+            if (curr.getYear() != null && !curr.getYear().trim().isEmpty()) {
+                return curr.getYear().trim();
+            }
+            if ("year".equalsIgnoreCase(curr.getLevel())) {
+                return curr.getValue();
+            }
+            curr = curr.getParent();
+        }
+        return null;
+    }
+
     public static String calculateNextLevel(String parentLevel) {
         if (parentLevel == null) {
             return "category";
@@ -338,7 +420,10 @@ public class CategoryServiceImpl implements CategoryService {
                 category.getLabel(),
                 category.getValue(),
                 category.getLevel(),
-                fullPath
+                fullPath,
+                category.getBrand(),
+                category.getModel(),
+                category.getYear()
         );
     }
 }

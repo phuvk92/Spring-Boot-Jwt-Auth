@@ -30,6 +30,9 @@ public class UpdateUserRequest {
     @Schema(example = "2", description = "Managing Agent ID when role is USER (optional, for Admin)")
     private Long agentId;
 
+    @Schema(example = "1", description = "ID của đại lý / chi nhánh trực thuộc")
+    private Long dealerId;
+
     @Schema(example = "true", description = "Account active status")
     private Boolean enabled = true;
 
@@ -43,12 +46,13 @@ public class UpdateUserRequest {
     public UpdateUserRequest() {
     }
 
-    public UpdateUserRequest(String email, String fullName, String phone, Role role, Long agentId, Boolean enabled, String password) {
+    public UpdateUserRequest(String email, String fullName, String phone, Role role, Long agentId, Long dealerId, Boolean enabled, String password) {
         this.email = email;
         this.fullName = fullName;
         this.phone = phone;
         this.role = role;
         this.agentId = agentId;
+        this.dealerId = dealerId;
         this.enabled = enabled != null ? enabled : true;
         this.password = password;
     }
@@ -63,6 +67,7 @@ public class UpdateUserRequest {
         private String phone;
         private Role role;
         private Long agentId;
+        private Long dealerId;
         private Boolean enabled = true;
         private String password;
 
@@ -91,6 +96,11 @@ public class UpdateUserRequest {
             return this;
         }
 
+        public Builder dealerId(Long dealerId) {
+            this.dealerId = dealerId;
+            return this;
+        }
+
         public Builder enabled(Boolean enabled) {
             this.enabled = enabled;
             return this;
@@ -102,7 +112,7 @@ public class UpdateUserRequest {
         }
 
         public UpdateUserRequest build() {
-            return new UpdateUserRequest(email, fullName, phone, role, agentId, enabled, password);
+            return new UpdateUserRequest(email, fullName, phone, role, agentId, dealerId, enabled, password);
         }
     }
 
@@ -144,6 +154,14 @@ public class UpdateUserRequest {
 
     public void setAgentId(Long agentId) {
         this.agentId = agentId;
+    }
+
+    public Long getDealerId() {
+        return dealerId;
+    }
+
+    public void setDealerId(Long dealerId) {
+        this.dealerId = dealerId;
     }
 
     public Boolean getEnabled() {

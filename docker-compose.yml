@@ -11,6 +11,8 @@ services:
       - "5432:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
+    networks:
+      - cutting-network
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d svg_manager"]
       interval: 10s
@@ -39,8 +41,21 @@ services:
       FILE_STORAGE_PATH: /data/svg
       MAX_FILE_SIZE: 10MB
       MAX_REQUEST_SIZE: 10MB
+      KEYCLOAK_BASE_URL: http://host.docker.internal:8180
+      KEYCLOAK_TOKEN_URI: http://host.docker.internal:8180/realms/cutting/protocol/openid-connect/token
+      KEYCLOAK_ISSUER_URI: http://localhost:8180/realms/cutting
+      KEYCLOAK_JWK_SET_URI: http://host.docker.internal:8180/realms/cutting/protocol/openid-connect/certs
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - svg-data:/data/svg
+    networks:
+      - cutting-network
+
+networks:
+  cutting-network:
+    name: cutting-network
+    external: true
 
 volumes:
   postgres-data:

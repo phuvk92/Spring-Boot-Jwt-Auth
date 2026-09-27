@@ -1,19 +1,25 @@
-# Cutting Admin Backend REST API
+# PCUT - HỆ THỐNG QUẢN TRỊ (ADMIN SYSTEM)
 
 Production-ready backend REST API built with **Java 21**, **Spring Boot 3.3.5**, **PostgreSQL**, **Keycloak / JWT Authentication**, and **Docker** for enterprise-grade User and SVG File Management with advanced XSS & XXE protection.
+
+Thiết kế giao diện và kiến trúc tuân thủ theo chuẩn thiết kế **PCUT Admin POC**:
+- **TỔNG QUAN**: Bảng tổng quan giám sát sản lượng, lượt cắt, thợ đang hoạt động và cảnh báo hệ thống *(đã loại bỏ hoàn toàn các mục Báo Cáo, Vận Hành và KINH DOANH / Doanh thu)*.
+- **NỀN TẢNG & TÀI KHOẢN**: Quản lý Đại lý & Chi nhánh, Quản lý người dùng, Quản lý phiên & Thiết bị, Nhật ký quản trị (Audit Log).
+- **DATA CENTER**: Quản lý danh mục xe 6 cấp bậc & Model Album, Kho mẫu & Part file (SVG), Nạp mẫu hàng loạt, Duyệt mẫu & Phân phối.
 
 ---
 
 ## 🚀 1. Giới thiệu dự án
 
-SVG Manager Backend cung cấp một hệ sinh thái an toàn để:
+PCUT Admin Backend cung cấp một hệ sinh thái an toàn để:
 - Quản lý tài khoản người dùng và phân quyền RBAC (`ADMIN`, `AGENT`, `USER`).
 - Xác thực và phân quyền bằng JWT Token & Refresh Token qua Keycloak Identity Provider.
 - Tải lên, xử lý khử độc (sanitization) chống mã độc XSS / XXE cho các file SVG.
 - Lưu trữ file theo cấu trúc phân cấp thời gian `/data/svg/YYYY/MM/<uuid>.svg`.
 - Xem trước trực tiếp (inline preview) an toàn với header bảo mật (`X-Content-Type-Options: nosniff`).
 - Tải xuống file (streaming download) và tính toán mã băm SHA-256 cho mỗi file.
-- Ghi log kiểm toán (Audit Logging) chuẩn hóa phục vụ giám sát vận hành.
+- Ghi log kiểm toán (Audit Logging) chuẩn hóa truy vết bảo mật hệ thống.
+- Quản lý cây danh mục xe 6 cấp bậc với thuộc tính xe: Hãng xe (Brand), Dòng xe (Model), Năm sản xuất (Year).
 
 ---
 
@@ -46,47 +52,33 @@ com.example.svgmanager
 │   └── SecurityConfig.java
 ├── controller                  # REST API Endpoints
 │   ├── AuthController.java     # /api/auth (Login, Refresh, Me, Change Password)
+│   ├── CategoryController.java # /api/categories (CRUD 6-level Tree & Vehicle Metadata)
 │   ├── SvgController.java      # /api/svg (Upload, List, Preview, Download, Delete)
 │   └── UserController.java     # /api/users (Admin CRUD, Role, Status)
 ├── dto
 │   ├── request                 # DTO đầu vào (Login, Update, Create, Change Password)
-│   └── response                # DTO đầu ra (Auth, User, Svg, Page, Error, Message)
+│   └── response                # DTO đầu ra (Auth, User, Svg, Category, Page, Error, Message)
 ├── entity                      # JPA Entities
+│   ├── Category.java           # Category Hierarchy + Brand/Model/Year
 │   ├── Role.java               # Enum: ADMIN, AGENT, USER
 │   ├── SvgFile.java
 │   └── User.java
 ├── exception                   # Custom Exceptions & GlobalExceptionHandler
-│   ├── BadRequestException.java
-│   ├── ConflictException.java
-│   ├── FileStorageException.java
-│   ├── ForbiddenException.java
-│   ├── GlobalExceptionHandler.java
-│   ├── InvalidSvgException.java
-│   ├── ResourceNotFoundException.java
-│   └── UnauthorizedException.java
 ├── mapper                      # DTO Entity Mappers
-│   ├── SvgMapper.java
-│   └── UserMapper.java
 ├── repository                  # Spring Data JPA Repositories
+│   ├── CategoryRepository.java
 │   ├── SvgFileRepository.java
 │   └── UserRepository.java
 ├── security                    # Security Filters, Handlers, Converter
-│   ├── CurrentUserService.java
-│   ├── JwtAccessDeniedHandler.java
-│   ├── JwtAuthenticationEntryPoint.java
-│   └── KeycloakJwtAuthenticationConverter.java
 ├── service                     # Business Logic Interfaces
 │   ├── AuthService.java
+│   ├── CategoryService.java
 │   ├── FileStorageService.java
 │   ├── SvgSanitizerService.java
 │   ├── SvgService.java
 │   └── UserService.java
 │   └── impl                    # Service Implementations
-├── util                        # Helper Utilities (SHA-256 Checksum, Path Traversal)
-│   ├── ChecksumUtils.java
-│   ├── FileUtils.java
-│   └── SecurityUtils.java
-└── SvgManagerApplication.java  # Main Application Class
+└── util                        # Helper Utilities (SHA-256 Checksum, Path Traversal)
 ```
 
 ---
@@ -112,6 +104,27 @@ com.example.svgmanager
 | **Xem trước SVG** | `GET /api/svg/{id}/preview` | ✅ | ✅ | ✅ | ❌ (401) |
 | **Tải xuống SVG** | `GET /api/svg/{id}/download` | ✅ | ✅ | ✅ | ❌ (401) |
 | **Xóa SVG** | `DELETE /api/svg/{id}` | ✅ | ❌ (403) | ❌ (403) | ❌ (401) |
+| **Cây danh mục (Catalog)** | `GET /api/categories` | ✅ | ✅ | ✅ | ❌ (401) |
+| **Chi tiết danh mục** | `GET /api/categories/{id}` | ✅ | ✅ | ✅ | ❌ (401) |
+| **Tạo danh mục mới** | `POST /api/categories` | ✅ | ❌ (403) | ❌ (403) | ❌ (401) |
+| **Cập nhật danh mục** | `PUT /api/categories/{id}` | ✅ | ❌ (403) | ❌ (403) | ❌ (401) |
+| **Xóa danh mục** | `DELETE /api/categories/{id}` | ✅ | ❌ (403) | ❌ (403) | ❌ (401) |
+
+### 🚗 Cây danh mục xe & Thuộc tính xe (Vehicle Category Metadata)
+
+Hệ thống quản lý cây danh mục xe phân cấp 6 tầng tự động:
+1. `category` (Cấp danh mục gốc, ví dụ: "Ngoại thất", "Nội thất", "Window film")
+2. `brand` (Hãng xe, ví dụ: "Toyota", "Abarth", "VinFast", "Mazda")
+3. `model` (Dòng xe, ví dụ: "Camry", "695", "VF 9", "CX-5")
+4. `variant` (Phiên bản, ví dụ: "2.5Q", "Signature", "Wildtrak")
+5. `year` (Năm sản xuất, ví dụ: "2024", "2025", "2020-2024")
+6. `submodel` (Kiểu dáng / Chi tiết, ví dụ: "Sedan 4 cửa", "Hatchback 3 cửa")
+
+Metadata xe khi tạo (`POST /api/categories`) và cập nhật (`PUT /api/categories/{id}`):
+- `brand` (String, tối đa 100 ký tự): Hãng xe
+- `model` (String, tối đa 100 ký tự): Dòng xe
+- `year` (String, tối đa 50 ký tự): Năm sản xuất
+*(Hệ thống tự động phân giải và kế thừa thông minh nếu các trường này để trống)*
 
 ---
 
@@ -134,59 +147,11 @@ Hệ thống triển khai cơ chế kiểm tra và làm sạch nhiều lớp tr�
 
 ## 🔑 6. Tài khoản khởi tạo mặc định (Seed Data)
 
-Khi khởi động ứng dụng, Keycloak và Flyway migration tự động tạo tài khoản quản trị viên:
+| Username | Email | Mật khẩu mặc định | Vai trò (Role) | Ghi chú |
+| :--- | :--- | :--- | :---: | :--- |
+| `admin` | `admin@example.com` | `Password123!` | `ADMIN` | Quản trị viên tối cao hệ thống |
+| `agent1` | `agent1@example.com` | `Password123!` | `AGENT` | Đại lý / Quản trị cấp 2 |
+| `agent2` | `agent2@example.com` | `Password123!` | `AGENT` | Đại lý / Quản trị cấp 2 |
+| `user1` | `user1@example.com` | `Password123!` | `USER` | Người dùng trực thuộc agent1 |
 
-- **Username:** `admin`
-- **Email:** `admin@example.com`
-- **Password:** `Password123!`
-- **Role:** `ADMIN`
-
----
-
-## 🐳 7. Hướng dẫn chạy với Docker Compose
-
-### Yêu cầu:
-- Đã cài đặt Docker & Docker Compose.
-
-### Khởi chạy:
-```bash
-# Khởi động PostgreSQL, Keycloak và Backend Service
-docker compose up --build -d
-
-# Xem log khởi động
-docker compose logs -f
-```
-
-### Kiểm tra sức khỏe hệ thống:
-```bash
-curl http://localhost:8080/actuator/health
-```
-
-### Dừng hệ thống:
-```bash
-docker compose down
-```
-
----
-
-## 💻 8. Hướng dẫn chạy Local Development
-
-### Yêu cầu:
-- Java JDK 21 trở lên.
-- PostgreSQL chạy ở `localhost:5432` với database `svg_manager`.
-- Keycloak chạy ở `localhost:8180` với realm `cutting`.
-
-### Khởi chạy ứng dụng:
-```bash
-./mvnw clean spring-boot:run
-```
-
----
-
-## 📖 9. API Documentation (Swagger UI)
-
-Khi ứng dụng đang chạy, truy cập tài liệu API trực quan tại:
-- **Swagger UI:** [http://localhost:8080/swagger-ui.html](http://localhost:8080/swagger-ui.html)
-- **OpenAPI JSON Spec:** [http://localhost:8080/v3/api-docs](http://localhost:8080/v3/api-docs)
-
-> **Cách xác thực trên Swagger:** Nhấn nút **Authorize** ở góc trên bên phải, nhập chuỗi `Bearer <accessToken>` của bạn.
+> **Lưu ý về đổi mật khẩu:** Người dùng có thể đổi mật khẩu trực tiếp tại Web Admin qua API `POST /api/auth/change-password`. Backend sẽ tự động đồng bộ mật khẩu mới sang Keycloak ngay lập tức.

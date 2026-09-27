@@ -16,6 +16,10 @@ public class UserMapper {
         Long agentId = user.getAgent() != null ? user.getAgent().getId() : null;
         String agentUsername = user.getAgent() != null ? user.getAgent().getUsername() : null;
 
+        Long dealerId = user.getDealer() != null ? user.getDealer().getId() : null;
+        String dealerName = user.getDealer() != null ? user.getDealer().getName() : null;
+        String dealerCode = user.getDealer() != null ? user.getDealer().getCode() : null;
+
         return UserResponse.builder()
                 .id(user.getId())
                 .keycloakUserId(user.getKeycloakUserId())
@@ -26,6 +30,9 @@ public class UserMapper {
                 .role(user.getRole())
                 .agentId(agentId)
                 .agentUsername(agentUsername)
+                .dealerId(dealerId)
+                .dealerName(dealerName)
+                .dealerCode(dealerCode)
                 .enabled(user.isEnabled())
                 .createdAt(user.getCreatedAt())
                 .updatedAt(user.getUpdatedAt())

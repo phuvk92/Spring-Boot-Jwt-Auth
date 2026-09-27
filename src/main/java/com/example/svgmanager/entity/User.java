@@ -42,6 +42,10 @@ public class User {
     @JoinColumn(name = "agent_id")
     private User agent;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "dealer_id")
+    private Dealer dealer;
+
     @Column(nullable = false)
     private boolean enabled = true;
 
@@ -62,6 +66,12 @@ public class User {
     public User(Long id, String keycloakUserId, String username, String email, String password,
                 String fullName, String phone, Role role, User agent, boolean enabled, boolean deleted,
                 LocalDateTime createdAt, LocalDateTime updatedAt) {
+        this(id, keycloakUserId, username, email, password, fullName, phone, role, agent, null, enabled, deleted, createdAt, updatedAt);
+    }
+
+    public User(Long id, String keycloakUserId, String username, String email, String password,
+                String fullName, String phone, Role role, User agent, Dealer dealer, boolean enabled, boolean deleted,
+                LocalDateTime createdAt, LocalDateTime updatedAt) {
         this.id = id;
         this.keycloakUserId = keycloakUserId;
         this.username = username;
@@ -71,6 +81,7 @@ public class User {
         this.phone = phone;
         this.role = role;
         this.agent = agent;
+        this.dealer = dealer;
         this.enabled = enabled;
         this.deleted = deleted;
         this.createdAt = createdAt;
@@ -91,6 +102,7 @@ public class User {
         private String phone;
         private Role role;
         private User agent;
+        private Dealer dealer;
         private boolean enabled = true;
         private boolean deleted = false;
         private LocalDateTime createdAt;
@@ -141,6 +153,11 @@ public class User {
             return this;
         }
 
+        public Builder dealer(Dealer dealer) {
+            this.dealer = dealer;
+            return this;
+        }
+
         public Builder enabled(boolean enabled) {
             this.enabled = enabled;
             return this;
@@ -162,7 +179,7 @@ public class User {
         }
 
         public User build() {
-            return new User(id, keycloakUserId, username, email, password, fullName, phone, role, agent, enabled, deleted, createdAt, updatedAt);
+            return new User(id, keycloakUserId, username, email, password, fullName, phone, role, agent, dealer, enabled, deleted, createdAt, updatedAt);
         }
     }
 
@@ -236,6 +253,14 @@ public class User {
 
     public void setAgent(User agent) {
         this.agent = agent;
+    }
+
+    public Dealer getDealer() {
+        return dealer;
+    }
+
+    public void setDealer(Dealer dealer) {
+        this.dealer = dealer;
     }
 
     public boolean isEnabled() {

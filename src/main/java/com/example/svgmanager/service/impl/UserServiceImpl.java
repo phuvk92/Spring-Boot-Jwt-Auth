@@ -6,6 +6,7 @@ import com.example.svgmanager.dto.request.UpdateUserRoleRequest;
 import com.example.svgmanager.dto.request.UpdateUserStatusRequest;
 import com.example.svgmanager.dto.response.PageResponse;
 import com.example.svgmanager.dto.response.UserResponse;
+import com.example.svgmanager.entity.Dealer;
 import com.example.svgmanager.entity.Role;
 import com.example.svgmanager.entity.User;
 import com.example.svgmanager.exception.BadRequestException;
@@ -13,6 +14,7 @@ import com.example.svgmanager.exception.ConflictException;
 import com.example.svgmanager.exception.ForbiddenException;
 import com.example.svgmanager.exception.ResourceNotFoundException;
 import com.example.svgmanager.mapper.UserMapper;
+import com.example.svgmanager.repository.DealerRepository;
 import com.example.svgmanager.repository.SvgFileRepository;
 import com.example.svgmanager.repository.UserRepository;
 import com.example.svgmanager.security.CurrentUserService;
@@ -39,6 +41,7 @@ public class UserServiceImpl implements UserService {
     private static final Logger log = LoggerFactory.getLogger(UserServiceImpl.class);
 
     private final UserRepository userRepository;
+    private final DealerRepository dealerRepository;
     private final SvgFileRepository svgFileRepository;
     private final UserMapper userMapper;
     private final CurrentUserService currentUserService;
@@ -46,12 +49,14 @@ public class UserServiceImpl implements UserService {
 
     public UserServiceImpl(
             UserRepository userRepository,
+            DealerRepository dealerRepository,
             SvgFileRepository svgFileRepository,
             UserMapper userMapper,
             CurrentUserService currentUserService,
             KeycloakUserService keycloakUserService
     ) {
         this.userRepository = userRepository;
+        this.dealerRepository = dealerRepository;
         this.svgFileRepository = svgFileRepository;
         this.userMapper = userMapper;
         this.currentUserService = currentUserService;
@@ -154,6 +159,12 @@ public class UserServiceImpl implements UserService {
             }
         }
 
+        Dealer assignedDealer = null;
+        if (request.getDealerId() != null && request.getDealerId() > 0) {
+            assignedDealer = dealerRepository.findByIdAndDeletedFalse(request.getDealerId())
+                    .orElseThrow(() -> new BadRequestException("Đại lý không tồn tại với ID: " + request.getDealerId()));
+        }
+
         boolean enabled = request.getEnabled() != null ? request.getEnabled() : true;
 
         // Step 1: Create user in Keycloak (Identity Source of Truth)
@@ -177,14 +188,16 @@ public class UserServiceImpl implements UserService {
                     .phone(request.getPhone())
                     .role(assignedRole)
                     .agent(assignedAgent)
+                    .dealer(assignedDealer)
                     .enabled(enabled)
                     .deleted(false)
                     .build();
 
             User savedUser = userRepository.save(user);
-            log.info("[USER_CREATED] Created user: username='{}', id={}, keycloakId='{}', role={}, agentId={}",
+            log.info("[USER_CREATED] Created user: username='{}', id={}, keycloakId='{}', role={}, agentId={}, dealerId={}",
                     savedUser.getUsername(), savedUser.getId(), keycloakUserId, savedUser.getRole(),
-                    assignedAgent != null ? assignedAgent.getId() : null);
+                    assignedAgent != null ? assignedAgent.getId() : null,
+                    assignedDealer != null ? assignedDealer.getId() : null);
 
             return userMapper.toUserResponse(savedUser);
         } catch (Exception e) {
@@ -238,6 +251,16 @@ public class UserServiceImpl implements UserService {
                     .filter(u -> u.getRole() == Role.AGENT && !u.isDeleted())
                     .orElseThrow(() -> new BadRequestException("Assigned agent not found with id: " + request.getAgentId()));
             user.setAgent(assignedAgent);
+        }
+
+        if (request.getDealerId() != null) {
+            if (request.getDealerId() <= 0) {
+                user.setDealer(null);
+            } else {
+                Dealer assignedDealer = dealerRepository.findByIdAndDeletedFalse(request.getDealerId())
+                        .orElseThrow(() -> new BadRequestException("Đại lý không tồn tại với ID: " + request.getDealerId()));
+                user.setDealer(assignedDealer);
+            }
         }
 
         // Sync with Keycloak

@@ -45,13 +45,16 @@ public class CreateUserRequest {
     @Schema(example = "2", description = "Managing Agent ID when role is USER (optional, for Admin)")
     private Long agentId;
 
+    @Schema(example = "1", description = "ID của đại lý / chi nhánh trực thuộc")
+    private Long dealerId;
+
     @Schema(example = "true", description = "Account status")
     private Boolean enabled = true;
 
     public CreateUserRequest() {
     }
 
-    public CreateUserRequest(String username, String email, String fullName, String phone, String password, Role role, Long agentId, Boolean enabled) {
+    public CreateUserRequest(String username, String email, String fullName, String phone, String password, Role role, Long agentId, Long dealerId, Boolean enabled) {
         this.username = username;
         this.email = email;
         this.fullName = fullName;
@@ -59,6 +62,7 @@ public class CreateUserRequest {
         this.password = password;
         this.role = role;
         this.agentId = agentId;
+        this.dealerId = dealerId;
         this.enabled = enabled != null ? enabled : true;
     }
 
@@ -74,6 +78,7 @@ public class CreateUserRequest {
         private String password;
         private Role role;
         private Long agentId;
+        private Long dealerId;
         private Boolean enabled = true;
 
         public Builder username(String username) {
@@ -111,13 +116,18 @@ public class CreateUserRequest {
             return this;
         }
 
+        public Builder dealerId(Long dealerId) {
+            this.dealerId = dealerId;
+            return this;
+        }
+
         public Builder enabled(Boolean enabled) {
             this.enabled = enabled;
             return this;
         }
 
         public CreateUserRequest build() {
-            return new CreateUserRequest(username, email, fullName, phone, password, role, agentId, enabled);
+            return new CreateUserRequest(username, email, fullName, phone, password, role, agentId, dealerId, enabled);
         }
     }
 
@@ -175,6 +185,14 @@ public class CreateUserRequest {
 
     public void setAgentId(Long agentId) {
         this.agentId = agentId;
+    }
+
+    public Long getDealerId() {
+        return dealerId;
+    }
+
+    public void setDealerId(Long dealerId) {
+        this.dealerId = dealerId;
     }
 
     public Boolean getEnabled() {

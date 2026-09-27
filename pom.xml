@@ -20,6 +20,7 @@
         <springdoc.version>2.6.0</springdoc.version>
         <swagger.version>2.2.22</swagger.version>
         <jsoup.version>1.18.1</jsoup.version>
+        <argLine>-Dnet.bytebuddy.experimental=true</argLine>
     </properties>
 
     <dependencies>

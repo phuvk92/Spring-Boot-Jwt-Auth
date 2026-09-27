@@ -6,9 +6,16 @@ import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 
 @Entity
-@Table(name = "svg_files")
+@Table(name = "svg_files", indexes = {
+        @Index(name = "idx_svg_files_status", columnList = "status"),
+        @Index(name = "idx_svg_files_checksum", columnList = "checksum"),
+        @Index(name = "idx_svg_original_filename", columnList = "original_filename"),
+        @Index(name = "idx_svg_created_at", columnList = "created_at")
+})
 @EntityListeners(AuditingEntityListener.class)
 public class SvgFile {
 
@@ -34,9 +41,22 @@ public class SvgFile {
     @Column(name = "checksum", length = 128)
     private String checksum;
 
+    @Column(name = "status", nullable = false, length = 50)
+    private String status = "ACTIVE";
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "category_id")
     private Category category;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "vehicle_configuration_id")
+    private VehicleConfiguration vehicleConfiguration;
+
+    @OneToMany(mappedBy = "svgFile", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<SvgFileVehicleConfiguration> vehicleConfigurations = new ArrayList<>();
+
+    @OneToMany(mappedBy = "svgFile", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<SvgFileDealerPermission> dealerPermissions = new ArrayList<>();
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "uploaded_by", nullable = false)
@@ -57,7 +77,11 @@ public class SvgFile {
     public SvgFile() {
     }
 
-    public SvgFile(Long id, String originalFilename, String storedFilename, String filePath, Long fileSize, String contentType, String checksum, Category category, User uploadedBy, User agent, LocalDateTime createdAt, LocalDateTime updatedAt) {
+    public SvgFile(Long id, String originalFilename, String storedFilename, String filePath, Long fileSize,
+                   String contentType, String checksum, String status, Category category,
+                   VehicleConfiguration vehicleConfiguration, List<SvgFileVehicleConfiguration> vehicleConfigurations,
+                   List<SvgFileDealerPermission> dealerPermissions, User uploadedBy, User agent,
+                   LocalDateTime createdAt, LocalDateTime updatedAt) {
         this.id = id;
         this.originalFilename = originalFilename;
         this.storedFilename = storedFilename;
@@ -65,7 +89,11 @@ public class SvgFile {
         this.fileSize = fileSize;
         this.contentType = contentType;
         this.checksum = checksum;
+        this.status = status != null ? status : "ACTIVE";
         this.category = category;
+        this.vehicleConfiguration = vehicleConfiguration;
+        this.vehicleConfigurations = vehicleConfigurations != null ? vehicleConfigurations : new ArrayList<>();
+        this.dealerPermissions = dealerPermissions != null ? dealerPermissions : new ArrayList<>();
         this.uploadedBy = uploadedBy;
         this.agent = agent;
         this.createdAt = createdAt;
@@ -84,7 +112,11 @@ public class SvgFile {
         private Long fileSize;
         private String contentType;
         private String checksum;
+        private String status = "ACTIVE";
         private Category category;
+        private VehicleConfiguration vehicleConfiguration;
+        private List<SvgFileVehicleConfiguration> vehicleConfigurations = new ArrayList<>();
+        private List<SvgFileDealerPermission> dealerPermissions = new ArrayList<>();
         private User uploadedBy;
         private User agent;
         private LocalDateTime createdAt;
@@ -125,8 +157,28 @@ public class SvgFile {
             return this;
         }
 
+        public Builder status(String status) {
+            this.status = status;
+            return this;
+        }
+
         public Builder category(Category category) {
             this.category = category;
+            return this;
+        }
+
+        public Builder vehicleConfiguration(VehicleConfiguration vehicleConfiguration) {
+            this.vehicleConfiguration = vehicleConfiguration;
+            return this;
+        }
+
+        public Builder vehicleConfigurations(List<SvgFileVehicleConfiguration> vehicleConfigurations) {
+            this.vehicleConfigurations = vehicleConfigurations;
+            return this;
+        }
+
+        public Builder dealerPermissions(List<SvgFileDealerPermission> dealerPermissions) {
+            this.dealerPermissions = dealerPermissions;
             return this;
         }
 
@@ -151,7 +203,7 @@ public class SvgFile {
         }
 
         public SvgFile build() {
-            return new SvgFile(id, originalFilename, storedFilename, filePath, fileSize, contentType, checksum, category, uploadedBy, agent, createdAt, updatedAt);
+            return new SvgFile(id, originalFilename, storedFilename, filePath, fileSize, contentType, checksum, status, category, vehicleConfiguration, vehicleConfigurations, dealerPermissions, uploadedBy, agent, createdAt, updatedAt);
         }
     }
 
@@ -211,12 +263,44 @@ public class SvgFile {
         this.checksum = checksum;
     }
 
+    public String getStatus() {
+        return status;
+    }
+
+    public void setStatus(String status) {
+        this.status = status;
+    }
+
     public Category getCategory() {
         return category;
     }
 
     public void setCategory(Category category) {
         this.category = category;
+    }
+
+    public VehicleConfiguration getVehicleConfiguration() {
+        return vehicleConfiguration;
+    }
+
+    public void setVehicleConfiguration(VehicleConfiguration vehicleConfiguration) {
+        this.vehicleConfiguration = vehicleConfiguration;
+    }
+
+    public List<SvgFileVehicleConfiguration> getVehicleConfigurations() {
+        return vehicleConfigurations;
+    }
+
+    public void setVehicleConfigurations(List<SvgFileVehicleConfiguration> vehicleConfigurations) {
+        this.vehicleConfigurations = vehicleConfigurations;
+    }
+
+    public List<SvgFileDealerPermission> getDealerPermissions() {
+        return dealerPermissions;
+    }
+
+    public void setDealerPermissions(List<SvgFileDealerPermission> dealerPermissions) {
+        this.dealerPermissions = dealerPermissions;
     }
 
     public User getUploadedBy() {

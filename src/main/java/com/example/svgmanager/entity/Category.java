@@ -12,7 +12,10 @@ import java.util.List;
 @Table(name = "categories", indexes = {
         @Index(name = "idx_categories_parent_id", columnList = "parent_id"),
         @Index(name = "idx_categories_level", columnList = "level"),
-        @Index(name = "idx_categories_value", columnList = "value")
+        @Index(name = "idx_categories_value", columnList = "\"value\""),
+        @Index(name = "idx_categories_brand", columnList = "brand"),
+        @Index(name = "idx_categories_model", columnList = "model"),
+        @Index(name = "idx_categories_year", columnList = "\"year\"")
 })
 @EntityListeners(AuditingEntityListener.class)
 public class Category {
@@ -41,6 +44,15 @@ public class Category {
     @Column(name = "display_order", nullable = false)
     private Integer displayOrder = 0;
 
+    @Column(name = "brand", length = 100)
+    private String brand;
+
+    @Column(name = "model", length = 100)
+    private String model;
+
+    @Column(name = "\"year\"", length = 50)
+    private String year;
+
     @CreatedDate
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
@@ -58,6 +70,10 @@ public class Category {
     }
 
     public Category(Long id, String value, String label, String level, Category parent, List<Category> children, Integer displayOrder, LocalDateTime createdAt) {
+        this(id, value, label, level, parent, children, displayOrder, createdAt, null, null, null);
+    }
+
+    public Category(Long id, String value, String label, String level, Category parent, List<Category> children, Integer displayOrder, LocalDateTime createdAt, String brand, String model, String year) {
         this.id = id;
         this.value = value;
         this.label = label;
@@ -66,6 +82,9 @@ public class Category {
         this.children = children != null ? children : new ArrayList<>();
         this.displayOrder = displayOrder != null ? displayOrder : 0;
         this.createdAt = createdAt;
+        this.brand = brand;
+        this.model = model;
+        this.year = year;
     }
 
     public static Builder builder() {
@@ -80,6 +99,9 @@ public class Category {
         private Category parent;
         private List<Category> children = new ArrayList<>();
         private Integer displayOrder = 0;
+        private String brand;
+        private String model;
+        private String year;
         private LocalDateTime createdAt;
 
         public Builder id(Long id) {
@@ -117,13 +139,28 @@ public class Category {
             return this;
         }
 
+        public Builder brand(String brand) {
+            this.brand = brand;
+            return this;
+        }
+
+        public Builder model(String model) {
+            this.model = model;
+            return this;
+        }
+
+        public Builder year(String year) {
+            this.year = year;
+            return this;
+        }
+
         public Builder createdAt(LocalDateTime createdAt) {
             this.createdAt = createdAt;
             return this;
         }
 
         public Category build() {
-            return new Category(id, value, label, level, parent, children, displayOrder, createdAt);
+            return new Category(id, value, label, level, parent, children, displayOrder, createdAt, brand, model, year);
         }
     }
 
@@ -181,6 +218,30 @@ public class Category {
 
     public void setDisplayOrder(Integer displayOrder) {
         this.displayOrder = displayOrder;
+    }
+
+    public String getBrand() {
+        return brand;
+    }
+
+    public void setBrand(String brand) {
+        this.brand = brand;
+    }
+
+    public String getModel() {
+        return model;
+    }
+
+    public void setModel(String model) {
+        this.model = model;
+    }
+
+    public String getYear() {
+        return year;
+    }
+
+    public void setYear(String year) {
+        this.year = year;
     }
 
     public LocalDateTime getCreatedAt() {

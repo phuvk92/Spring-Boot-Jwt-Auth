@@ -22,14 +22,33 @@ public class CreateCategoryRequest {
     @Schema(description = "Display order for sorting", example = "1")
     private Integer displayOrder = 0;
 
+    @Schema(description = "Vehicle brand / make (Hãng xe)", example = "Toyota")
+    @Size(max = 100, message = "Brand cannot exceed 100 characters")
+    private String brand;
+
+    @Schema(description = "Vehicle model / line (Dòng xe)", example = "Camry")
+    @Size(max = 100, message = "Model cannot exceed 100 characters")
+    private String model;
+
+    @Schema(description = "Vehicle manufacturing year (Năm sản xuất)", example = "2024")
+    @Size(max = 50, message = "Year cannot exceed 50 characters")
+    private String year;
+
     public CreateCategoryRequest() {
     }
 
     public CreateCategoryRequest(String value, String label, Long parentId, Integer displayOrder) {
+        this(value, label, parentId, displayOrder, null, null, null);
+    }
+
+    public CreateCategoryRequest(String value, String label, Long parentId, Integer displayOrder, String brand, String model, String year) {
         this.value = value;
         this.label = label;
         this.parentId = parentId;
         this.displayOrder = displayOrder != null ? displayOrder : 0;
+        this.brand = brand;
+        this.model = model;
+        this.year = year;
     }
 
     public String getValue() {
@@ -62,5 +81,29 @@ public class CreateCategoryRequest {
 
     public void setDisplayOrder(Integer displayOrder) {
         this.displayOrder = displayOrder;
+    }
+
+    public String getBrand() {
+        return brand;
+    }
+
+    public void setBrand(String brand) {
+        this.brand = brand;
+    }
+
+    public String getModel() {
+        return model;
+    }
+
+    public void setModel(String model) {
+        this.model = model;
+    }
+
+    public String getYear() {
+        return year;
+    }
+
+    public void setYear(String year) {
+        this.year = year;
     }
 }
