@@ -297,4 +297,26 @@ public class UserResponse {
     public void setUpdatedAt(LocalDateTime updatedAt) {
         this.updatedAt = updatedAt;
     }
+
+    @Schema(description = "Số máy tối đa riêng của tài khoản (F-57) — null = dùng mặc định hệ thống")
+    private Integer maxDevices;
+
+    @Schema(description = "Số máy tối đa đang áp dụng (đã tính mặc định)", example = "1")
+    private int effectiveMaxDevices;
+
+    public Integer getMaxDevices() {
+        return maxDevices;
+    }
+
+    public void setMaxDevices(Integer maxDevices) {
+        this.maxDevices = maxDevices;
+    }
+
+    public int getEffectiveMaxDevices() {
+        return effectiveMaxDevices;
+    }
+
+    public void setEffectiveMaxDevices(int effectiveMaxDevices) {
+        this.effectiveMaxDevices = effectiveMaxDevices;
+    }
 }

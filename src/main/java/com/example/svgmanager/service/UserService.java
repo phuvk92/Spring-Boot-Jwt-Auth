@@ -32,4 +32,10 @@ public interface UserService {
     UserResponse updateUserRole(Long id, UpdateUserRoleRequest request);
 
     void deleteUser(Long id);
+
+    /** F-57 — máy đã đăng ký của một user trong phạm vi người gọi (ADMIN: mọi user; AGENT: user của mình). */
+    java.util.List<com.example.svgmanager.dto.response.UserDeviceResponse> getUserDevices(Long id);
+
+    /** F-57 — gỡ máy: nhả chỗ + chấm dứt phiên trên máy đó. */
+    com.example.svgmanager.dto.response.UserDeviceResponse revokeUserDevice(Long id, Long deviceRegistrationId);
 }

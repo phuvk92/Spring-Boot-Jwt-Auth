@@ -10,12 +10,17 @@ import com.example.svgmanager.dto.internal.InternalRefreshTokenRequest;
 import com.example.svgmanager.dto.internal.InternalUserResponse;
 import com.example.svgmanager.entity.User;
 import com.example.svgmanager.exception.BadRequestException;
+import com.example.svgmanager.exception.ErrorCodes;
+import com.example.svgmanager.exception.ForbiddenException;
+import com.example.svgmanager.exception.ServiceUnavailableException;
 import com.example.svgmanager.exception.UnauthorizedException;
 import com.example.svgmanager.repository.UserRepository;
 import com.example.svgmanager.security.CurrentUserService;
 import com.example.svgmanager.service.AuditLogService;
 import com.example.svgmanager.service.InternalAuthService;
 import com.example.svgmanager.service.KeycloakUserService;
+import com.example.svgmanager.service.UserDeviceService;
+import com.example.svgmanager.security.TokenClaims;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
@@ -48,6 +53,7 @@ public class InternalAuthServiceImpl implements InternalAuthService {
     private final KeycloakUserService keycloakUserService;
     private final CurrentUserService currentUserService;
     private final AuditLogService auditLogService;
+    private final UserDeviceService userDeviceService;
     private final ObjectMapper objectMapper;
     private final RestClient restClient;
     private final String tokenUri;
@@ -60,6 +66,7 @@ public class InternalAuthServiceImpl implements InternalAuthService {
             KeycloakUserService keycloakUserService,
             CurrentUserService currentUserService,
             AuditLogService auditLogService,
+            UserDeviceService userDeviceService,
             ObjectMapper objectMapper,
             @Value("${app.keycloak.token-uri:${KEYCLOAK_AUTH_SERVER_URL:http://localhost:8180}/realms/${KEYCLOAK_REALM:cutting}/protocol/openid-connect/token}") String tokenUri,
             @Value("${app.keycloak.logout-uri:}") String logoutUri,
@@ -69,6 +76,7 @@ public class InternalAuthServiceImpl implements InternalAuthService {
         this.keycloakUserService = keycloakUserService;
         this.currentUserService = currentUserService;
         this.auditLogService = auditLogService;
+        this.userDeviceService = userDeviceService;
         this.objectMapper = objectMapper;
         this.tokenUri = tokenUri;
         this.logoutUri = (logoutUri != null && !logoutUri.isBlank())
@@ -83,6 +91,7 @@ public class InternalAuthServiceImpl implements InternalAuthService {
             KeycloakUserService keycloakUserService,
             CurrentUserService currentUserService,
             AuditLogService auditLogService,
+            UserDeviceService userDeviceService,
             ObjectMapper objectMapper,
             RestClient restClient,
             String tokenUri,
@@ -93,6 +102,7 @@ public class InternalAuthServiceImpl implements InternalAuthService {
         this.keycloakUserService = keycloakUserService;
         this.currentUserService = currentUserService;
         this.auditLogService = auditLogService;
+        this.userDeviceService = userDeviceService;
         this.objectMapper = objectMapper;
         this.restClient = restClient;
         this.tokenUri = tokenUri;
@@ -109,6 +119,11 @@ public class InternalAuthServiceImpl implements InternalAuthService {
         String device = request.device();
         String ipAddress = request.ipAddress();
         String clientInfo = formatClientInfo(device, ipAddress);
+
+        // F-57: không có định danh máy thì không tạo phiên — kiểm TRƯỚC khi gọi Keycloak
+        if (userDeviceService.isEnforced() && !StringUtils.hasText(device)) {
+            throw new BadRequestException("Thiếu định danh thiết bị (device)", ErrorCodes.DEVICE_REQUIRED);
+        }
 
         // 1. Verify user exists in application database by email (gmail) or username
         Optional<User> userOpt = userRepository.findByEmail(loginIdentifier);
@@ -169,13 +184,16 @@ public class InternalAuthServiceImpl implements InternalAuthService {
                 throw new UnauthorizedException("Invalid username or password");
             }
             log.error("[INTERNAL_LOGIN_ERROR] Keycloak client error during login for user '{}': {}{}", keycloakUser, e.getMessage(), clientInfo);
-            throw new UnauthorizedException("Authentication service is temporarily unavailable");
+            throw new ServiceUnavailableException("Authentication service is temporarily unavailable");
         } catch (HttpServerErrorException e) {
             log.error("[INTERNAL_LOGIN_ERROR] Keycloak server error during login for user '{}': {}{}", keycloakUser, e.getMessage(), clientInfo);
-            throw new UnauthorizedException("Authentication service is temporarily unavailable");
+            throw new ServiceUnavailableException("Authentication service is temporarily unavailable");
+        } catch (UnauthorizedException e) {
+            throw e;
         } catch (Exception e) {
+            // S1: Keycloak không phản hồi là 503 — trả 401 thì client hiểu là sai mật khẩu / phiên chết
             log.error("[INTERNAL_LOGIN_ERROR] Keycloak authentication service error: {}{}", e.getMessage(), clientInfo);
-            throw new UnauthorizedException("Authentication service is temporarily unavailable");
+            throw new ServiceUnavailableException("Authentication service is temporarily unavailable");
         }
 
         // 4. Map user response
@@ -198,6 +216,24 @@ public class InternalAuthServiceImpl implements InternalAuthService {
         String tokenType = tokenResponse.containsKey("token_type") ? (String) tokenResponse.get("token_type") : "Bearer";
         Long expiresIn = tokenResponse.containsKey("expires_in") ? ((Number) tokenResponse.get("expires_in")).longValue() : 3600L;
 
+        // 4b. F-57: gắn phiên vào máy. Đủ số máy → huỷ ngay phiên Keycloak vừa tạo rồi báo SESSION_LIMIT
+        if (userDeviceService.isEnforced()) {
+            String sessionId = TokenClaims.sessionId(accessToken);
+            if (sessionId == null) {
+                keycloakLogoutQuietly(refreshToken, clientInfo);
+                log.error("[INTERNAL_LOGIN_ERROR] Keycloak token has no sid claim for user '{}'{}", user.getUsername(), clientInfo);
+                throw new ServiceUnavailableException("Authentication service returned an unexpected token");
+            }
+            try {
+                userDeviceService.bindOnLogin(user,
+                        new UserDeviceService.DeviceContext(device.trim(), request.deviceLabel(), request.platform(), ipAddress),
+                        sessionId);
+            } catch (ForbiddenException e) {
+                keycloakLogoutQuietly(refreshToken, clientInfo);
+                throw e;
+            }
+        }
+
         // 5. Audit log successful login
         auditLogService.log(user.getUsername(), roleStr, "LOGIN_SUCCESS", "User", user.getId(),
                 "Client máy cắt đăng nhập thành công: " + (user.getEmail() != null ? user.getEmail() : user.getUsername()) + clientInfo);
@@ -218,6 +254,19 @@ public class InternalAuthServiceImpl implements InternalAuthService {
         String device = request.device();
         String ipAddress = request.ipAddress();
         String clientInfo = formatClientInfo(device, ipAddress);
+
+        // F-57: phiên phải còn gắn với đúng máy này — kiểm TRƯỚC khi xin token mới
+        if (userDeviceService.isEnforced()) {
+            if (!StringUtils.hasText(device)) {
+                throw new BadRequestException("Thiếu định danh thiết bị (device)", ErrorCodes.DEVICE_REQUIRED);
+            }
+            try {
+                userDeviceService.verifyOnRefresh(device.trim(), TokenClaims.sessionId(request.refreshToken()));
+            } catch (UnauthorizedException e) {
+                keycloakLogoutQuietly(request.refreshToken().trim(), clientInfo);
+                throw e;
+            }
+        }
 
         MultiValueMap<String, String> form = new LinkedMultiValueMap<>();
         form.add("grant_type", "refresh_token");
@@ -242,9 +291,11 @@ public class InternalAuthServiceImpl implements InternalAuthService {
         } catch (HttpClientErrorException e) {
             log.warn("[INTERNAL_REFRESH_TOKEN_FAILED] Refresh token rejected by Keycloak: {}{}", e.getMessage(), clientInfo);
             throw new UnauthorizedException("Invalid or expired refresh token");
+        } catch (UnauthorizedException e) {
+            throw e;
         } catch (Exception e) {
             log.error("[INTERNAL_REFRESH_TOKEN_ERROR] Error connecting to Keycloak token endpoint: {}{}", e.getMessage(), clientInfo);
-            throw new UnauthorizedException("Authentication service is temporarily unavailable");
+            throw new ServiceUnavailableException("Authentication service is temporarily unavailable");
         }
 
         String accessToken = (String) tokenResponse.get("access_token");
@@ -303,6 +354,11 @@ public class InternalAuthServiceImpl implements InternalAuthService {
             } catch (Exception ignored) {
             }
         }
+
+        // F-57: máy vẫn giữ chỗ, chỉ bỏ liên kết với phiên sắp chấm dứt
+        String sessionId = currentJwtOpt.map(jwt -> jwt.getClaimAsString("sid"))
+                .orElseGet(() -> TokenClaims.sessionId(refreshToken));
+        userDeviceService.releaseSession(sessionId);
 
         // 2. Revoke refresh token via Keycloak logout endpoint
         if (refreshToken != null && !refreshToken.isBlank()) {
@@ -418,7 +474,7 @@ public class InternalAuthServiceImpl implements InternalAuthService {
             throw e;
         } catch (Exception e) {
             log.error("[INTERNAL_CHANGE_PASSWORD_ERROR] Error verifying current password for user '{}': {}{}", username, e.getMessage(), clientInfo);
-            throw new UnauthorizedException("Authentication service is temporarily unavailable");
+            throw new ServiceUnavailableException("Authentication service is temporarily unavailable");
         }
 
         // 4. Update password via Keycloak admin service
@@ -477,6 +533,26 @@ public class InternalAuthServiceImpl implements InternalAuthService {
         }
 
         return user;
+    }
+
+    /** Chấm dứt phiên Keycloak bằng refresh token — lỗi chỉ ghi log (phiên sẽ tự hết hạn). */
+    private void keycloakLogoutQuietly(String refreshToken, String clientInfo) {
+        if (!StringUtils.hasText(refreshToken)) {
+            return;
+        }
+        try {
+            MultiValueMap<String, String> form = new LinkedMultiValueMap<>();
+            form.add("client_id", clientId);
+            form.add("refresh_token", refreshToken);
+            restClient.post()
+                    .uri(logoutUri)
+                    .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+                    .body(form)
+                    .retrieve()
+                    .toBodilessEntity();
+        } catch (Exception e) {
+            log.warn("[INTERNAL_LOGOUT_KEYCLOAK] Could not end Keycloak session: {}{}", e.getMessage(), clientInfo);
+        }
     }
 
     private String formatClientInfo(String device, String ipAddress) {

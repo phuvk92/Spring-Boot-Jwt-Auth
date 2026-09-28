@@ -364,4 +364,26 @@ public class KeycloakUserServiceImpl implements KeycloakUserService {
             throw new BadRequestException("Failed to reset password: " + e.getMessage());
         }
     }
+
+    @Override
+    public void deleteSession(String sessionId) {
+        if (!syncEnabled || !StringUtils.hasText(sessionId)) {
+            return;
+        }
+
+        try {
+            String adminToken = getAdminToken();
+            String sessionUrl = getBaseUrl() + "/admin/realms/" + realm + "/sessions/" + sessionId;
+            restClient.delete()
+                    .uri(sessionUrl)
+                    .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken)
+                    .retrieve()
+                    .toBodilessEntity();
+
+            log.info("[KEYCLOAK_SESSION_DELETED] Deleted Keycloak session: sid={}", sessionId);
+        } catch (Exception e) {
+            // 404 = phiên đã hết hạn sẵn — không phải lỗi
+            log.warn("Failed to delete Keycloak session: sid={}, error={}", sessionId, e.getMessage());
+        }
+    }
 }

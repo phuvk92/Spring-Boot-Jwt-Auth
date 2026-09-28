@@ -3,10 +3,14 @@ package com.example.svgmanager.mapper;
 import com.example.svgmanager.dto.response.UserResponse;
 import com.example.svgmanager.dto.response.UserSummaryResponse;
 import com.example.svgmanager.entity.User;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 @Component
 public class UserMapper {
+
+    @Value("${app.device.max-per-user:1}")
+    private int defaultMaxDevices = 1;
 
     public UserResponse toUserResponse(User user) {
         if (user == null) {
@@ -20,7 +24,7 @@ public class UserMapper {
         String dealerName = user.getDealer() != null ? user.getDealer().getName() : null;
         String dealerCode = user.getDealer() != null ? user.getDealer().getCode() : null;
 
-        return UserResponse.builder()
+        UserResponse response = UserResponse.builder()
                 .id(user.getId())
                 .keycloakUserId(user.getKeycloakUserId())
                 .username(user.getUsername())
@@ -37,6 +41,11 @@ public class UserMapper {
                 .createdAt(user.getCreatedAt())
                 .updatedAt(user.getUpdatedAt())
                 .build();
+        response.setMaxDevices(user.getMaxDevices());
+        response.setEffectiveMaxDevices(user.getMaxDevices() != null && user.getMaxDevices() > 0
+                ? user.getMaxDevices()
+                : Math.max(1, defaultMaxDevices));
+        return response;
     }
 
     public UserSummaryResponse toUserSummaryResponse(User user) {

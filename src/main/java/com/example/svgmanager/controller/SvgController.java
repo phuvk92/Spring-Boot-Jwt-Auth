@@ -180,7 +180,7 @@ public class SvgController {
     }
 
     @GetMapping(value = {"/{id}/preview", "/{id}/content"})
-    @PreAuthorize("hasAnyRole('ADMIN', 'AGENT', 'USER')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'AGENT')")
     @Operation(summary = "Preview SVG file content", description = "Streams SVG content for browser inline preview.")
     public ResponseEntity<Resource> previewSvg(@PathVariable Long id) {
         Resource resource = svgService.previewSvg(id);
@@ -192,7 +192,7 @@ public class SvgController {
     }
 
     @GetMapping("/{id}/download")
-    @PreAuthorize("hasAnyRole('ADMIN', 'AGENT', 'USER')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'AGENT')")
     @Operation(summary = "Download SVG file", description = "Downloads SVG file as attachment with dealer permission check.")
     public ResponseEntity<Resource> downloadSvg(@PathVariable Long id) {
         Resource resource = svgService.downloadSvg(id);

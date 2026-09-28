@@ -49,6 +49,10 @@ public class User {
     @Column(nullable = false)
     private boolean enabled = true;
 
+    /** Số máy tối đa của tài khoản này (F-57). null = mặc định hệ thống ({@code app.device.max-per-user}). */
+    @Column(name = "max_devices")
+    private Integer maxDevices;
+
     @Column(nullable = false)
     private boolean deleted = false;
 
@@ -293,5 +297,13 @@ public class User {
 
     public void setUpdatedAt(LocalDateTime updatedAt) {
         this.updatedAt = updatedAt;
+    }
+
+    public Integer getMaxDevices() {
+        return maxDevices;
+    }
+
+    public void setMaxDevices(Integer maxDevices) {
+        this.maxDevices = maxDevices;
     }
 }

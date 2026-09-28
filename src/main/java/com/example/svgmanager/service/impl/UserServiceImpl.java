@@ -19,7 +19,9 @@ import com.example.svgmanager.repository.SvgFileRepository;
 import com.example.svgmanager.repository.UserRepository;
 import com.example.svgmanager.security.CurrentUserService;
 import com.example.svgmanager.service.KeycloakUserService;
+import com.example.svgmanager.service.UserDeviceService;
 import com.example.svgmanager.service.UserService;
+import com.example.svgmanager.dto.response.UserDeviceResponse;
 import jakarta.persistence.criteria.Predicate;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -46,6 +48,7 @@ public class UserServiceImpl implements UserService {
     private final UserMapper userMapper;
     private final CurrentUserService currentUserService;
     private final KeycloakUserService keycloakUserService;
+    private final UserDeviceService userDeviceService;
 
     public UserServiceImpl(
             UserRepository userRepository,
@@ -53,7 +56,8 @@ public class UserServiceImpl implements UserService {
             SvgFileRepository svgFileRepository,
             UserMapper userMapper,
             CurrentUserService currentUserService,
-            KeycloakUserService keycloakUserService
+            KeycloakUserService keycloakUserService,
+            UserDeviceService userDeviceService
     ) {
         this.userRepository = userRepository;
         this.dealerRepository = dealerRepository;
@@ -61,6 +65,7 @@ public class UserServiceImpl implements UserService {
         this.userMapper = userMapper;
         this.currentUserService = currentUserService;
         this.keycloakUserService = keycloakUserService;
+        this.userDeviceService = userDeviceService;
     }
 
     @Override
@@ -288,6 +293,19 @@ public class UserServiceImpl implements UserService {
             }
         }
 
+        // F-57: số máy tối đa — chỉ ADMIN đổi được (Q3 chốt 28/09). 0 = về mặc định hệ thống.
+        if (request.getMaxDevices() != null) {
+            Integer wanted = request.getMaxDevices() > 0 ? request.getMaxDevices() : null;
+            if (!java.util.Objects.equals(wanted, user.getMaxDevices())) {
+                if (!currentUserService.isAdmin()) {
+                    throw new ForbiddenException("Chỉ ADMIN được đổi số máy tối đa của tài khoản");
+                }
+                log.info("[USER_MAX_DEVICES] User id={} ({}) maxDevices {} -> {}",
+                        user.getId(), user.getUsername(), user.getMaxDevices(), wanted);
+                user.setMaxDevices(wanted);
+            }
+        }
+
         // Sync updates to Keycloak
         if (StringUtils.hasText(user.getKeycloakUserId())) {
             keycloakUserService.updateUser(user.getKeycloakUserId(), request.getEmail(), request.getEnabled());
@@ -376,6 +394,22 @@ public class UserServiceImpl implements UserService {
             keycloakUserService.deleteUser(user.getKeycloakUserId());
         }
         log.info("[USER_DELETED] User hard-deleted successfully: id={}, username='{}'", id, user.getUsername());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<UserDeviceResponse> getUserDevices(Long id) {
+        User user = findScopedUserById(id);
+        return userDeviceService.listDevices(user, null);
+    }
+
+    @Override
+    @Transactional
+    public UserDeviceResponse revokeUserDevice(Long id, Long deviceRegistrationId) {
+        // Q5 chốt 28/09: AGENT gỡ được máy của user trong phạm vi agent_id — findScopedUserById đã giới hạn đúng phạm vi đó
+        User user = findScopedUserById(id);
+        User actor = currentUserService.getCurrentUser();
+        return userDeviceService.revoke(user, deviceRegistrationId, actor.getUsername(), actor.getRole().name());
     }
 
     private User findScopedUserById(Long id) {

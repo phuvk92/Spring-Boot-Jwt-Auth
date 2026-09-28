@@ -1,6 +1,7 @@
 package com.example.svgmanager.dto.response;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
+import com.fasterxml.jackson.annotation.JsonInclude;
 import io.swagger.v3.oas.annotations.media.Schema;
 
 import java.time.LocalDateTime;
@@ -24,6 +25,10 @@ public class ErrorResponse {
     @Schema(example = "/api/svg/upload")
     private String path;
 
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    @Schema(description = "Mã lỗi máy đọc được — chỉ có khi client cần phân nhánh", example = "SESSION_LIMIT")
+    private String code;
+
     public ErrorResponse() {
     }
 
@@ -33,6 +38,11 @@ public class ErrorResponse {
         this.error = error;
         this.message = message;
         this.path = path;
+    }
+
+    public ErrorResponse(LocalDateTime timestamp, int status, String error, String message, String path, String code) {
+        this(timestamp, status, error, message, path);
+        this.code = code;
     }
 
     public static Builder builder() {
@@ -45,6 +55,7 @@ public class ErrorResponse {
         private String error;
         private String message;
         private String path;
+        private String code;
 
         public Builder timestamp(LocalDateTime timestamp) {
             this.timestamp = timestamp;
@@ -71,8 +82,13 @@ public class ErrorResponse {
             return this;
         }
 
+        public Builder code(String code) {
+            this.code = code;
+            return this;
+        }
+
         public ErrorResponse build() {
-            return new ErrorResponse(timestamp, status, error, message, path);
+            return new ErrorResponse(timestamp, status, error, message, path, code);
         }
     }
 
@@ -114,5 +130,13 @@ public class ErrorResponse {
 
     public void setPath(String path) {
         this.path = path;
+    }
+
+    public String getCode() {
+        return code;
+    }
+
+    public void setCode(String code) {
+        this.code = code;
     }
 }
