@@ -25,7 +25,14 @@ import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequ
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -136,6 +143,54 @@ class DeviceLimitIntegrationTest {
         assertThat(userDeviceService.isSessionActive("sid-B")).isTrue();
     }
 
+    @Test
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    @DisplayName("Hai máy đăng nhập đồng thời: khoá hàng user chỉ cho một máy lọt")
+    void concurrentLogin_OnlyOneDeviceWins() throws Exception {
+        // Test này cần transaction riêng của từng luồng nên chạy ngoài transaction của lớp —
+        // mọi dữ liệu (kể cả user của setUp) được commit thật và phải dọn tay ở finally.
+        User racer = userRepository.saveAndFlush(User.builder().username("dev_race").email("dev_race@t.vn")
+                .keycloakUserId("kc-dev-race").role(Role.USER).enabled(true).build());
+        try {
+            CountDownLatch ready = new CountDownLatch(2);
+            CountDownLatch go = new CountDownLatch(1);
+            List<Throwable> failures = new CopyOnWriteArrayList<>();
+            List<Thread> threads = new ArrayList<>();
+            for (int i = 0; i < 2; i++) {
+                final int n = i;
+                Thread t = new Thread(() -> {
+                    ready.countDown();
+                    try {
+                        go.await(10, TimeUnit.SECONDS);
+                        userDeviceService.bindOnLogin(racer, ctx("may-race-" + n), "sid-race-" + n);
+                    } catch (Throwable th) {
+                        failures.add(th);
+                    }
+                });
+                threads.add(t);
+                t.start();
+            }
+            assertThat(ready.await(10, TimeUnit.SECONDS)).isTrue();
+            go.countDown();
+            for (Thread t : threads) {
+                t.join(TimeUnit.SECONDS.toMillis(30));
+                assertThat(t.isAlive()).as("luồng login bị treo").isFalse();
+            }
+
+            assertThat(failures).hasSize(1);
+            assertThat(failures.get(0))
+                    .isInstanceOf(ForbiddenException.class)
+                    .extracting(e -> ((ForbiddenException) e).getCode())
+                    .isEqualTo(ErrorCodes.SESSION_LIMIT);
+            assertThat(userDeviceRepository.countByUserIdAndStatus(racer.getId(), DeviceStatus.ACTIVE)).isEqualTo(1);
+        } finally {
+            userDeviceRepository.findByUserIdOrderByStatusAscLastSeenAtDesc(racer.getId())
+                    .forEach(userDeviceRepository::delete);
+            userRepository.delete(racer);
+            userRepository.deleteAll(List.of(admin, agent, worker, otherWorker));
+        }
+    }
+
     // ── Làm mới phiên ─────────────────────────────────────────────────────
 
     @Test
@@ -167,16 +222,16 @@ class DeviceLimitIntegrationTest {
     // ── Filter /api/internal/** ───────────────────────────────────────────
 
     @Test
-    @DisplayName("Thợ xem máy của mình; máy hiện tại được đánh dấu current")
+    @DisplayName("Thợ xem máy của mình; máy hiện tại được đánh dấu isCurrent")
     void internalDevices_ListsOwnDevices() throws Exception {
         userDeviceService.bindOnLogin(worker, new DeviceContext("may-A-0123456789abcdef", "XUONG-01", "Windows", "10.0.0.5"), "sid-A");
 
         mockMvc.perform(get("/api/internal/devices").with(asWorker("sid-A")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$", hasSize(1)))
-                .andExpect(jsonPath("$[0].deviceName").value("XUONG-01"))
-                .andExpect(jsonPath("$[0].deviceIdShort").value("may-A-012345"))
-                .andExpect(jsonPath("$[0].current").value(true));
+                .andExpect(jsonPath("$[0].name").value("XUONG-01"))
+                .andExpect(jsonPath("$[0].deviceId").value("may-A-0123456789abcdef"))
+                .andExpect(jsonPath("$[0].isCurrent").value(true));
     }
 
     @Test
