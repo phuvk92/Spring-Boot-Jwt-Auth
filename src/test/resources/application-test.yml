@@ -34,6 +34,9 @@ app:
     max-file-size-bytes: 10485760
   keycloak:
     sync-enabled: false
+  device:
+    # Test cũ không mang sid/thiết bị — tắt kiểm máy; DeviceLimitIntegrationTest bật lại riêng
+    enforce: false
 
 logging:
   level:

@@ -179,4 +179,17 @@ public class UpdateUserRequest {
     public void setPassword(String password) {
         this.password = password;
     }
+
+    @Schema(description = "Số máy tối đa (F-57) — chỉ ADMIN. 0 = về mặc định hệ thống. Bỏ trống = giữ nguyên", example = "1")
+    @jakarta.validation.constraints.Min(0)
+    @jakarta.validation.constraints.Max(50)
+    private Integer maxDevices;
+
+    public Integer getMaxDevices() {
+        return maxDevices;
+    }
+
+    public void setMaxDevices(Integer maxDevices) {
+        this.maxDevices = maxDevices;
+    }
 }

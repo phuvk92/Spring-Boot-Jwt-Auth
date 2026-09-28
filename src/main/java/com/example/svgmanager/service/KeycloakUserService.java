@@ -21,4 +21,10 @@ public interface KeycloakUserService {
     void updateRole(String keycloakUserId, Role oldRole, Role newRole);
 
     void resetPassword(String keycloakUserId, String newPassword);
+
+    /**
+     * Chấm dứt một phiên Keycloak theo {@code sid} (F-57: gỡ máy / máy đăng nhập lại).
+     * Best-effort: lỗi chỉ ghi log — việc chặn thật nằm ở bảng user_devices, không phụ thuộc Keycloak.
+     */
+    void deleteSession(String sessionId);
 }

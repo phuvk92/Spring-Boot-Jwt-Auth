@@ -157,4 +157,26 @@ public class UserController {
         userService.deleteUser(id);
         return ResponseEntity.noContent().build();
     }
+
+    @GetMapping("/{id}/devices")
+    @Operation(summary = "List registered devices of a user (F-57)",
+            description = "Máy đã đăng ký của tài khoản, máy đang hoạt động trước. ADMIN: mọi user; AGENT: user trong phạm vi của mình.")
+    public ResponseEntity<java.util.List<com.example.svgmanager.dto.response.UserDeviceResponse>> getUserDevices(@PathVariable Long id) {
+        return ResponseEntity.ok(userService.getUserDevices(id));
+    }
+
+    @DeleteMapping("/{id}/devices/{deviceId}")
+    @Operation(summary = "Revoke a registered device (F-57)",
+            description = "Gỡ máy: nhả chỗ trong giới hạn và chấm dứt phiên đang chạy trên máy đó — app cắt nhận 401 SESSION_REVOKED ở request kế tiếp.")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Device revoked (idempotent)"),
+            @ApiResponse(responseCode = "404", description = "User or device not found in caller's scope",
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    })
+    public ResponseEntity<com.example.svgmanager.dto.response.UserDeviceResponse> revokeUserDevice(
+            @PathVariable Long id,
+            @PathVariable Long deviceId
+    ) {
+        return ResponseEntity.ok(userService.revokeUserDevice(id, deviceId));
+    }
 }

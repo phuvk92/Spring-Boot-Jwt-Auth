@@ -10,6 +10,9 @@ import com.example.svgmanager.dto.response.UserSummaryResponse;
 import com.example.svgmanager.entity.Role;
 import com.example.svgmanager.entity.User;
 import com.example.svgmanager.exception.BadRequestException;
+import com.example.svgmanager.exception.ErrorCodes;
+import com.example.svgmanager.exception.ForbiddenException;
+import com.example.svgmanager.exception.ServiceUnavailableException;
 import com.example.svgmanager.exception.UnauthorizedException;
 import com.example.svgmanager.mapper.UserMapper;
 import com.example.svgmanager.repository.UserRepository;
@@ -121,6 +124,15 @@ public class AuthServiceImpl implements AuthService {
 
                 UserSummaryResponse summary = extractAndSyncUser(accessToken);
 
+                // F-57 (Q1 chốt 28/09): thợ chỉ dùng phần mềm cắt — nơi phiên bị giới hạn theo máy.
+                // Cho thợ vào web là mở đường vòng qua giới hạn thiết bị.
+                if (summary != null && summary.getRole() == Role.USER) {
+                    endKeycloakSessionQuietly(refreshToken);
+                    log.warn("[WEB_LOGIN_REJECTED] USER '{}' tried to sign in to the admin web", summary.getUsername());
+                    throw new ForbiddenException("Tài khoản thợ chỉ dùng trong phần mềm cắt.",
+                            ErrorCodes.USER_WEB_LOGIN_FORBIDDEN);
+                }
+
                 return AuthResponse.builder()
                         .accessToken(accessToken)
                         .refreshToken(refreshToken)
@@ -134,9 +146,31 @@ public class AuthServiceImpl implements AuthService {
         } catch (HttpClientErrorException.Unauthorized | HttpClientErrorException.BadRequest e) {
             log.warn("Keycloak authentication rejected: {}", e.getMessage());
             throw new UnauthorizedException("Invalid username or password");
+        } catch (UnauthorizedException | ForbiddenException e) {
+            throw e;
         } catch (Exception e) {
+            // S1: Keycloak không phản hồi là 503. Chi tiết (địa chỉ nội bộ) chỉ ghi log, không trả ra ngoài.
             log.error("Failed to authenticate with Keycloak at {}: {}", tokenUri, e.getMessage());
-            throw new UnauthorizedException("Authentication service is temporarily unavailable: " + e.getMessage());
+            throw new ServiceUnavailableException("Authentication service is temporarily unavailable");
+        }
+    }
+
+    private void endKeycloakSessionQuietly(String refreshToken) {
+        if (refreshToken == null || refreshToken.isBlank()) {
+            return;
+        }
+        try {
+            MultiValueMap<String, String> form = new LinkedMultiValueMap<>();
+            form.add("client_id", clientId);
+            form.add("refresh_token", refreshToken);
+            restClient.post()
+                    .uri(tokenUri.replaceFirst("/token$", "/logout"))
+                    .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+                    .body(form)
+                    .retrieve()
+                    .toBodilessEntity();
+        } catch (Exception e) {
+            log.warn("Could not end Keycloak session: {}", e.getMessage());
         }
     }
 

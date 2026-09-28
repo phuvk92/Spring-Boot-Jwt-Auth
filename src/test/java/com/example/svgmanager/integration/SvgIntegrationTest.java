@@ -323,30 +323,31 @@ class SvgIntegrationTest {
                 .andExpect(jsonPath("$.content", hasSize(0)));
     }
 
+    // F-57 (Q1 chốt 28/09): thợ không lấy nội dung file qua đường web nữa — chỉ qua /api/internal/svg-files/*,
+    // nơi phiên bị kiểm theo máy. Quyền tải theo đại lý được kiểm ở InternalApiIntegrationTest.
     @Test
-    @DisplayName("User Dealer A downloads file successfully")
-    void userDealerA_Download_Success() throws Exception {
+    @DisplayName("USER cannot download SVG via web endpoint, even with dealer permission")
+    void userDealerA_Download_ForbiddenOnWebEndpoint() throws Exception {
         mockMvc.perform(get("/api/svg/" + sampleSvg.getId() + "/download")
                         .with(asUserDealerA()))
-                .andExpect(status().isOk())
-                .andExpect(header().string("Content-Disposition", containsString("bmw_x5_hood.svg")));
+                .andExpect(status().isForbidden());
     }
 
     @Test
-    @DisplayName("User Dealer B download returns 403 Forbidden")
-    void userDealerB_Download_Forbidden() throws Exception {
+    @DisplayName("USER cannot preview or read SVG content via web endpoint")
+    void user_PreviewAndContent_ForbiddenOnWebEndpoint() throws Exception {
+        mockMvc.perform(get("/api/svg/" + sampleSvg.getId() + "/preview").with(asUserDealerA()))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(get("/api/svg/" + sampleSvg.getId() + "/content").with(asUserDealerA()))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @DisplayName("USER from another dealer is also forbidden on web download")
+    void userDealerB_Download_ForbiddenOnWebEndpoint() throws Exception {
         mockMvc.perform(get("/api/svg/" + sampleSvg.getId() + "/download")
                         .with(asUserDealerB()))
-                .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.message", containsString("DOWNLOAD_PERMISSION_DENIED")));
-    }
-
-    @Test
-    @DisplayName("User Dealer C download returns 404 Not Found (no leak)")
-    void userDealerC_Download_NotFound() throws Exception {
-        mockMvc.perform(get("/api/svg/" + sampleSvg.getId() + "/download")
-                        .with(asUserDealerC()))
-                .andExpect(status().isNotFound());
+                .andExpect(status().isForbidden());
     }
 
     @Test

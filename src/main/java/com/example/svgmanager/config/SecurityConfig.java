@@ -1,8 +1,11 @@
 package com.example.svgmanager.config;
 
+import com.example.svgmanager.security.DeviceSessionFilter;
 import com.example.svgmanager.security.JwtAccessDeniedHandler;
 import com.example.svgmanager.security.JwtAuthenticationEntryPoint;
 import com.example.svgmanager.security.KeycloakJwtAuthenticationConverter;
+import com.example.svgmanager.service.UserDeviceService;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -24,6 +27,7 @@ import org.springframework.security.oauth2.jwt.JwtClaimNames;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.jwt.JwtTimestampValidator;
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
+import org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
@@ -80,7 +84,8 @@ public class SecurityConfig {
     }
 
     @Bean
-    public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+    public SecurityFilterChain filterChain(HttpSecurity http, UserDeviceService userDeviceService,
+                                           ObjectMapper objectMapper) throws Exception {
         http
                 .csrf(AbstractHttpConfigurer::disable)
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
@@ -115,12 +120,17 @@ public class SecurityConfig {
                         // User management endpoints (ADMIN and AGENT)
                         .requestMatchers("/api/users/**").hasAnyRole("ADMIN", "AGENT")
                         // SVG endpoints
+                        // F-57 (Q1 chốt 28/09): thợ chỉ lấy nội dung file qua /api/internal/svg-files/* —
+                        // nơi phiên bị kiểm theo máy. Để USER tải ở đây là vòng qua giới hạn thiết bị.
+                        .requestMatchers(HttpMethod.GET, "/api/svg/*/download", "/api/svg/*/content", "/api/svg/*/preview")
+                        .hasAnyRole("ADMIN", "AGENT")
                         .requestMatchers(HttpMethod.POST, "/api/svg/**").hasAnyRole("ADMIN", "AGENT")
                         .requestMatchers(HttpMethod.DELETE, "/api/svg/**").hasAnyRole("ADMIN", "AGENT")
                         .requestMatchers(HttpMethod.GET, "/api/svg/**").hasAnyRole("ADMIN", "AGENT", "USER")
                         // All other endpoints require authentication
                         .anyRequest().authenticated()
                 )
+                .addFilterAfter(new DeviceSessionFilter(userDeviceService, objectMapper), BearerTokenAuthenticationFilter.class)
                 .oauth2ResourceServer(oauth2 -> oauth2
                         .jwt(jwt -> jwt.jwtAuthenticationConverter(keycloakJwtAuthenticationConverter))
                         .authenticationEntryPoint(unauthorizedHandler)

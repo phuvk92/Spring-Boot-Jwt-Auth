@@ -12,6 +12,9 @@ import com.example.svgmanager.entity.Dealer;
 import com.example.svgmanager.entity.Role;
 import com.example.svgmanager.entity.User;
 import com.example.svgmanager.exception.BadRequestException;
+import com.example.svgmanager.exception.ErrorCodes;
+import com.example.svgmanager.exception.ForbiddenException;
+import com.example.svgmanager.exception.ServiceUnavailableException;
 import com.example.svgmanager.exception.UnauthorizedException;
 import com.example.svgmanager.repository.UserRepository;
 import com.example.svgmanager.security.CurrentUserService;
@@ -68,6 +71,9 @@ class InternalAuthServiceImplTest {
     @Mock
     private AuditLogService auditLogService;
 
+    @Mock
+    private UserDeviceService userDeviceService;
+
     private ObjectMapper objectMapper;
     private MockRestServiceServer mockServer;
     private InternalAuthServiceImpl internalAuthService;
@@ -87,6 +93,7 @@ class InternalAuthServiceImplTest {
                 keycloakUserService,
                 currentUserService,
                 auditLogService,
+                userDeviceService,
                 objectMapper,
                 restClient,
                 TOKEN_URI,
@@ -437,5 +444,119 @@ class InternalAuthServiceImplTest {
         InternalRefreshTokenRequest refReq = objectMapper.readValue(refreshJson, InternalRefreshTokenRequest.class);
         assertThat(refReq.device()).isEqualTo("Graphtec-CE7000");
         assertThat(refReq.ipAddress()).isEqualTo("10.0.0.5");
+    }
+
+    // ── F-57: giới hạn thiết bị (SA-GioiHanThietBi) ────────────────────────
+
+    private static String fakeToken(String sid) {
+        Base64.Encoder enc = Base64.getUrlEncoder().withoutPadding();
+        return enc.encodeToString("{\"alg\":\"none\"}".getBytes(StandardCharsets.UTF_8)) + "."
+                + enc.encodeToString(("{\"sid\":\"" + sid + "\"}").getBytes(StandardCharsets.UTF_8)) + ".sig";
+    }
+
+    private void givenKnownUser() {
+        when(userRepository.findByEmail("dealer_user01")).thenReturn(Optional.empty());
+        when(userRepository.findByUsername("dealer_user01")).thenReturn(Optional.of(validUser));
+    }
+
+    @Test
+    @DisplayName("F-57: bật kiểm máy mà thiếu device → 400 DEVICE_REQUIRED, không gọi Keycloak")
+    void testLogin_Enforced_MissingDevice_Rejected() {
+        when(userDeviceService.isEnforced()).thenReturn(true);
+
+        assertThatThrownBy(() -> internalAuthService.login(new InternalLoginRequest("dealer_user01", "Password123!")))
+                .isInstanceOf(BadRequestException.class)
+                .extracting(e -> ((BadRequestException) e).getCode())
+                .isEqualTo(ErrorCodes.DEVICE_REQUIRED);
+        mockServer.verify();   // không có request nào tới Keycloak
+    }
+
+    @Test
+    @DisplayName("F-57: đăng nhập gắn phiên (sid trong token) vào máy")
+    void testLogin_Enforced_BindsSessionToDevice() {
+        when(userDeviceService.isEnforced()).thenReturn(true);
+        givenKnownUser();
+        String access = fakeToken("sid-123");
+        mockServer.expect(requestTo(TOKEN_URI)).andExpect(method(HttpMethod.POST))
+                .andRespond(withSuccess("{\"access_token\":\"" + access + "\",\"refresh_token\":\"" + fakeToken("sid-123")
+                        + "\",\"expires_in\":300,\"token_type\":\"Bearer\"}", MediaType.APPLICATION_JSON));
+
+        internalAuthService.login(new InternalLoginRequest("dealer_user01", "Password123!", "may-A", "10.0.0.5", "XUONG-01", "Windows"));
+
+        verify(userDeviceService).bindOnLogin(eq(validUser),
+                eq(new UserDeviceService.DeviceContext("may-A", "XUONG-01", "Windows", "10.0.0.5")), eq("sid-123"));
+        mockServer.verify();
+    }
+
+    @Test
+    @DisplayName("F-57: vượt giới hạn máy → huỷ phiên Keycloak vừa tạo rồi báo SESSION_LIMIT")
+    void testLogin_Enforced_SessionLimit_EndsFreshSession() {
+        when(userDeviceService.isEnforced()).thenReturn(true);
+        givenKnownUser();
+        String refresh = fakeToken("sid-new");
+        mockServer.expect(requestTo(TOKEN_URI)).andExpect(method(HttpMethod.POST))
+                .andRespond(withSuccess("{\"access_token\":\"" + fakeToken("sid-new") + "\",\"refresh_token\":\"" + refresh
+                        + "\",\"expires_in\":300}", MediaType.APPLICATION_JSON));
+        mockServer.expect(requestTo(LOGOUT_URI)).andExpect(method(HttpMethod.POST))
+                .andRespond(withStatus(HttpStatus.NO_CONTENT));
+        doThrow(new ForbiddenException("limit", ErrorCodes.SESSION_LIMIT))
+                .when(userDeviceService).bindOnLogin(any(), any(), eq("sid-new"));
+
+        assertThatThrownBy(() -> internalAuthService.login(new InternalLoginRequest("dealer_user01", "Password123!", "may-B", null)))
+                .isInstanceOf(ForbiddenException.class)
+                .extracting(e -> ((ForbiddenException) e).getCode())
+                .isEqualTo(ErrorCodes.SESSION_LIMIT);
+        mockServer.verify();   // đã gọi logout
+    }
+
+    @Test
+    @DisplayName("F-57: refresh từ máy bị gỡ → chấm dứt phiên, 401 SESSION_REVOKED, không xin token mới")
+    void testRefresh_Enforced_RevokedDevice() {
+        when(userDeviceService.isEnforced()).thenReturn(true);
+        String refresh = fakeToken("sid-A");
+        doThrow(new UnauthorizedException("revoked", ErrorCodes.SESSION_REVOKED))
+                .when(userDeviceService).verifyOnRefresh("may-A", "sid-A");
+        mockServer.expect(requestTo(LOGOUT_URI)).andExpect(method(HttpMethod.POST))
+                .andRespond(withStatus(HttpStatus.NO_CONTENT));
+
+        assertThatThrownBy(() -> internalAuthService.refreshToken(new InternalRefreshTokenRequest(refresh, "may-A", null)))
+                .isInstanceOf(UnauthorizedException.class)
+                .extracting(e -> ((UnauthorizedException) e).getCode())
+                .isEqualTo(ErrorCodes.SESSION_REVOKED);
+        mockServer.verify();   // chỉ logout, không có lượt xin token
+    }
+
+    @Test
+    @DisplayName("F-57: refresh thiếu device khi bật kiểm máy → 400 DEVICE_REQUIRED")
+    void testRefresh_Enforced_MissingDevice() {
+        when(userDeviceService.isEnforced()).thenReturn(true);
+
+        assertThatThrownBy(() -> internalAuthService.refreshToken(new InternalRefreshTokenRequest(fakeToken("sid-A"))))
+                .isInstanceOf(BadRequestException.class)
+                .extracting(e -> ((BadRequestException) e).getCode())
+                .isEqualTo(ErrorCodes.DEVICE_REQUIRED);
+    }
+
+    @Test
+    @DisplayName("S1: Keycloak lỗi 5xx khi đăng nhập → 503, không phải 401")
+    void testLogin_KeycloakDown_Returns503() {
+        givenKnownUser();
+        mockServer.expect(requestTo(TOKEN_URI)).andExpect(method(HttpMethod.POST))
+                .andRespond(withStatus(HttpStatus.BAD_GATEWAY));
+
+        assertThatThrownBy(() -> internalAuthService.login(new InternalLoginRequest("dealer_user01", "Password123!")))
+                .isInstanceOf(ServiceUnavailableException.class)
+                .extracting(e -> ((ServiceUnavailableException) e).getCode())
+                .isEqualTo(ErrorCodes.AUTH_SERVICE_UNAVAILABLE);
+    }
+
+    @Test
+    @DisplayName("S1: Keycloak lỗi khi refresh → 503, không bị coi là phiên chết")
+    void testRefresh_KeycloakDown_Returns503() {
+        mockServer.expect(requestTo(TOKEN_URI)).andExpect(method(HttpMethod.POST))
+                .andRespond(withStatus(HttpStatus.SERVICE_UNAVAILABLE));
+
+        assertThatThrownBy(() -> internalAuthService.refreshToken(new InternalRefreshTokenRequest("any_refresh")))
+                .isInstanceOf(ServiceUnavailableException.class);
     }
 }
