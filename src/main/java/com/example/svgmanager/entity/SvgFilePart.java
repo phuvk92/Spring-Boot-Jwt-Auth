@@ -49,6 +49,37 @@ public class SvgFilePart {
     @Column(name = "display_order", nullable = false)
     private Integer displayOrder = 0;
 
+    // ---- Hình học hiển thị (F-56 — PartOutline) ---------------------------------
+    // pathData trong hệ toạ độ của chính part, gốc ở góc trên-trái hộp bao; kích
+    // thước/vị trí luôn mm (DS-86). Lệnh cắt KHÔNG sinh từ chuỗi này (RB-07).
+
+    /** Chuỗi đường dẫn SVG — hình học hiển thị, không phải lệnh cắt. */
+    @Column(name = "path_data", columnDefinition = "TEXT")
+    private String pathData;
+
+    /** Hộp bao, mm. */
+    @Column(name = "width_mm")
+    private Double widthMm;
+
+    /** Hộp bao, mm. */
+    @Column(name = "height_mm")
+    private Double heightMm;
+
+    /** Vị trí hộp bao trên vùng cắt, mm, gốc trên-trái vùng cắt. */
+    @Column(name = "x_mm")
+    private Double xMm;
+
+    /** Vị trí hộp bao trên vùng cắt, mm, gốc trên-trái vùng cắt. */
+    @Column(name = "y_mm")
+    private Double yMm;
+
+    /** Cho dòng meta của part (DS-57). */
+    @Column(name = "node_count")
+    private Integer nodeCount;
+
+    @Column(name = "hole_count")
+    private Integer holeCount;
+
     @CreatedDate
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
@@ -129,6 +160,62 @@ public class SvgFilePart {
 
     public void setDisplayOrder(Integer displayOrder) {
         this.displayOrder = displayOrder;
+    }
+
+    public String getPathData() {
+        return pathData;
+    }
+
+    public void setPathData(String pathData) {
+        this.pathData = pathData;
+    }
+
+    public Double getWidthMm() {
+        return widthMm;
+    }
+
+    public void setWidthMm(Double widthMm) {
+        this.widthMm = widthMm;
+    }
+
+    public Double getHeightMm() {
+        return heightMm;
+    }
+
+    public void setHeightMm(Double heightMm) {
+        this.heightMm = heightMm;
+    }
+
+    public Double getXMm() {
+        return xMm;
+    }
+
+    public void setXMm(Double xMm) {
+        this.xMm = xMm;
+    }
+
+    public Double getYMm() {
+        return yMm;
+    }
+
+    public void setYMm(Double yMm) {
+        this.yMm = yMm;
+    }
+
+    public Integer getNodeCount() {
+        return nodeCount;
+    }
+
+    public void setNodeCount(Integer nodeCount) {
+        this.nodeCount = nodeCount;
+    }
+
+    public Integer getHoleCount() {
+        return holeCount;
+    }
+
+    public void setHoleCount(Integer holeCount) {
+        this.holeCount = holeCount;
     }
 
     public LocalDateTime getCreatedAt() {

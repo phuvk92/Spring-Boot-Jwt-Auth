@@ -1,6 +1,7 @@
 package com.example.svgmanager.controller;
 
 import com.example.svgmanager.dto.response.DesignFileDto;
+import com.example.svgmanager.dto.response.DesignFileGeometryDto;
 import com.example.svgmanager.dto.response.ErrorResponse;
 import com.example.svgmanager.dto.response.PartDto;
 import com.example.svgmanager.service.DesignFileService;
@@ -75,5 +76,21 @@ public class DesignFileController {
     })
     public ResponseEntity<List<PartDto>> getFileParts(@PathVariable("id") String fileKey) {
         return ResponseEntity.ok(designFileService.getFileParts(fileKey));
+    }
+
+    @GetMapping("/api/v1/files/{id}/geometry")
+    @PreAuthorize("hasAnyRole('ADMIN', 'AGENT', 'USER')")
+    @Operation(summary = "Hình học của cả file — thứ 'Mở trong Design Center' tải về (F-56)",
+            description = "MỘT lượt tải cho MỘT tab (KX-43 · DS-08c). Hình học hiển thị — lệnh cắt KHÔNG sinh từ chuỗi này (RB-07). JSON thường, không Content-Disposition (RB-01).")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Biên dạng của mọi part trong file",
+                    content = @Content(schema = @Schema(implementation = DesignFileGeometryDto.class))),
+            @ApiResponse(responseCode = "401", description = "Không có phiên còn hiệu lực",
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+            @ApiResponse(responseCode = "404", description = "Không có file này (FILE_NOT_FOUND)",
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    })
+    public ResponseEntity<DesignFileGeometryDto> getFileGeometry(@PathVariable("id") String fileKey) {
+        return ResponseEntity.ok(designFileService.getFileGeometry(fileKey));
     }
 }
