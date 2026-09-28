@@ -66,6 +66,25 @@ public class SvgFile {
     @JoinColumn(name = "agent_id")
     private User agent;
 
+    /** Id chuỗi trong hợp đồng /api/v1/files (slug kèm khoá xe) — đội nội dung đặt, duy nhất. */
+    @Column(name = "file_key", unique = true, length = 255)
+    private String fileKey;
+
+    /** Tên hiển thị do đội nội dung đặt (vd 'Ngoại thất — full body 7 mảnh'), khác tên file vật lý. */
+    @Column(name = "display_name", length = 255)
+    private String displayName;
+
+    /** Tổng phim cả file — chuỗi nguyên văn kèm đơn vị ('6,46 m'), server không tự tính. */
+    @Column(name = "film_usage", length = 100)
+    private String filmUsage;
+
+    @Column(name = "note", columnDefinition = "TEXT")
+    private String note;
+
+    @OneToMany(mappedBy = "svgFile", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OrderBy("displayOrder ASC, id ASC")
+    private List<SvgFilePart> parts = new ArrayList<>();
+
     @CreatedDate
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
@@ -333,5 +352,45 @@ public class SvgFile {
 
     public void setUpdatedAt(LocalDateTime updatedAt) {
         this.updatedAt = updatedAt;
+    }
+
+    public String getFileKey() {
+        return fileKey;
+    }
+
+    public void setFileKey(String fileKey) {
+        this.fileKey = fileKey;
+    }
+
+    public String getDisplayName() {
+        return displayName;
+    }
+
+    public void setDisplayName(String displayName) {
+        this.displayName = displayName;
+    }
+
+    public String getFilmUsage() {
+        return filmUsage;
+    }
+
+    public void setFilmUsage(String filmUsage) {
+        this.filmUsage = filmUsage;
+    }
+
+    public String getNote() {
+        return note;
+    }
+
+    public void setNote(String note) {
+        this.note = note;
+    }
+
+    public List<SvgFilePart> getParts() {
+        return parts;
+    }
+
+    public void setParts(List<SvgFilePart> parts) {
+        this.parts = parts != null ? parts : new ArrayList<>();
     }
 }

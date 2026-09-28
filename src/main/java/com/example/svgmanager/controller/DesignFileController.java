@@ -1,0 +1,79 @@
+package com.example.svgmanager.controller;
+
+import com.example.svgmanager.dto.response.DesignFileDto;
+import com.example.svgmanager.dto.response.ErrorResponse;
+import com.example.svgmanager.dto.response.PartDto;
+import com.example.svgmanager.service.DesignFileService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.media.ArraySchema;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
+import java.util.List;
+
+/**
+ * Kho file thiết kế cho app cắt — openapi v0.3.0 (KX-30 · KX-32 · KX-35).
+ * Sáu tham số lọc của /api/v1/files đều BẮT BUỘC: thiếu → Spring ném
+ * MissingServletRequestParameterException → 400 ErrorResponse.
+ */
+@RestController
+@SecurityRequirement(name = "bearerAuth")
+@Tag(name = "Design Files", description = "Kho file thiết kế theo bộ lọc xe 6 cấp — hợp đồng /api/v1/files")
+public class DesignFileController {
+
+    private final DesignFileService designFileService;
+
+    public DesignFileController(DesignFileService designFileService) {
+        this.designFileService = designFileService;
+    }
+
+    @GetMapping("/api/v1/files")
+    @PreAuthorize("hasAnyRole('ADMIN', 'AGENT', 'USER')")
+    @Operation(summary = "Các file thiết kế của chiếc xe đã lọc đủ sáu cấp (KX-30)",
+            description = "Rỗng = xe có trong danh mục nhưng chưa nạp file (KX-35) — khác với mất mạng, không bao giờ trả null hay 404.")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Danh sách file (có thể rỗng)",
+                    content = @Content(array = @ArraySchema(schema = @Schema(implementation = DesignFileDto.class)))),
+            @ApiResponse(responseCode = "400", description = "Thiếu một trong sáu tham số lọc",
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+            @ApiResponse(responseCode = "401", description = "Không có phiên còn hiệu lực",
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    })
+    public ResponseEntity<List<DesignFileDto>> getFiles(
+            @RequestParam String category,
+            @RequestParam String brand,
+            @RequestParam String model,
+            @RequestParam String variant,
+            @RequestParam String year,
+            @RequestParam String submodel
+    ) {
+        return ResponseEntity.ok(
+                designFileService.getFiles(category, brand, model, variant, year, submodel));
+    }
+
+    @GetMapping("/api/v1/files/{id}/parts")
+    @PreAuthorize("hasAnyRole('ADMIN', 'AGENT', 'USER')")
+    @Operation(summary = "Các part bên trong một file thiết kế (KX-32)",
+            description = "Id không tồn tại → 404 FILE_NOT_FOUND, không trả mảng rỗng — 'file không có part' và 'không có file' là hai câu khác nhau.")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Part trong file, theo thứ tự đội nội dung dựng",
+                    content = @Content(array = @ArraySchema(schema = @Schema(implementation = PartDto.class)))),
+            @ApiResponse(responseCode = "401", description = "Không có phiên còn hiệu lực",
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+            @ApiResponse(responseCode = "404", description = "Không có file này (FILE_NOT_FOUND)",
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    })
+    public ResponseEntity<List<PartDto>> getFileParts(@PathVariable("id") String fileKey) {
+        return ResponseEntity.ok(designFileService.getFileParts(fileKey));
+    }
+}

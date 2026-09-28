@@ -28,4 +28,9 @@ public interface CategoryRepository extends JpaRepository<Category, Long> {
 
     @Query("SELECT c FROM Category c WHERE c.level = :level AND c.parent.value = :parentValue ORDER BY c.displayOrder ASC, c.id ASC")
     List<Category> findByLevelAndParentValue(@Param("level") String level, @Param("parentValue") String parentValue);
+
+    /** Nút con xác định bởi (level, value, parent) — dùng để dò đúng một đường 6 cấp của /api/v1/files. */
+    Optional<Category> findByLevelAndValueAndParentId(String level, String value, Long parentId);
+
+    Optional<Category> findByLevelAndValueAndParentIsNull(String level, String value);
 }

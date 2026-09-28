@@ -10,12 +10,19 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.util.List;
 import java.util.Optional;
 
 @Repository
 public interface SvgFileRepository extends JpaRepository<SvgFile, Long>, JpaSpecificationExecutor<SvgFile> {
 
     Optional<SvgFile> findByStoredFilename(String storedFilename);
+
+    /** Danh tính hợp đồng /api/v1/files — chuỗi slug do đội nội dung đặt. */
+    Optional<SvgFile> findByFileKey(String fileKey);
+
+    /** File thiết kế gắn thẳng vào lá danh mục (submodel) — nguồn của GET /api/v1/files. */
+    List<SvgFile> findByCategoryIdAndStatusOrderByIdAsc(Long categoryId, String status);
 
     Optional<SvgFile> findByIdAndAgentId(Long id, Long agentId);
 
