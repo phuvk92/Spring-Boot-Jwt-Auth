@@ -1,6 +1,5 @@
 package com.example.svgmanager.controller;
 
-import com.example.svgmanager.dto.response.BatchSvgUploadResponse;
 import com.example.svgmanager.dto.response.ErrorResponse;
 import com.example.svgmanager.dto.response.PageResponse;
 import com.example.svgmanager.dto.response.SvgResponse;
@@ -44,25 +43,6 @@ public class SvgController {
             @RequestParam("file") MultipartFile file
     ) {
         SvgResponse response = svgService.uploadSvg(file);
-        return ResponseEntity.status(HttpStatus.CREATED).body(response);
-    }
-
-    @PostMapping(value = "/batch", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    @PreAuthorize("hasRole('ADMIN')")
-    @Operation(summary = "Batch upload SVG files (up to 10 files)", description = "Uploads up to 10 SVG files.")
-    @ApiResponses(value = {
-            @ApiResponse(responseCode = "201", description = "SVG files uploaded successfully",
-                    content = @Content(schema = @Schema(implementation = BatchSvgUploadResponse.class))),
-            @ApiResponse(responseCode = "400", description = "Invalid files",
-                    content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
-            @ApiResponse(responseCode = "403", description = "Forbidden - Admin role required",
-                    content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
-    })
-    public ResponseEntity<BatchSvgUploadResponse> batchUploadSvg(
-            @Parameter(description = "List of SVG files (1 to 10 files)", required = true)
-            @RequestPart("files") List<MultipartFile> files
-    ) {
-        BatchSvgUploadResponse response = svgService.batchUploadSvg(files);
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
@@ -128,6 +108,17 @@ public class SvgController {
         return ResponseEntity.ok()
                 .contentType(MediaType.APPLICATION_OCTET_STREAM)
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + originalFilename + "\"")
+                .header("X-Content-Type-Options", "nosniff")
+                .body(resource);
+    }
+
+    @GetMapping("/{id}/thumbnail")
+    @PreAuthorize("hasAnyRole('ADMIN', 'AGENT')")
+    @Operation(summary = "Ảnh xem trước của file", description = "Trả thumbnail nếu file có; 404 khi chưa gắn.")
+    public ResponseEntity<Resource> thumbnailSvg(@PathVariable Long id) {
+        Resource resource = svgService.thumbnailSvg(id);
+        return ResponseEntity.ok()
+                .contentType(svgService.thumbnailContentType(id))
                 .header("X-Content-Type-Options", "nosniff")
                 .body(resource);
     }

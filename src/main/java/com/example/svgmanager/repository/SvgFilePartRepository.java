@@ -12,4 +12,5 @@ public interface SvgFilePartRepository extends JpaRepository<SvgFilePart, Long> 
     List<SvgFilePart> findBySvgFileIdOrderByDisplayOrderAscIdAsc(Long svgFileId);
 
     long countBySvgFileId(Long svgFileId);
+
 }

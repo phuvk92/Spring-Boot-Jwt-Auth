@@ -1,6 +1,5 @@
 package com.example.svgmanager.service.impl;
 
-import com.example.svgmanager.dto.response.BatchSvgUploadResponse;
 import com.example.svgmanager.dto.response.PageResponse;
 import com.example.svgmanager.dto.response.SvgResponse;
 import com.example.svgmanager.entity.Role;
@@ -28,6 +27,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
+import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -48,7 +48,6 @@ import java.util.UUID;
 public class SvgServiceImpl implements SvgService {
 
     private static final Logger log = LoggerFactory.getLogger(SvgServiceImpl.class);
-    private static final int MAX_BATCH_UPLOAD_SIZE = 10;
 
     private final SvgFileRepository svgFileRepository;
     private final FileStorageService fileStorageService;
@@ -74,54 +73,6 @@ public class SvgServiceImpl implements SvgService {
         this.currentUserService = currentUserService;
         this.auditLogService = auditLogService;
         this.maxFileSizeBytes = maxFileSizeBytes;
-    }
-
-    @Override
-    @Transactional
-    public BatchSvgUploadResponse batchUploadSvg(List<MultipartFile> files) {
-        if (!currentUserService.isAdmin()) {
-            throw new ForbiddenException("Chỉ ADMIN mới có quyền upload file SVG");
-        }
-
-        if (files == null || files.isEmpty()) {
-            throw new BadRequestException("Vui lòng chọn ít nhất 1 file SVG để tải lên");
-        }
-
-        if (files.size() > MAX_BATCH_UPLOAD_SIZE) {
-            throw new BadRequestException("Chỉ được upload tối đa " + MAX_BATCH_UPLOAD_SIZE + " file SVG trong một lần");
-        }
-
-        List<String> storedFilePathsToCleanupOnFailure = new ArrayList<>();
-        List<SvgResponse> uploadedResponses = new ArrayList<>();
-        User currentUser = currentUserService.getCurrentUser();
-
-        try {
-            for (MultipartFile file : files) {
-                SvgFile savedSvg = storeSvgFile(file, currentUser, null, storedFilePathsToCleanupOnFailure);
-
-                auditLogService.log(
-                        currentUser.getUsername(),
-                        currentUser.getRole().name(),
-                        "UPLOAD_SVG",
-                        "SvgFile",
-                        savedSvg.getId(),
-                        "Upload SVG: " + savedSvg.getOriginalFilename() + " (size: " + savedSvg.getFileSize() + " bytes)"
-                );
-
-                uploadedResponses.add(svgMapper.toSvgResponse(savedSvg, currentUser, true));
-            }
-        } catch (Exception e) {
-            for (String path : storedFilePathsToCleanupOnFailure) {
-                try {
-                    fileStorageService.deleteFile(path);
-                } catch (Exception ex) {
-                    log.error("Failed to cleanup file during upload rollback: {}", path, ex);
-                }
-            }
-            throw e;
-        }
-
-        return new BatchSvgUploadResponse(uploadedResponses, uploadedResponses.size());
     }
 
     @Override
@@ -312,6 +263,32 @@ public class SvgServiceImpl implements SvgService {
     @Transactional(readOnly = true)
     public String getOriginalFilename(Long id) {
         return findAuthorizedSvg(id).getOriginalFilename();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Resource thumbnailSvg(Long id) {
+        SvgFile svgFile = findAuthorizedSvg(id);
+        if (svgFile.getThumbnailPath() == null) {
+            throw new ResourceNotFoundException("File không có ảnh xem trước: " + id);
+        }
+        return fileStorageService.loadFileAsResource(svgFile.getThumbnailPath());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public MediaType thumbnailContentType(Long id) {
+        SvgFile svgFile = findAuthorizedSvg(id);
+        if (svgFile.getThumbnailPath() == null) {
+            throw new ResourceNotFoundException("File không có ảnh xem trước: " + id);
+        }
+        String ext = FileUtils.getFileExtension(svgFile.getThumbnailPath());
+        return switch (ext) {
+            case "jpg", "jpeg" -> MediaType.IMAGE_JPEG;
+            case "gif" -> MediaType.IMAGE_GIF;
+            case "webp" -> MediaType.parseMediaType("image/webp");
+            default -> MediaType.IMAGE_PNG;
+        };
     }
 
     @Override

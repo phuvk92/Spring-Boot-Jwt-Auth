@@ -6,6 +6,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
+import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
 
 import java.util.Optional;
@@ -27,5 +28,17 @@ public interface SvgFileRepository extends JpaRepository<SvgFile, Long>, JpaSpec
     long countByUploadedBy(User user);
 
     boolean existsByAgent(User agent);
+
+    boolean existsByFileKey(String fileKey);
+
+    /** Thẻ thống kê kho part file (SA v2 §3.2) — chỉ đếm file còn hiệu lực. */
+    long countByStatus(String status);
+
+    long countByStatusAndSource(String status, String source);
+
+    /** File ACTIVE không gắn mẫu xe nào — thẻ "Chưa gắn mẫu xe" (Q4 sinh ra khi xoá node). */
+    @Query("SELECT COUNT(f) FROM SvgFile f WHERE f.status = :status "
+            + "AND NOT EXISTS (SELECT 1 FROM SvgFileVehicleNode l WHERE l.svgFile = f)")
+    long countUnlinkedByStatus(String status);
 
 }

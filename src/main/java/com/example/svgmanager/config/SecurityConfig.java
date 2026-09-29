@@ -115,6 +115,8 @@ public class SecurityConfig {
                         .requestMatchers("/actuator/health", "/actuator/info").permitAll()
                         // Cây xe 4 cấp (Data Center v2) — toàn bộ API quản trị chỉ cho ADMIN
                         .requestMatchers("/api/vehicle-nodes/**").hasRole("ADMIN")
+                        // Kho part file (Data Center v2) — toàn bộ chỉ ADMIN
+                        .requestMatchers("/api/admin/files/**").hasRole("ADMIN")
                         // User management endpoints (ADMIN and AGENT)
                         .requestMatchers("/api/users/**").hasAnyRole("ADMIN", "AGENT")
                         // SVG endpoints

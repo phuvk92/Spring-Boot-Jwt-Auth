@@ -1,6 +1,5 @@
 package com.example.svgmanager.service;
 
-import com.example.svgmanager.dto.response.BatchSvgUploadResponse;
 import com.example.svgmanager.dto.response.SvgResponse;
 import com.example.svgmanager.entity.*;
 import com.example.svgmanager.exception.BadRequestException;
@@ -76,65 +75,6 @@ class SvgServiceImplTest {
                 .username("user1")
                 .role(Role.USER)
                 .build();
-    }
-
-    @Test
-    @DisplayName("Admin upload rejects request if files exceed max 10 files")
-    void batchUploadSvg_ExceedMaxFiles_ThrowsBadRequest() {
-        when(currentUserService.isAdmin()).thenReturn(true);
-
-        List<MultipartFile> files = new ArrayList<>();
-        for (int i = 0; i < 11; i++) {
-            files.add(new MockMultipartFile("files", "file" + i + ".svg", "image/svg+xml", "<svg></svg>".getBytes(StandardCharsets.UTF_8)));
-        }
-
-        assertThatThrownBy(() -> svgService.batchUploadSvg(files))
-                .isInstanceOf(BadRequestException.class)
-                .hasMessageContaining("tối đa 10 file");
-    }
-
-    @Test
-    @DisplayName("Non-admin cannot batch upload files")
-    void batchUploadSvg_NonAdmin_ThrowsForbidden() {
-        when(currentUserService.isAdmin()).thenReturn(false);
-
-        List<MultipartFile> files = List.of(
-                new MockMultipartFile("files", "test.svg", "image/svg+xml", "<svg></svg>".getBytes(StandardCharsets.UTF_8))
-        );
-
-        assertThatThrownBy(() -> svgService.batchUploadSvg(files))
-                .isInstanceOf(ForbiddenException.class);
-    }
-
-    @Test
-    @DisplayName("Admin batch upload succeeds for valid SVG files")
-    void batchUploadSvg_ValidFiles_Success() {
-        when(currentUserService.isAdmin()).thenReturn(true);
-        when(currentUserService.getCurrentUser()).thenReturn(adminUser);
-
-        byte[] svgContent = "<svg><rect width=\"10\" height=\"10\"/></svg>".getBytes(StandardCharsets.UTF_8);
-        when(svgSanitizerService.sanitizeAndValidateSvg(any())).thenReturn(svgContent);
-        when(fileStorageService.storeFile(any(), any())).thenReturn("/data/svg/uuid.svg");
-
-        SvgFile savedFile = SvgFile.builder()
-                .id(50L)
-                .originalFilename("test.svg")
-                .fileSize((long) svgContent.length)
-                .build();
-        when(svgFileRepository.save(any(SvgFile.class))).thenReturn(savedFile);
-
-        SvgResponse response = SvgResponse.builder().id(50L).originalFilename("test.svg").build();
-        when(svgMapper.toSvgResponse(eq(savedFile), eq(adminUser), eq(true))).thenReturn(response);
-
-        List<MultipartFile> files = List.of(
-                new MockMultipartFile("files", "test.svg", "image/svg+xml", svgContent)
-        );
-
-        BatchSvgUploadResponse result = svgService.batchUploadSvg(files);
-
-        assertThat(result.totalUploaded()).isEqualTo(1);
-        assertThat(result.files()).hasSize(1);
-        verify(auditLogService, times(1)).log(eq("admin"), eq("ADMIN"), eq("UPLOAD_SVG"), eq("SvgFile"), eq(50L), any());
     }
 
     @Test

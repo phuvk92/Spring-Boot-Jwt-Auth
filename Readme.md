@@ -21,6 +21,7 @@ PCUT Admin Backend cung cấp một hệ sinh thái an toàn để:
 - Ghi log kiểm toán (Audit Logging) chuẩn hóa truy vết bảo mật hệ thống.
 - Quản lý cây xe 4 cấp `BRAND › SERIES › MODEL › SUBTYPE` (Data Center v2, migration V14) với API quản trị phân trang theo hãng, tìm kiếm giữ tổ tiên, đổi tên, xoá nhánh không chặn.
 - Danh mục file (`file_categories`): Ngoại thất · Nội thất · Window film · Đèn & kính; file SVG gắn nhiều mẫu xe qua `svg_file_vehicle_nodes`.
+- Kho part file `/api/admin/files` (ADMIN): upload `.svg` có kiểm nội dung, server **tách part + hình học** đúng quy tắc client `SvgImport.cs` (port Java trong `svg/` package), `file_key` tự sinh, gắn nhiều mẫu xe, thẻ thống kê, xoá mềm.
 
 ---
 
@@ -54,7 +55,8 @@ com.example.svgmanager
 ├── controller                  # REST API Endpoints
 │   ├── AuthController.java     # /api/auth (Login, Refresh, Me, Change Password)
 │   ├── VehicleNodeController.java # /api/vehicle-nodes (CRUD cây xe 4 cấp — ADMIN)
-│   ├── SvgController.java      # /api/svg (Upload, List, Preview, Download, Delete)
+│   ├── AdminFileController.java # /api/admin/files (kho part file — ADMIN)
+│   ├── SvgController.java      # /api/svg (Upload, List, Preview, Download, Thumbnail, Delete)
 │   └── UserController.java     # /api/users (Admin CRUD, Role, Status)
 ├── dto
 │   ├── request                 # DTO đầu vào (Login, Update, Create, Change Password)

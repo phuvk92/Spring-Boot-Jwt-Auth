@@ -105,47 +105,6 @@ class SvgIntegrationTest {
     }
 
     @Test
-    @DisplayName("Admin batch upload tối đa 10 file SVG")
-    void adminBatchUpload_Success() throws Exception {
-        MockMultipartFile file1 = new MockMultipartFile("files", "part1.svg", "image/svg+xml",
-                "<svg><rect width=\"10\" height=\"10\"/></svg>".getBytes(StandardCharsets.UTF_8));
-        MockMultipartFile file2 = new MockMultipartFile("files", "part2.svg", "image/svg+xml",
-                "<svg><circle cx=\"5\" cy=\"5\" r=\"4\"/></svg>".getBytes(StandardCharsets.UTF_8));
-
-        mockMvc.perform(multipart("/api/svg/batch")
-                        .file(file1)
-                        .file(file2)
-                        .with(asAdmin()))
-                .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.totalUploaded", is(2)))
-                .andExpect(jsonPath("$.files", hasSize(2)));
-    }
-
-    @Test
-    @DisplayName("Batch upload rejects if files exceed 10")
-    void adminBatchUpload_Exceed10_BadRequest() throws Exception {
-        var builder = multipart("/api/svg/batch");
-        for (int i = 0; i < 11; i++) {
-            builder.file(new MockMultipartFile("files", "file" + i + ".svg", "image/svg+xml", "<svg/>".getBytes(StandardCharsets.UTF_8)));
-        }
-
-        mockMvc.perform(builder.with(asAdmin()))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.message", containsString("tối đa 10 file")));
-    }
-
-    @Test
-    @DisplayName("User cannot upload SVG files")
-    void userCannotUpload_Forbidden() throws Exception {
-        MockMultipartFile file = new MockMultipartFile("files", "part1.svg", "image/svg+xml", "<svg/>".getBytes(StandardCharsets.UTF_8));
-
-        mockMvc.perform(multipart("/api/svg/batch")
-                        .file(file)
-                        .with(asUser()))
-                .andExpect(status().isForbidden());
-    }
-
-    @Test
     @DisplayName("Admin sees all SVG files")
     void adminList_SeesAll() throws Exception {
         mockMvc.perform(get("/api/svg")

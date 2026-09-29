@@ -20,6 +20,10 @@ public final class ErrorCodes {
     public static final String FILE_NOT_FOUND = "FILE_NOT_FOUND";
     /** Tạo/đổi tên node xe trùng tên node khác trong cùng cha (V14). */
     public static final String NODE_NAME_TAKEN = "NODE_NAME_TAKEN";
+    /** Upload kho part file với định dạng không phải SVG (SA-DanhMucXe-v2 Q7). */
+    public static final String UNSUPPORTED_FORMAT = "UNSUPPORTED_FORMAT";
+    /** SVG không khai đơn vị (width/height + viewBox) — server không hỏi lại được thợ (DS-108). */
+    public static final String SVG_UNITS_MISSING = "SVG_UNITS_MISSING";
 
     private ErrorCodes() {
     }

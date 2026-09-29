@@ -22,4 +22,8 @@ public interface SvgFileVehicleNodeRepository extends JpaRepository<SvgFileVehic
     @Modifying
     @Query("DELETE FROM SvgFileVehicleNode l WHERE l.vehicleNode.id IN :nodeIds")
     void deleteByVehicleNodeIdIn(@Param("nodeIds") List<Long> nodeIds);
+
+    /** Thẻ "modelsWithFiles" — số mẫu xe (MODEL/SUBTYPE) có ít nhất một file ACTIVE. */
+    @Query("SELECT COUNT(DISTINCT l.vehicleNode.id) FROM SvgFileVehicleNode l WHERE l.svgFile.status = :status")
+    long countDistinctNodesByFileStatus(@Param("status") String status);
 }
