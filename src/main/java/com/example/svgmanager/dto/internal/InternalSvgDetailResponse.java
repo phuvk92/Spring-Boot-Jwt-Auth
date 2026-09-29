@@ -24,8 +24,8 @@ public record InternalSvgDetailResponse(
         @Schema(description = "Trạng thái file", example = "ACTIVE")
         String status,
 
-        @Schema(description = "Danh sách cấu hình xe áp dụng cho file SVG này")
-        List<InternalVehicleConfigurationResponse> vehicleConfigurations,
+        @Schema(description = "Đường dẫn mẫu xe file gắn vào (vd 'Toyota › Camry › Camry 2.5Q')")
+        List<String> vehicles,
 
         @Schema(description = "Quyền truy cập của người dùng hiện tại")
         InternalSvgPermissionResponse permission,

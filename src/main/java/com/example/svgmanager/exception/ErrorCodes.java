@@ -18,6 +18,8 @@ public final class ErrorCodes {
     public static final String AUTH_SERVICE_UNAVAILABLE = "AUTH_SERVICE_UNAVAILABLE";
     /** GET /api/v1/files/{id}/parts với id không tồn tại — khác với "file không có part nào" (mảng rỗng). */
     public static final String FILE_NOT_FOUND = "FILE_NOT_FOUND";
+    /** Tạo/đổi tên node xe trùng tên node khác trong cùng cha (V14). */
+    public static final String NODE_NAME_TAKEN = "NODE_NAME_TAKEN";
 
     private ErrorCodes() {
     }

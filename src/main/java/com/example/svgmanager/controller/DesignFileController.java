@@ -1,6 +1,5 @@
 package com.example.svgmanager.controller;
 
-import com.example.svgmanager.dto.response.DesignFileDto;
 import com.example.svgmanager.dto.response.DesignFileGeometryDto;
 import com.example.svgmanager.dto.response.ErrorResponse;
 import com.example.svgmanager.dto.response.PartDto;
@@ -17,49 +16,23 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
 
 /**
- * Kho file thiết kế cho app cắt — openapi v0.3.0 (KX-30 · KX-32 · KX-35).
- * Sáu tham số lọc của /api/v1/files đều BẮT BUỘC: thiếu → Spring ném
- * MissingServletRequestParameterException → 400 ErrorResponse.
+ * Kho file thiết kế cho app cắt — KX-32 · F-56. Đầu danh sách file (GET /api/v1/files)
+ * đi theo mô hình cây xe mới ở NGO-325/326 (SA-DanhMucXe-v2 §3.3).
  */
 @RestController
 @SecurityRequirement(name = "bearerAuth")
-@Tag(name = "Design Files", description = "Kho file thiết kế theo bộ lọc xe 6 cấp — hợp đồng /api/v1/files")
+@Tag(name = "Design Files", description = "Kho file thiết kế — part và hình học theo fileKey")
 public class DesignFileController {
 
     private final DesignFileService designFileService;
 
     public DesignFileController(DesignFileService designFileService) {
         this.designFileService = designFileService;
-    }
-
-    @GetMapping("/api/v1/files")
-    @PreAuthorize("hasAnyRole('ADMIN', 'AGENT', 'USER')")
-    @Operation(summary = "Các file thiết kế của chiếc xe đã lọc đủ sáu cấp (KX-30)",
-            description = "Rỗng = xe có trong danh mục nhưng chưa nạp file (KX-35) — khác với mất mạng, không bao giờ trả null hay 404.")
-    @ApiResponses(value = {
-            @ApiResponse(responseCode = "200", description = "Danh sách file (có thể rỗng)",
-                    content = @Content(array = @ArraySchema(schema = @Schema(implementation = DesignFileDto.class)))),
-            @ApiResponse(responseCode = "400", description = "Thiếu một trong sáu tham số lọc",
-                    content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
-            @ApiResponse(responseCode = "401", description = "Không có phiên còn hiệu lực",
-                    content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
-    })
-    public ResponseEntity<List<DesignFileDto>> getFiles(
-            @RequestParam String category,
-            @RequestParam String brand,
-            @RequestParam String model,
-            @RequestParam String variant,
-            @RequestParam String year,
-            @RequestParam String submodel
-    ) {
-        return ResponseEntity.ok(
-                designFileService.getFiles(category, brand, model, variant, year, submodel));
     }
 
     @GetMapping("/api/v1/files/{id}/parts")

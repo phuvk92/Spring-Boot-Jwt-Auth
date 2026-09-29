@@ -1,15 +1,12 @@
 package com.example.svgmanager.service.impl;
 
-import com.example.svgmanager.dto.response.DesignFileDto;
 import com.example.svgmanager.dto.response.DesignFileGeometryDto;
 import com.example.svgmanager.dto.response.PartDto;
 import com.example.svgmanager.dto.response.PartOutlineDto;
-import com.example.svgmanager.entity.Category;
 import com.example.svgmanager.entity.SvgFile;
 import com.example.svgmanager.entity.SvgFilePart;
 import com.example.svgmanager.exception.ErrorCodes;
 import com.example.svgmanager.exception.ResourceNotFoundException;
-import com.example.svgmanager.repository.CategoryRepository;
 import com.example.svgmanager.repository.SvgFilePartRepository;
 import com.example.svgmanager.repository.SvgFileRepository;
 import com.example.svgmanager.service.DesignFileService;
@@ -19,15 +16,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
-import java.util.Optional;
 
 @Service
 public class DesignFileServiceImpl implements DesignFileService {
 
     private static final Logger log = LoggerFactory.getLogger(DesignFileServiceImpl.class);
-
-    /** Các cấp dưới 'category', theo đúng thứ tự bộ lọc 6 cấp của hợp đồng. */
-    private static final String[] LOWER_LEVELS = {"brand", "model", "variant", "year", "submodel"};
 
     /**
      * Ngưỡng cảnh báo payload geometry (AC F-56 — mục streaming): hợp đồng ghi "cân nhắc
@@ -36,29 +29,13 @@ public class DesignFileServiceImpl implements DesignFileService {
      */
     private static final long GEOMETRY_WARN_BYTES = 2L * 1024 * 1024;
 
-    private final CategoryRepository categoryRepository;
     private final SvgFileRepository svgFileRepository;
     private final SvgFilePartRepository svgFilePartRepository;
 
-    public DesignFileServiceImpl(CategoryRepository categoryRepository,
-                                 SvgFileRepository svgFileRepository,
+    public DesignFileServiceImpl(SvgFileRepository svgFileRepository,
                                  SvgFilePartRepository svgFilePartRepository) {
-        this.categoryRepository = categoryRepository;
         this.svgFileRepository = svgFileRepository;
         this.svgFilePartRepository = svgFilePartRepository;
-    }
-
-    @Override
-    @Transactional(readOnly = true)
-    public List<DesignFileDto> getFiles(String category, String brand, String model,
-                                        String variant, String year, String submodel) {
-        return resolveLeaf(category, brand, model, variant, year, submodel)
-                .map(leaf -> svgFileRepository
-                        .findByCategoryIdAndStatusOrderByIdAsc(leaf.getId(), "ACTIVE")
-                        .stream()
-                        .map(file -> toDto(file, leaf))
-                        .toList())
-                .orElse(List.of());
     }
 
     @Override
@@ -71,22 +48,6 @@ public class DesignFileServiceImpl implements DesignFileService {
                 .stream()
                 .map(this::toDto)
                 .toList();
-    }
-
-    /**
-     * Dò đúng MỘT đường 6 cấp trong cây danh mục (giá trị trùng nhau giữa các nhánh là
-     * bình thường, nên phải so theo parent chứ không theo level+value trần).
-     */
-    private Optional<Category> resolveLeaf(String category, String brand, String model,
-                                           String variant, String year, String submodel) {
-        Optional<Category> node =
-                categoryRepository.findByLevelAndValueAndParentIsNull("category", category);
-        String[] values = {brand, model, variant, year, submodel};
-        for (int i = 0; i < LOWER_LEVELS.length && node.isPresent(); i++) {
-            Long parentId = node.get().getId();
-            node = categoryRepository.findByLevelAndValueAndParentId(LOWER_LEVELS[i], values[i], parentId);
-        }
-        return node;
     }
 
     @Override
@@ -128,30 +89,9 @@ public class DesignFileServiceImpl implements DesignFileService {
                 part.getHoleCount() != null ? part.getHoleCount() : 0);
     }
 
-    private DesignFileDto toDto(SvgFile file, Category leaf) {
-        return new DesignFileDto(
-                file.getFileKey(),
-                file.getDisplayName() != null ? file.getDisplayName() : file.getOriginalFilename(),
-                categoryValue(leaf),
-                // Đếm từ DB, không đọc collection lazy — part có thể được nạp sau file
-                (int) svgFilePartRepository.countBySvgFileId(file.getId()),
-                file.getFilmUsage(),
-                file.getNote(),
-                file.getUpdatedAt() != null ? file.getUpdatedAt() : file.getCreatedAt()
-        );
-    }
-
     private PartDto toDto(SvgFilePart part) {
         return new PartDto(part.getPartKey(), part.getName(), part.getZone(),
                 part.getFilmUsage(), part.getNote());
     }
 
-    /** `category` của hợp đồng là cấp 1 — đi ngược lên cây tới gốc để lấy, không tin cột brand/model. */
-    private String categoryValue(Category leaf) {
-        Category node = leaf;
-        while (node.getParent() != null) {
-            node = node.getParent();
-        }
-        return node.getValue();
-    }
 }
