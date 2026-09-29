@@ -18,6 +18,8 @@ public final class ErrorCodes {
     public static final String AUTH_SERVICE_UNAVAILABLE = "AUTH_SERVICE_UNAVAILABLE";
     /** GET /api/v1/files/{id}/parts với id không tồn tại — khác với "file không có part nào" (mảng rỗng). */
     public static final String FILE_NOT_FOUND = "FILE_NOT_FOUND";
+    /** GET /api/v1/designs/{id}/versions với id không tồn tại hoặc không phải bản của user — khác với mảng rỗng. */
+    public static final String DESIGN_NOT_FOUND = "DESIGN_NOT_FOUND";
 
     private ErrorCodes() {
     }
