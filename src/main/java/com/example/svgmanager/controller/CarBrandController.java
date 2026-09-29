@@ -15,7 +15,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
 @RestController
-@RequestMapping("/api/car-brands")
+@RequestMapping({"/api/car-brands", "/api/vehicle-configurations/brands"})
 @Tag(name = "Car Brands", description = "Hãng xe")
 public class CarBrandController {
 
@@ -33,7 +33,7 @@ public class CarBrandController {
         return ResponseEntity.ok(carBrandService.getAllBrands(status));
     }
 
-    @GetMapping("/{id}")
+    @GetMapping("/{id:[0-9]+}")
     @Operation(summary = "Chi tiết hãng xe")
     public ResponseEntity<CarBrandResponse> getBrandById(@PathVariable Long id) {
         return ResponseEntity.ok(carBrandService.getBrandById(id));

@@ -47,7 +47,7 @@ public class VehicleConfigurationController {
         return ResponseEntity.ok(response);
     }
 
-    @GetMapping("/{id}")
+    @GetMapping("/{id:[0-9]+}")
     @Operation(summary = "Chi tiết một cấu hình xe theo ID")
     public ResponseEntity<VehicleConfigurationResponse> getConfigurationById(@PathVariable Long id) {
         VehicleConfigurationResponse response = configurationService.getConfigurationById(id);
@@ -65,7 +65,7 @@ public class VehicleConfigurationController {
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
-    @PutMapping("/{id}")
+    @PutMapping("/{id:[0-9]+}")
     @Operation(summary = "Cập nhật thông tin cấu hình xe")
     public ResponseEntity<VehicleConfigurationResponse> updateConfiguration(
             @PathVariable Long id,
@@ -77,7 +77,7 @@ public class VehicleConfigurationController {
         return ResponseEntity.ok(response);
     }
 
-    @DeleteMapping("/{id}")
+    @DeleteMapping("/{id:[0-9]+}")
     @Operation(summary = "Xóa (soft delete) cấu hình xe")
     public ResponseEntity<Void> deleteConfiguration(@PathVariable Long id) {
         String actor = SecurityUtils.getCurrentUsername();
