@@ -6,8 +6,8 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import java.time.LocalDateTime;
 
 /**
- * DesignFile trong hợp đồng openapi v0.3.0 (KX-30) — một file thiết kế trong kho.
- * Tên trường khớp fixture {@code contracts/mock-samples/07-files.json} — đổi là client vỡ.
+ * DesignFile trong hợp đồng openapi v0.6 (Data Center v2) — một file thiết kế trong kho.
+ * {@code category} là CatalogOption {value,label}; {@code year} null = file dùng cho mọi năm (Q3).
  */
 @Schema(description = "DesignFile matching 07-files.json contract")
 public class DesignFileDto {
@@ -18,8 +18,11 @@ public class DesignFileDto {
     @Schema(description = "Tên do đội nội dung đặt", example = "Ngoại thất — full body 7 mảnh")
     private String name;
 
-    @Schema(description = "Nhóm chi tiết — cấp 1 của bộ lọc", example = "Ngoại thất")
-    private String category;
+    @Schema(description = "Nhóm chi tiết — cấp 1 của bộ lọc, từ file_categories")
+    private CatalogOptionDto category;
+
+    @Schema(description = "Năm xe của file — null = mọi năm (Q3)", example = "2024", nullable = true)
+    private Integer year;
 
     @Schema(description = "Số part trong file (DS-08c)", example = "7")
     private int partCount;
@@ -36,11 +39,12 @@ public class DesignFileDto {
     public DesignFileDto() {
     }
 
-    public DesignFileDto(String id, String name, String category, int partCount,
+    public DesignFileDto(String id, String name, CatalogOptionDto category, Integer year, int partCount,
                          String filmUsage, String note, LocalDateTime updatedAt) {
         this.id = id;
         this.name = name;
         this.category = category;
+        this.year = year;
         this.partCount = partCount;
         this.filmUsage = filmUsage;
         this.note = note;
@@ -63,12 +67,20 @@ public class DesignFileDto {
         this.name = name;
     }
 
-    public String getCategory() {
+    public CatalogOptionDto getCategory() {
         return category;
     }
 
-    public void setCategory(String category) {
+    public void setCategory(CatalogOptionDto category) {
         this.category = category;
+    }
+
+    public Integer getYear() {
+        return year;
+    }
+
+    public void setYear(Integer year) {
+        this.year = year;
     }
 
     public int getPartCount() {

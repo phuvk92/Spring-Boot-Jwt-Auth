@@ -22,6 +22,7 @@ PCUT Admin Backend cung cấp một hệ sinh thái an toàn để:
 - Quản lý cây xe 4 cấp `BRAND › SERIES › MODEL › SUBTYPE` (Data Center v2, migration V14) với API quản trị phân trang theo hãng, tìm kiếm giữ tổ tiên, đổi tên, xoá nhánh không chặn.
 - Danh mục file (`file_categories`): Ngoại thất · Nội thất · Window film · Đèn & kính; file SVG gắn nhiều mẫu xe qua `svg_file_vehicle_nodes`.
 - Kho part file `/api/admin/files` (ADMIN): upload `.svg` có kiểm nội dung, server **tách part + hình học** đúng quy tắc client `SvgImport.cs` (port Java trong `svg/` package), `file_key` tự sinh, gắn nhiều mẫu xe, thẻ thống kê, xoá mềm.
+- API app thợ `/api/v1/*` (hợp đồng openapi v0.6): danh mục file, catalog 4 cấp lọc theo **id cha** (thiếu → 400), danh sách file khớp bộ lọc theo quy tắc SA-DanhMucXe-v2 §3.3 — file của model dùng cho mọi phiên bản, file không ghi năm khớp mọi năm, chỉ file `ACTIVE`, **không lọc quyền đại lý** (Q6).
 
 ---
 
@@ -114,6 +115,11 @@ com.example.svgmanager
 | **Đổi tên node** | `PUT /api/vehicle-nodes/{id}` | ✅ | ❌ (403) | ❌ (403) | ❌ (401) |
 | **Số liệu trước khi xoá** | `GET /api/vehicle-nodes/{id}/impact` | ✅ | ❌ (403) | ❌ (403) | ❌ (401) |
 | **Xoá node + nhánh con** | `DELETE /api/vehicle-nodes/{id}` | ✅ | ❌ (403) | ❌ (403) | ❌ (401) |
+| **Danh mục file (app thợ)** | `GET /api/v1/file-categories` | ✅ | ✅ | ✅ | ❌ (401) |
+| **Catalog cây xe theo cấp** | `GET /api/v1/catalog/{level}?<idCha>=` | ✅ | ✅ | ✅ | ❌ (401) |
+| **File thiết kế theo bộ lọc** | `GET /api/v1/files?categoryId=&modelId=&subtypeId=&year=` | ✅ | ✅ | ✅ | ❌ (401) |
+| **Part trong file** | `GET /api/v1/files/{id}/parts` | ✅ | ✅ | ✅ | ❌ (401) |
+| **Hình học cả file** | `GET /api/v1/files/{id}/geometry` | ✅ | ✅ | ✅ | ❌ (401) |
 
 ### 🚗 Cây xe 4 cấp (Data Center v2 — V14)
 
@@ -134,6 +140,18 @@ Danh mục file (`file_categories`, seed V14): Ngoại thất · Nội thất ·
 
 *(Đã gỡ mô hình cũ: `categories` 6 cấp, `car_brands`/`car_models`/`vehicle_configurations`,
 phân quyền đại lý theo file `svg_file_dealer_permissions` — Q6.)*
+
+### 📱 API cho app thợ (`/api/v1/*`, Data Center v2)
+
+| Endpoint | Trả về |
+|---|---|
+| `GET /api/v1/file-categories` | `[{value,label}]` danh mục `file_categories` đang hiệu lực, theo `display_order` |
+| `GET /api/v1/catalog/brand` | các hãng (node gốc) |
+| `GET /api/v1/catalog/series?brandId=` · `/model?seriesId=` · `/subtype?modelId=` | con của node cha — **thiếu id cha → 400**, id trỏ sai cấp → 400 |
+| `GET /api/v1/catalog/year?categoryId=&modelId=&subtypeId=` | các năm có file khớp, giảm dần; tham số nào truyền thì lọc theo đó |
+| `GET /api/v1/files?categoryId=&modelId=&subtypeId=&year=` | `DesignFile[]` — `categoryId`/`modelId` bắt buộc (400); có `subtypeId` → khớp subtype hoặc model cha, không → model hoặc mọi phiên bản; `year` khớp `model_year = year OR NULL` (Q3); chỉ `ACTIVE`, không lọc đại lý (Q6) |
+
+`DesignFile.category` là `{value,label}` (CatalogOption), `year` null = dùng cho mọi năm.
 
 ---
 

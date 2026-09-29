@@ -1,20 +1,27 @@
 package com.example.svgmanager.service.impl;
 
+import com.example.svgmanager.dto.response.CatalogOptionDto;
+import com.example.svgmanager.dto.response.DesignFileDto;
 import com.example.svgmanager.dto.response.DesignFileGeometryDto;
 import com.example.svgmanager.dto.response.PartDto;
 import com.example.svgmanager.dto.response.PartOutlineDto;
+import com.example.svgmanager.entity.FileCategory;
 import com.example.svgmanager.entity.SvgFile;
 import com.example.svgmanager.entity.SvgFilePart;
+import com.example.svgmanager.exception.BadRequestException;
 import com.example.svgmanager.exception.ErrorCodes;
 import com.example.svgmanager.exception.ResourceNotFoundException;
 import com.example.svgmanager.repository.SvgFilePartRepository;
 import com.example.svgmanager.repository.SvgFileRepository;
+import com.example.svgmanager.repository.VehicleNodeRepository;
 import com.example.svgmanager.service.DesignFileService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
+import java.util.ArrayList;
 import java.util.List;
 
 @Service
@@ -31,11 +38,70 @@ public class DesignFileServiceImpl implements DesignFileService {
 
     private final SvgFileRepository svgFileRepository;
     private final SvgFilePartRepository svgFilePartRepository;
+    private final VehicleNodeRepository vehicleNodeRepository;
 
     public DesignFileServiceImpl(SvgFileRepository svgFileRepository,
-                                 SvgFilePartRepository svgFilePartRepository) {
+                                 SvgFilePartRepository svgFilePartRepository,
+                                 VehicleNodeRepository vehicleNodeRepository) {
         this.svgFileRepository = svgFileRepository;
         this.svgFilePartRepository = svgFilePartRepository;
+        this.vehicleNodeRepository = vehicleNodeRepository;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<DesignFileDto> getFiles(String categoryId, String modelId, String subtypeId, Integer year) {
+        Long category = requireId(categoryId, "categoryId");
+        Long model = requireId(modelId, "modelId");
+        Long subtype = parseId(subtypeId, "subtypeId");
+
+        // SA §3.3: có subtype → khớp subtype hoặc model cha; không → model + mọi phiên bản
+        List<Long> nodeIds = new ArrayList<>();
+        nodeIds.add(model);
+        if (subtype != null) {
+            nodeIds.add(subtype);
+        } else {
+            vehicleNodeRepository.findByParentIdOrderByDisplayOrderAscIdAsc(model)
+                    .forEach(child -> nodeIds.add(child.getId()));
+        }
+
+        return svgFileRepository.findCatalogFiles(category, nodeIds, year)
+                .stream().map(this::toDesignFileDto).toList();
+    }
+
+    private DesignFileDto toDesignFileDto(SvgFile file) {
+        FileCategory category = file.getFileCategory();
+        CatalogOptionDto categoryDto = category != null
+                ? CatalogOptionDto.of(category.getId(), category.getName())
+                : new CatalogOptionDto("", "");
+        return new DesignFileDto(
+                file.getFileKey(),
+                file.getDisplayName() != null ? file.getDisplayName() : file.getOriginalFilename(),
+                categoryDto,
+                file.getModelYear(),
+                file.getParts() != null ? file.getParts().size() : 0,
+                file.getFilmUsage(),
+                file.getNote(),
+                file.getUpdatedAt() != null ? file.getUpdatedAt() : file.getCreatedAt());
+    }
+
+    private Long requireId(String raw, String param) {
+        Long id = parseId(raw, param);
+        if (id == null) {
+            throw new BadRequestException("Thiếu tham số bắt buộc '" + param + "'");
+        }
+        return id;
+    }
+
+    private Long parseId(String raw, String param) {
+        if (!StringUtils.hasText(raw)) {
+            return null;
+        }
+        try {
+            return Long.parseLong(raw.trim());
+        } catch (NumberFormatException e) {
+            throw new BadRequestException("Tham số '" + param + "' phải là id số, nhận: " + raw);
+        }
     }
 
     @Override

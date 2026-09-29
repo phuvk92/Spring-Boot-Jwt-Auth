@@ -1,5 +1,6 @@
 package com.example.svgmanager.controller;
 
+import com.example.svgmanager.dto.response.DesignFileDto;
 import com.example.svgmanager.dto.response.DesignFileGeometryDto;
 import com.example.svgmanager.dto.response.ErrorResponse;
 import com.example.svgmanager.dto.response.PartDto;
@@ -16,6 +17,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
@@ -33,6 +35,27 @@ public class DesignFileController {
 
     public DesignFileController(DesignFileService designFileService) {
         this.designFileService = designFileService;
+    }
+
+    @GetMapping("/api/v1/files")
+    @PreAuthorize("hasAnyRole('ADMIN', 'AGENT', 'USER')")
+    @Operation(summary = "File thiết kế khớp bộ lọc — Danh mục + Model là đủ mở (KX-30 v2)",
+            description = "Có subtypeId → khớp subtype hoặc model cha; không → model hoặc mọi phiên bản. "
+                    + "year: model_year = year HOẶC NULL (Q3). Chỉ file ACTIVE, không lọc quyền đại lý (Q6).")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Rỗng = xe có trong danh mục nhưng chưa nạp file (KX-35)",
+                    content = @Content(array = @ArraySchema(schema = @Schema(implementation = DesignFileDto.class)))),
+            @ApiResponse(responseCode = "400", description = "Thiếu categoryId/modelId",
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+            @ApiResponse(responseCode = "401", description = "Không có phiên còn hiệu lực",
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    })
+    public ResponseEntity<List<DesignFileDto>> getFiles(
+            @RequestParam String categoryId,
+            @RequestParam String modelId,
+            @RequestParam(required = false) String subtypeId,
+            @RequestParam(required = false) Integer year) {
+        return ResponseEntity.ok(designFileService.getFiles(categoryId, modelId, subtypeId, year));
     }
 
     @GetMapping("/api/v1/files/{id}/parts")
