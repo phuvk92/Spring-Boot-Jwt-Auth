@@ -33,8 +33,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 /**
  * API quản trị cây xe 4 cấp — chạy trên PostgreSQL THẬT qua Testcontainers để
- * Flyway chạy đủ V1…V14 (test H2 tắt Flyway không bắt được lỗi migration).
- * ddl-auto=validate để bắt lệch giữa entity và schema do V14 tạo.
+ * Flyway chạy đủ V1…V15 (test H2 tắt Flyway không bắt được lỗi migration).
+ * ddl-auto=validate để bắt lệch giữa entity và schema do V15 tạo.
  */
 @SpringBootTest(properties = {
         "spring.flyway.enabled=true",
@@ -113,7 +113,7 @@ class VehicleNodesPostgresIntegrationTest {
     }
 
     @Test
-    @DisplayName("V14 chạy thật: seed 7 hãng gốc (6 hãng META0 + Abarth) và 4 danh mục file")
+    @DisplayName("V15 chạy thật: seed 7 hãng gốc (6 hãng META0 + Abarth) và 4 danh mục file")
     void migration_seedData_present() throws Exception {
         mockMvc.perform(get("/api/vehicle-nodes").param("size", "50").with(asAdmin()))
                 .andExpect(status().isOk())

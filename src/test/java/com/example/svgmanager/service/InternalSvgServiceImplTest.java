@@ -29,7 +29,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 /**
- * Sau V14/Q6: không còn quyền đại lý — phiên hợp lệ xem/tải được mọi file còn hiệu lực.
+ * Sau V15/Q6: không còn quyền đại lý — phiên hợp lệ xem/tải được mọi file còn hiệu lực.
  */
 @ExtendWith(MockitoExtension.class)
 @org.mockito.junit.jupiter.MockitoSettings(strictness = org.mockito.quality.Strictness.LENIENT)

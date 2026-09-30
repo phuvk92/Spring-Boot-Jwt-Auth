@@ -32,7 +32,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 /**
  * Kho part file — SA v2 §3.2/§4. Chạy trên PostgreSQL THẬT qua Testcontainers để
- * Flyway chạy đủ V1…V14 (seed cây xe + danh mục) và query lọc theo nhánh cây
+ * Flyway chạy đủ V1…V15 (seed cây xe + danh mục) và query lọc theo nhánh cây
  * (WITH RECURSIVE) được kiểm thật.
  */
 @SpringBootTest(properties = {
@@ -90,7 +90,7 @@ class AdminFilesPostgresIntegrationTest {
     @Autowired
     private VehicleNodeRepository vehicleNodeRepository;
 
-    /** Seed V14: Toyota›Camry›Camry 2.5Q (MODEL id=3), VinFast›VF 8›VF 8 Plus (MODEL id=11). */
+    /** Seed V15: Toyota›Camry›Camry 2.5Q (MODEL id=3), VinFast›VF 8›VF 8 Plus (MODEL id=11). */
     private static final long MODEL_CAMRY_25Q = 3;
     private static final long MODEL_VF8_PLUS = 11;
     private static final long BRAND_TOYOTA = 1;

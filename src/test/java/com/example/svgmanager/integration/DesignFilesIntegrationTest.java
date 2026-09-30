@@ -26,7 +26,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 /**
  * KX-32 · F-56 — part và hình học theo fileKey. Đầu danh sách file lọc theo cây xe
- * mới thuộc NGO-325/326 (SA-DanhMucXe-v2 §3.3) — endpoint 6 cấp cũ đã gỡ cùng V14.
+ * mới thuộc NGO-325/326 (SA-DanhMucXe-v2 §3.3) — endpoint 6 cấp cũ đã gỡ cùng V15.
  */
 @SpringBootTest
 @AutoConfigureMockMvc

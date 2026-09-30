@@ -4,7 +4,7 @@ import jakarta.persistence.*;
 
 /**
  * Danh mục file (Ngoại thất · Nội thất · Window film · Đèn & kính) — thay enum cứng
- * của client, seed ở V14.
+ * của client, seed ở V15.
  */
 @Entity
 @Table(name = "file_categories")

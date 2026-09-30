@@ -29,7 +29,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 /**
- * Kho SVG web (/api/svg) sau V14 — đã gỡ cấu hình xe cũ và quyền đại lý (Q6).
+ * Kho SVG web (/api/svg) sau V15 — đã gỡ cấu hình xe cũ và quyền đại lý (Q6).
  */
 @SpringBootTest
 @AutoConfigureMockMvc

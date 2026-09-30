@@ -10,7 +10,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Một nút trong cây xe 4 cấp (V14). BRAND là gốc (parent_id NULL), cấp con = cấp cha + 1 —
+ * Một nút trong cây xe 4 cấp (V15). BRAND là gốc (parent_id NULL), cấp con = cấp cha + 1 —
  * hai ràng buộc đó kiểm ở service, DB chỉ giữ CHECK level + UNIQUE (cha, tên).
  */
 @Entity
