@@ -119,6 +119,7 @@ public class SecurityConfig {
                         .requestMatchers("/api/admin/files/**").hasRole("ADMIN")
                         // Thương hiệu đại lý (NGO-165)
                         .requestMatchers("/api/v1/branding").hasAnyRole("ADMIN", "AGENT", "USER")
+                        .requestMatchers("/api/v1/profile").hasAnyRole("ADMIN", "AGENT", "USER")
                         // User management endpoints (ADMIN and AGENT)
                         .requestMatchers("/api/users/**").hasAnyRole("ADMIN", "AGENT")
                         // SVG endpoints
