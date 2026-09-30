@@ -181,23 +181,27 @@ class AdminFilesPostgresIntegrationTest {
     }
 
     @Test
-    @DisplayName("Gắn 2 model khác hãng → file hiện ở cả hai nhánh khi lọc")
-    void upload_multiBrand_visibleInBoth() throws Exception {
+    @DisplayName("Board 30/09: một file một mẫu xe — gửi 2 model → 400 ONE_VEHICLE_PER_FILE")
+    void upload_twoVehicles_rejected() throws Exception {
         String svg = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"10mm\" height=\"10mm\" viewBox=\"0 0 10 10\">"
                 + "<rect width=\"10\" height=\"10\"/></svg>";
-        MvcResult res = mockMvc.perform(multipart("/api/admin/files")
+        mockMvc.perform(multipart("/api/admin/files")
                         .file(svgPart(svg))
                         .param("name", "Hai hãng").param("categoryId", "1")
                         .param("vehicleNodeIds", String.valueOf(MODEL_CAMRY_25Q) + "," + MODEL_VF8_PLUS)
                         .with(asAdmin()))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("ONE_VEHICLE_PER_FILE"));
+
+        MvcResult res = mockMvc.perform(multipart("/api/admin/files")
+                        .file(svgPart(svg))
+                        .param("name", "Một hãng").param("categoryId", "1")
+                        .param("vehicleNodeIds", String.valueOf(MODEL_VF8_PLUS))
+                        .with(asAdmin()))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.vehicles", hasSize(2)))
+                .andExpect(jsonPath("$.vehicles", hasSize(1)))
                 .andReturn();
         long id = ((Integer) com.jayway.jsonpath.JsonPath.read(res.getResponse().getContentAsString(), "$.id")).longValue();
-
-        mockMvc.perform(get("/api/admin/files").param("brandId", String.valueOf(BRAND_TOYOTA)).with(asAdmin()))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.content[*].id", hasItem((int) id)));
         mockMvc.perform(get("/api/admin/files").param("brandId", String.valueOf(BRAND_VINFAST)).with(asAdmin()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.content[*].id", hasItem((int) id)));

@@ -24,7 +24,7 @@ import java.util.List;
 
 /**
  * Kho part file — SA-DanhMucXe-v2 §3.2 (màn "Kho mẫu & part file" trên web admin).
- * Chỉ ADMIN. Upload chỉ nhận .svg; vehicleNodeIds ≥1, mỗi node MODEL/SUBTYPE.
+ * Chỉ ADMIN. Upload chỉ nhận .svg; vehicleNodeIds đúng 1 node (MODEL/SUBTYPE) — board 30/09.
  */
 @RestController
 @RequestMapping("/api/admin/files")

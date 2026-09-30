@@ -327,9 +327,15 @@ public class AdminFileServiceImpl implements AdminFileService {
     /** Mỗi node gắn phải là MODEL hoặc SUBTYPE (§2 — file treo ở hai cấp lá xe). */
     private List<VehicleNode> resolveVehicleNodes(List<Long> nodeIds) {
         if (nodeIds == null || nodeIds.isEmpty()) {
-            throw new BadRequestException("Cần ít nhất một mẫu xe (vehicleNodeIds)");
+            throw new BadRequestException("Cần chọn một mẫu xe (vehicleNodeIds)");
         }
         List<Long> distinct = nodeIds.stream().distinct().toList();
+        // Board 30/09 bỏ Q5: mỗi file gắn ĐÚNG một mẫu xe (Model hoặc Phiên bản).
+        // V18 khoá thêm ở DB (UNIQUE svg_file_id) để không đường nào lách được.
+        if (distinct.size() != 1) {
+            throw new BadRequestException("Mỗi file chỉ gắn một mẫu xe — đang gửi " + distinct.size(),
+                    ErrorCodes.ONE_VEHICLE_PER_FILE);
+        }
         List<VehicleNode> nodes = new ArrayList<>();
         for (Long nodeId : distinct) {
             VehicleNode node = vehicleNodeRepository.findById(nodeId)
