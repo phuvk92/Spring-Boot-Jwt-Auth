@@ -117,6 +117,7 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/categories/**").hasAnyRole("ADMIN", "AGENT", "USER")
                         .requestMatchers("/api/categories/**").hasRole("ADMIN")
                         .requestMatchers("/api/v1/catalog/**").hasAnyRole("ADMIN", "AGENT", "USER")
+                        .requestMatchers("/api/v1/branding").hasAnyRole("ADMIN", "AGENT", "USER")
                         // User management endpoints (ADMIN and AGENT)
                         .requestMatchers("/api/users/**").hasAnyRole("ADMIN", "AGENT")
                         // SVG endpoints
