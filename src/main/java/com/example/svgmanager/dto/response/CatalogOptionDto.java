@@ -2,13 +2,14 @@ package com.example.svgmanager.dto.response;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 
-@Schema(description = "Catalog option matching 06-catalog-level.json contract")
+/**
+ * Một mục trong dropdown của app thợ — {value, label} theo CatalogOption của hợp đồng.
+ * {@code value} là id (dạng chuỗi), {@code label} là tên hiển thị.
+ */
+@Schema(description = "CatalogOption — value là id, label là chuỗi hiển thị")
 public class CatalogOptionDto {
 
-    @Schema(description = "Value identifier", example = "Ngoại thất")
     private String value;
-
-    @Schema(description = "Display label in dropdown", example = "Ngoại thất")
     private String label;
 
     public CatalogOptionDto() {
@@ -17,6 +18,10 @@ public class CatalogOptionDto {
     public CatalogOptionDto(String value, String label) {
         this.value = value;
         this.label = label;
+    }
+
+    public static CatalogOptionDto of(Long id, String label) {
+        return new CatalogOptionDto(id != null ? String.valueOf(id) : "", label);
     }
 
     public String getValue() {

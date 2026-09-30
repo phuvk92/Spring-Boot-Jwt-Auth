@@ -5,7 +5,7 @@ Production-ready backend REST API built with **Java 21**, **Spring Boot 3.3.5**,
 Thiết kế giao diện và kiến trúc tuân thủ theo chuẩn thiết kế **PCUT Admin POC**:
 - **TỔNG QUAN**: Bảng tổng quan giám sát sản lượng, lượt cắt, thợ đang hoạt động và cảnh báo hệ thống *(đã loại bỏ hoàn toàn các mục Báo Cáo, Vận Hành và KINH DOANH / Doanh thu)*.
 - **NỀN TẢNG & TÀI KHOẢN**: Quản lý Đại lý & Chi nhánh, Quản lý người dùng, Quản lý phiên & Thiết bị, Nhật ký quản trị (Audit Log).
-- **DATA CENTER**: Quản lý danh mục xe 6 cấp bậc & Model Album, Kho mẫu & Part file (SVG), Nạp mẫu hàng loạt, Duyệt mẫu & Phân phối.
+- **DATA CENTER**: Quản lý cây xe 4 cấp (Hãng › Dòng xe › Model › Phiên bản), danh mục file, Kho mẫu & Part file (SVG), Nạp mẫu hàng loạt.
 
 ---
 
@@ -19,7 +19,10 @@ PCUT Admin Backend cung cấp một hệ sinh thái an toàn để:
 - Xem trước trực tiếp (inline preview) an toàn với header bảo mật (`X-Content-Type-Options: nosniff`).
 - Tải xuống file (streaming download) và tính toán mã băm SHA-256 cho mỗi file.
 - Ghi log kiểm toán (Audit Logging) chuẩn hóa truy vết bảo mật hệ thống.
-- Quản lý cây danh mục xe 6 cấp bậc với thuộc tính xe: Hãng xe (Brand), Dòng xe (Model), Năm sản xuất (Year).
+- Quản lý cây xe 4 cấp `BRAND › SERIES › MODEL › SUBTYPE` (Data Center v2, migration V14) với API quản trị phân trang theo hãng, tìm kiếm giữ tổ tiên, đổi tên, xoá nhánh không chặn.
+- Danh mục file (`file_categories`): Ngoại thất · Nội thất · Window film · Đèn & kính; file SVG gắn nhiều mẫu xe qua `svg_file_vehicle_nodes`.
+- Kho part file `/api/admin/files` (ADMIN): upload `.svg` có kiểm nội dung, server **tách part + hình học** đúng quy tắc client `SvgImport.cs` (port Java trong `svg/` package), `file_key` tự sinh, gắn nhiều mẫu xe, thẻ thống kê, xoá mềm.
+- API app thợ `/api/v1/*` (hợp đồng openapi v0.6): danh mục file, catalog 4 cấp lọc theo **id cha** (thiếu → 400), danh sách file khớp bộ lọc theo quy tắc SA-DanhMucXe-v2 §3.3 — file của model dùng cho mọi phiên bản, file không ghi năm khớp mọi năm, chỉ file `ACTIVE`, **không lọc quyền đại lý** (Q6).
 
 ---
 
@@ -52,21 +55,24 @@ com.example.svgmanager
 │   └── SecurityConfig.java
 ├── controller                  # REST API Endpoints
 │   ├── AuthController.java     # /api/auth (Login, Refresh, Me, Change Password)
-│   ├── CategoryController.java # /api/categories (CRUD 6-level Tree & Vehicle Metadata)
-│   ├── SvgController.java      # /api/svg (Upload, List, Preview, Download, Delete)
+│   ├── VehicleNodeController.java # /api/vehicle-nodes (CRUD cây xe 4 cấp — ADMIN)
+│   ├── AdminFileController.java # /api/admin/files (kho part file — ADMIN)
+│   ├── SvgController.java      # /api/svg (Upload, List, Preview, Download, Thumbnail, Delete)
 │   └── UserController.java     # /api/users (Admin CRUD, Role, Status)
 ├── dto
 │   ├── request                 # DTO đầu vào (Login, Update, Create, Change Password)
 │   └── response                # DTO đầu ra (Auth, User, Svg, Category, Page, Error, Message)
 ├── entity                      # JPA Entities
-│   ├── Category.java           # Category Hierarchy + Brand/Model/Year
+│   ├── VehicleNode.java        # Cây xe 4 cấp BRAND›SERIES›MODEL›SUBTYPE
+│   ├── FileCategory.java       # Danh mục file (Ngoại thất, Window film…)
 │   ├── Role.java               # Enum: ADMIN, AGENT, USER
 │   ├── SvgFile.java
 │   └── User.java
 ├── exception                   # Custom Exceptions & GlobalExceptionHandler
 ├── mapper                      # DTO Entity Mappers
 ├── repository                  # Spring Data JPA Repositories
-│   ├── CategoryRepository.java
+│   ├── VehicleNodeRepository.java
+│   ├── FileCategoryRepository.java
 │   ├── SvgFileRepository.java
 │   └── UserRepository.java
 ├── security                    # Security Filters, Handlers, Converter
@@ -104,27 +110,48 @@ com.example.svgmanager
 | **Xem trước SVG** | `GET /api/svg/{id}/preview` | ✅ | ✅ | ✅ | ❌ (401) |
 | **Tải xuống SVG** | `GET /api/svg/{id}/download` | ✅ | ✅ | ✅ | ❌ (401) |
 | **Xóa SVG** | `DELETE /api/svg/{id}` | ✅ | ❌ (403) | ❌ (403) | ❌ (401) |
-| **Cây danh mục (Catalog)** | `GET /api/categories` | ✅ | ✅ | ✅ | ❌ (401) |
-| **Chi tiết danh mục** | `GET /api/categories/{id}` | ✅ | ✅ | ✅ | ❌ (401) |
-| **Tạo danh mục mới** | `POST /api/categories` | ✅ | ❌ (403) | ❌ (403) | ❌ (401) |
-| **Cập nhật danh mục** | `PUT /api/categories/{id}` | ✅ | ❌ (403) | ❌ (403) | ❌ (401) |
-| **Xóa danh mục** | `DELETE /api/categories/{id}` | ✅ | ❌ (403) | ❌ (403) | ❌ (401) |
+| **Cây xe (phân trang theo hãng)** | `GET /api/vehicle-nodes?q=&page=&size=` | ✅ | ❌ (403) | ❌ (403) | ❌ (401) |
+| **Tạo node xe** | `POST /api/vehicle-nodes` | ✅ | ❌ (403) | ❌ (403) | ❌ (401) |
+| **Đổi tên node** | `PUT /api/vehicle-nodes/{id}` | ✅ | ❌ (403) | ❌ (403) | ❌ (401) |
+| **Số liệu trước khi xoá** | `GET /api/vehicle-nodes/{id}/impact` | ✅ | ❌ (403) | ❌ (403) | ❌ (401) |
+| **Xoá node + nhánh con** | `DELETE /api/vehicle-nodes/{id}` | ✅ | ❌ (403) | ❌ (403) | ❌ (401) |
+| **Danh mục file (app thợ)** | `GET /api/v1/file-categories` | ✅ | ✅ | ✅ | ❌ (401) |
+| **Catalog cây xe theo cấp** | `GET /api/v1/catalog/{level}?<idCha>=` | ✅ | ✅ | ✅ | ❌ (401) |
+| **File thiết kế theo bộ lọc** | `GET /api/v1/files?categoryId=&modelId=&subtypeId=&year=` | ✅ | ✅ | ✅ | ❌ (401) |
+| **Part trong file** | `GET /api/v1/files/{id}/parts` | ✅ | ✅ | ✅ | ❌ (401) |
+| **Hình học cả file** | `GET /api/v1/files/{id}/geometry` | ✅ | ✅ | ✅ | ❌ (401) |
 
-### 🚗 Cây danh mục xe & Thuộc tính xe (Vehicle Category Metadata)
+### 🚗 Cây xe 4 cấp (Data Center v2 — V14)
 
-Hệ thống quản lý cây danh mục xe phân cấp 6 tầng tự động:
-1. `category` (Cấp danh mục gốc, ví dụ: "Ngoại thất", "Nội thất", "Window film")
-2. `brand` (Hãng xe, ví dụ: "Toyota", "Abarth", "VinFast", "Mazda")
-3. `model` (Dòng xe, ví dụ: "Camry", "695", "VF 9", "CX-5")
-4. `variant` (Phiên bản, ví dụ: "2.5Q", "Signature", "Wildtrak")
-5. `year` (Năm sản xuất, ví dụ: "2024", "2025", "2020-2024")
-6. `submodel` (Kiểu dáng / Chi tiết, ví dụ: "Sedan 4 cửa", "Hatchback 3 cửa")
+Cây xe cố định 4 cấp theo `SA-DanhMucXe-v2` (chốt board 29/09):
+1. `BRAND` — Hãng (Toyota, VinFast, Ford, Hyundai, Mazda, Kia, Abarth)
+2. `SERIES` — Dòng xe (Camry, VF 8, Ranger, CX-5)
+3. `MODEL` — Model (Camry 2.5Q, VF 8 Plus)
+4. `SUBTYPE` — Phiên bản (Bản nhập Thái, Tiêu chuẩn) — cấp cuối, không có con
 
-Metadata xe khi tạo (`POST /api/categories`) và cập nhật (`PUT /api/categories/{id}`):
-- `brand` (String, tối đa 100 ký tự): Hãng xe
-- `model` (String, tối đa 100 ký tự): Dòng xe
-- `year` (String, tối đa 50 ký tự): Năm sản xuất
-*(Hệ thống tự động phân giải và kế thừa thông minh nếu các trường này để trống)*
+Quy tắc: BRAND không có cha; cấp con = cấp cha + 1; tên không trùng trong cùng cha
+(409 `NODE_NAME_TAKEN`). `GET` phân trang theo hãng kèm cả cây con; `q` chỉ giữ node
+khớp và mọi tổ tiên. `DELETE` **không chặn**: xoá cả nhánh, file chỉ mất liên kết
+(`svg_file_vehicle_nodes`), file vẫn còn trong kho — trả `{deletedNodes, unlinkedFiles}`;
+`GET /{id}/impact` trả `{nodes, files}` cho hộp xác nhận.
+
+Danh mục file (`file_categories`, seed V14): Ngoại thất · Nội thất · Window film · Đèn & kính.
+`svg_files` thêm `file_category_id`, `model_year` (NULL = mọi năm), `thumbnail_path`, `source`.
+
+*(Đã gỡ mô hình cũ: `categories` 6 cấp, `car_brands`/`car_models`/`vehicle_configurations`,
+phân quyền đại lý theo file `svg_file_dealer_permissions` — Q6.)*
+
+### 📱 API cho app thợ (`/api/v1/*`, Data Center v2)
+
+| Endpoint | Trả về |
+|---|---|
+| `GET /api/v1/file-categories` | `[{value,label}]` danh mục `file_categories` đang hiệu lực, theo `display_order` |
+| `GET /api/v1/catalog/brand` | các hãng (node gốc) |
+| `GET /api/v1/catalog/series?brandId=` · `/model?seriesId=` · `/subtype?modelId=` | con của node cha — **thiếu id cha → 400**, id trỏ sai cấp → 400 |
+| `GET /api/v1/catalog/year?categoryId=&modelId=&subtypeId=` | các năm có file khớp, giảm dần; tham số nào truyền thì lọc theo đó |
+| `GET /api/v1/files?categoryId=&modelId=&subtypeId=&year=` | `DesignFile[]` — `categoryId`/`modelId` bắt buộc (400); có `subtypeId` → khớp subtype hoặc model cha, không → model hoặc mọi phiên bản; `year` khớp `model_year = year OR NULL` (Q3); chỉ `ACTIVE`, không lọc đại lý (Q6) |
+
+`DesignFile.category` là `{value,label}` (CatalogOption), `year` null = dùng cho mọi năm.
 
 ---
 

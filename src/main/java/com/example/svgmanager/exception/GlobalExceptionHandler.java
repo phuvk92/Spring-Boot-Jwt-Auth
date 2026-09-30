@@ -1,6 +1,7 @@
 package com.example.svgmanager.exception;
 
 import com.example.svgmanager.dto.response.ErrorResponse;
+import com.example.svgmanager.svg.SvgImportException;
 import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -37,6 +38,7 @@ public class GlobalExceptionHandler {
                 .error(HttpStatus.NOT_FOUND.getReasonPhrase())
                 .message(ex.getMessage())
                 .path(request.getRequestURI())
+                .code(ex.getCode())
                 .build();
         return ResponseEntity.status(HttpStatus.NOT_FOUND).body(errorResponse);
     }
@@ -89,6 +91,7 @@ public class GlobalExceptionHandler {
                 .error(HttpStatus.CONFLICT.getReasonPhrase())
                 .message(ex.getMessage())
                 .path(request.getRequestURI())
+                .code(ex.getCode())
                 .build();
         return ResponseEntity.status(HttpStatus.CONFLICT).body(errorResponse);
     }
@@ -142,6 +145,23 @@ public class GlobalExceptionHandler {
                 .code(ex.getCode())
                 .build();
         return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(errorResponse);
+    }
+
+    @ExceptionHandler(SvgImportException.class)
+    public ResponseEntity<ErrorResponse> handleSvgImportException(
+            SvgImportException ex,
+            HttpServletRequest request
+    ) {
+        log.warn("SVG upload rejected at part-extraction: {}", ex.getMessage());
+        ErrorResponse errorResponse = ErrorResponse.builder()
+                .timestamp(LocalDateTime.now())
+                .status(HttpStatus.BAD_REQUEST.value())
+                .error(HttpStatus.BAD_REQUEST.getReasonPhrase())
+                .message(ex.getMessage())
+                .path(request.getRequestURI())
+                .code(ex.getKind())
+                .build();
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(errorResponse);
     }
 
     @ExceptionHandler(InvalidSvgException.class)

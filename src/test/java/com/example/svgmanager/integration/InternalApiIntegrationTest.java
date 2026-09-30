@@ -55,25 +55,7 @@ class InternalApiIntegrationTest {
     private DealerRepository dealerRepository;
 
     @Autowired
-    private CategoryRepository categoryRepository;
-
-    @Autowired
-    private CarBrandRepository carBrandRepository;
-
-    @Autowired
-    private CarModelRepository carModelRepository;
-
-    @Autowired
-    private VehicleConfigurationRepository vehicleConfigurationRepository;
-
-    @Autowired
     private SvgFileRepository svgFileRepository;
-
-    @Autowired
-    private SvgFileDealerPermissionRepository svgDealerPermissionRepository;
-
-    @Autowired
-    private SvgFileVehicleConfigurationRepository svgVehicleConfigRepository;
 
     @MockBean
     private FileStorageService fileStorageService;
@@ -92,7 +74,6 @@ class InternalApiIntegrationTest {
     private Dealer dealerC;
 
     private SvgFile sampleSvg;
-    private VehicleConfiguration vehicleConfig;
 
     @BeforeEach
     void setUp() {
@@ -174,32 +155,6 @@ class InternalApiIntegrationTest {
                 .deleted(false)
                 .build());
 
-        // 3. Create Categories & Vehicle Configuration
-        Category category = categoryRepository.save(new Category(
-                null, "Ngoại thất", "PPF Exterior", "category", null, null, 1, LocalDateTime.now()
-        ));
-
-        CarBrand brand = carBrandRepository.save(CarBrand.builder()
-                .name("BMW")
-                .code("BMW")
-                .build());
-
-        CarModel model = carModelRepository.save(CarModel.builder()
-                .name("X5")
-                .code("X5")
-                .brand(brand)
-                .build());
-
-        vehicleConfig = vehicleConfigurationRepository.save(VehicleConfiguration.builder()
-                .category(category)
-                .productGroup(ProductGroup.PPF_EXTERIOR)
-                .brand(brand)
-                .model(model)
-                .yearFrom(2022)
-                .yearTo(2024)
-                .generationCode("G05")
-                .build());
-
         // 4. Create SVG File
         sampleSvg = svgFileRepository.save(SvgFile.builder()
                 .originalFilename("BMW_X5_G05_SIDE_SKIRT.svg")
@@ -209,30 +164,11 @@ class InternalApiIntegrationTest {
                 .contentType("image/svg+xml")
                 .checksum("sha256:mock_checksum_value")
                 .uploadedBy(adminUser)
-                .category(category)
-                .vehicleConfiguration(vehicleConfig)
                 .status("ACTIVE")
                 .createdAt(LocalDateTime.now())
                 .updatedAt(LocalDateTime.now())
                 .build());
 
-        // 5. Associate SVG with Vehicle Configuration
-        SvgFileVehicleConfiguration svc = new SvgFileVehicleConfiguration(sampleSvg, vehicleConfig);
-        sampleSvg.getVehicleConfigurations().add(svc);
-        svgVehicleConfigRepository.save(svc);
-
-        // 6. Assign Permissions:
-        // Dealer A: canView = true, canDownload = true
-        SvgFileDealerPermission dpA = new SvgFileDealerPermission(sampleSvg, dealerA, true, true);
-        sampleSvg.getDealerPermissions().add(dpA);
-        svgDealerPermissionRepository.save(dpA);
-
-        // Dealer B: canView = true, canDownload = false (View Only)
-        SvgFileDealerPermission dpB = new SvgFileDealerPermission(sampleSvg, dealerB, true, false);
-        sampleSvg.getDealerPermissions().add(dpB);
-        svgDealerPermissionRepository.save(dpB);
-
-        // Dealer C: No permission assigned (implicitly no view / no download)
     }
 
     // ==========================================
@@ -347,12 +283,7 @@ class InternalApiIntegrationTest {
                 .andExpect(jsonPath("$.status", is("ACTIVE")))
                 .andExpect(jsonPath("$.permission.canView", is(true)))
                 .andExpect(jsonPath("$.permission.canDownload", is(true)))
-                .andExpect(jsonPath("$.vehicleConfigurations", hasSize(1)))
-                .andExpect(jsonPath("$.vehicleConfigurations[0].brandName", is("BMW")))
-                .andExpect(jsonPath("$.vehicleConfigurations[0].modelName", is("X5")))
-                .andExpect(jsonPath("$.vehicleConfigurations[0].yearFrom", is(2022)))
-                .andExpect(jsonPath("$.vehicleConfigurations[0].yearTo", is(2024)))
-                .andExpect(jsonPath("$.vehicleConfigurations[0].generationCode", is("G05")));
+                .andExpect(jsonPath("$.vehicles", hasSize(0)));
     }
 
     @Test
@@ -368,33 +299,23 @@ class InternalApiIntegrationTest {
     }
 
     @Test
-    @DisplayName("User in Dealer B (granted view only) can view SVG detail with canDownload=false")
-    void testGetSvgDetail_DealerB_ViewOnly() throws Exception {
-        mockMvc.perform(get("/api/internal/svg-files/" + sampleSvg.getId())
-                        .with(jwt().jwt(j -> j.subject("kc-user-dealer-b").claim("preferred_username", "user_dealer_b"))
-                                .authorities(new SimpleGrantedAuthority("ROLE_USER"))))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.id", is(sampleSvg.getId().intValue())))
-                .andExpect(jsonPath("$.permission.canView", is(true)))
-                .andExpect(jsonPath("$.permission.canDownload", is(false)));
-    }
-
-    @Test
-    @DisplayName("User in Dealer C (no permission assigned) gets 404 Not Found to prevent existence leaking")
-    void testGetSvgDetail_DealerC_NoPermission_Returns404() throws Exception {
+    @DisplayName("Q6: User ở đại lý khác vẫn xem được chi tiết (không còn quyền đại lý theo file)")
+    void testGetSvgDetail_OtherDealer_StillOk() throws Exception {
         mockMvc.perform(get("/api/internal/svg-files/" + sampleSvg.getId())
                         .with(jwt().jwt(j -> j.subject("kc-user-dealer-c").claim("preferred_username", "user_dealer_c"))
                                 .authorities(new SimpleGrantedAuthority("ROLE_USER"))))
-                .andExpect(status().isNotFound());
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.permission.canView", is(true)))
+                .andExpect(jsonPath("$.permission.canDownload", is(true)));
     }
 
     @Test
-    @DisplayName("User without Dealer gets 404 Not Found")
-    void testGetSvgDetail_UserWithoutDealer_Returns404() throws Exception {
+    @DisplayName("Q6: User không gắn đại lý vẫn xem được — chỉ còn kiểm phiên")
+    void testGetSvgDetail_UserWithoutDealer_StillOk() throws Exception {
         mockMvc.perform(get("/api/internal/svg-files/" + sampleSvg.getId())
                         .with(jwt().jwt(j -> j.subject("kc-user-no-dealer").claim("preferred_username", "user_no_dealer"))
                                 .authorities(new SimpleGrantedAuthority("ROLE_USER"))))
-                .andExpect(status().isNotFound());
+                .andExpect(status().isOk());
     }
 
     // ==========================================
@@ -432,21 +353,13 @@ class InternalApiIntegrationTest {
     }
 
     @Test
-    @DisplayName("User in Dealer B (has canView=true but canDownload=false) gets 403 Forbidden")
-    void testDownloadSvg_DealerB_Forbidden403() throws Exception {
-        mockMvc.perform(get("/api/internal/svg-files/" + sampleSvg.getId() + "/download")
-                        .with(jwt().jwt(j -> j.subject("kc-user-dealer-b").claim("preferred_username", "user_dealer_b"))
-                                .authorities(new SimpleGrantedAuthority("ROLE_USER"))))
-                .andExpect(status().isForbidden());
-    }
-
-    @Test
-    @DisplayName("User in Dealer C (no view permission) gets 404 Not Found on download")
-    void testDownloadSvg_DealerC_NoView_Returns404() throws Exception {
+    @DisplayName("Q6: User ở đại lý khác vẫn tải được file (không còn canDownload theo đại lý)")
+    void testDownloadSvg_OtherDealer_StillOk() throws Exception {
         mockMvc.perform(get("/api/internal/svg-files/" + sampleSvg.getId() + "/download")
                         .with(jwt().jwt(j -> j.subject("kc-user-dealer-c").claim("preferred_username", "user_dealer_c"))
                                 .authorities(new SimpleGrantedAuthority("ROLE_USER"))))
-                .andExpect(status().isNotFound());
+                .andExpect(status().isOk())
+                .andExpect(header().string("Content-Type", containsString("image/svg+xml")));
     }
 
     @Test

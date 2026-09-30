@@ -1,0 +1,92 @@
+package com.example.svgmanager.controller;
+
+import com.example.svgmanager.dto.response.DesignFileDto;
+import com.example.svgmanager.dto.response.DesignFileGeometryDto;
+import com.example.svgmanager.dto.response.ErrorResponse;
+import com.example.svgmanager.dto.response.PartDto;
+import com.example.svgmanager.service.DesignFileService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.media.ArraySchema;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
+import java.util.List;
+
+/**
+ * Kho file thiết kế cho app cắt — KX-32 · F-56. Đầu danh sách file (GET /api/v1/files)
+ * đi theo mô hình cây xe mới ở NGO-325/326 (SA-DanhMucXe-v2 §3.3).
+ */
+@RestController
+@SecurityRequirement(name = "bearerAuth")
+@Tag(name = "Design Files", description = "Kho file thiết kế — part và hình học theo fileKey")
+public class DesignFileController {
+
+    private final DesignFileService designFileService;
+
+    public DesignFileController(DesignFileService designFileService) {
+        this.designFileService = designFileService;
+    }
+
+    @GetMapping("/api/v1/files")
+    @PreAuthorize("hasAnyRole('ADMIN', 'AGENT', 'USER')")
+    @Operation(summary = "File thiết kế khớp bộ lọc — Danh mục + Model là đủ mở (KX-30 v2)",
+            description = "Có subtypeId → khớp subtype hoặc model cha; không → model hoặc mọi phiên bản. "
+                    + "year: model_year = year HOẶC NULL (Q3). Chỉ file ACTIVE, không lọc quyền đại lý (Q6).")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Rỗng = xe có trong danh mục nhưng chưa nạp file (KX-35)",
+                    content = @Content(array = @ArraySchema(schema = @Schema(implementation = DesignFileDto.class)))),
+            @ApiResponse(responseCode = "400", description = "Thiếu categoryId/modelId",
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+            @ApiResponse(responseCode = "401", description = "Không có phiên còn hiệu lực",
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    })
+    public ResponseEntity<List<DesignFileDto>> getFiles(
+            @RequestParam String categoryId,
+            @RequestParam String modelId,
+            @RequestParam(required = false) String subtypeId,
+            @RequestParam(required = false) Integer year) {
+        return ResponseEntity.ok(designFileService.getFiles(categoryId, modelId, subtypeId, year));
+    }
+
+    @GetMapping("/api/v1/files/{id}/parts")
+    @PreAuthorize("hasAnyRole('ADMIN', 'AGENT', 'USER')")
+    @Operation(summary = "Các part bên trong một file thiết kế (KX-32)",
+            description = "Id không tồn tại → 404 FILE_NOT_FOUND, không trả mảng rỗng — 'file không có part' và 'không có file' là hai câu khác nhau.")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Part trong file, theo thứ tự đội nội dung dựng",
+                    content = @Content(array = @ArraySchema(schema = @Schema(implementation = PartDto.class)))),
+            @ApiResponse(responseCode = "401", description = "Không có phiên còn hiệu lực",
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+            @ApiResponse(responseCode = "404", description = "Không có file này (FILE_NOT_FOUND)",
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    })
+    public ResponseEntity<List<PartDto>> getFileParts(@PathVariable("id") String fileKey) {
+        return ResponseEntity.ok(designFileService.getFileParts(fileKey));
+    }
+
+    @GetMapping("/api/v1/files/{id}/geometry")
+    @PreAuthorize("hasAnyRole('ADMIN', 'AGENT', 'USER')")
+    @Operation(summary = "Hình học của cả file — thứ 'Mở trong Design Center' tải về (F-56)",
+            description = "MỘT lượt tải cho MỘT tab (KX-43 · DS-08c). Hình học hiển thị — lệnh cắt KHÔNG sinh từ chuỗi này (RB-07). JSON thường, không Content-Disposition (RB-01).")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Biên dạng của mọi part trong file",
+                    content = @Content(schema = @Schema(implementation = DesignFileGeometryDto.class))),
+            @ApiResponse(responseCode = "401", description = "Không có phiên còn hiệu lực",
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+            @ApiResponse(responseCode = "404", description = "Không có file này (FILE_NOT_FOUND)",
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    })
+    public ResponseEntity<DesignFileGeometryDto> getFileGeometry(@PathVariable("id") String fileKey) {
+        return ResponseEntity.ok(designFileService.getFileGeometry(fileKey));
+    }
+}

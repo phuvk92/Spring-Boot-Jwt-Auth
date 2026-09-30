@@ -2,17 +2,13 @@ package com.example.svgmanager.service.impl;
 
 import com.example.svgmanager.dto.internal.InternalSvgDetailResponse;
 import com.example.svgmanager.dto.internal.InternalSvgPermissionResponse;
-import com.example.svgmanager.dto.internal.InternalVehicleConfigurationResponse;
 import com.example.svgmanager.entity.SvgFile;
-import com.example.svgmanager.entity.SvgFileDealerPermission;
-import com.example.svgmanager.entity.SvgFileVehicleConfiguration;
+import com.example.svgmanager.entity.SvgFileVehicleNode;
 import com.example.svgmanager.entity.User;
-import com.example.svgmanager.entity.VehicleConfiguration;
-import com.example.svgmanager.exception.ForbiddenException;
+import com.example.svgmanager.entity.VehicleNode;
 import com.example.svgmanager.exception.ResourceNotFoundException;
-import com.example.svgmanager.repository.SvgFileDealerPermissionRepository;
 import com.example.svgmanager.repository.SvgFileRepository;
-import com.example.svgmanager.repository.SvgFileVehicleConfigurationRepository;
+import com.example.svgmanager.repository.SvgFileVehicleNodeRepository;
 import com.example.svgmanager.security.CurrentUserService;
 import com.example.svgmanager.service.AuditLogService;
 import com.example.svgmanager.service.FileStorageService;
@@ -31,29 +27,31 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * Data Center v2 (chốt 29/09, Q6): bỏ phân quyền đại lý theo file — phiên hợp lệ
+ * là xem/tải được mọi file còn hiệu lực. Chỉ còn kiểm phiên (thiết bị kiểm ở
+ * DeviceSessionFilter, ngoài service này).
+ */
 @Service
 public class InternalSvgServiceImpl implements InternalSvgService {
 
     private static final Logger log = LoggerFactory.getLogger(InternalSvgServiceImpl.class);
 
     private final SvgFileRepository svgFileRepository;
-    private final SvgFileDealerPermissionRepository dealerPermissionRepository;
-    private final SvgFileVehicleConfigurationRepository vehicleConfigRepository;
+    private final SvgFileVehicleNodeRepository vehicleNodeLinkRepository;
     private final FileStorageService fileStorageService;
     private final CurrentUserService currentUserService;
     private final AuditLogService auditLogService;
 
     public InternalSvgServiceImpl(
             SvgFileRepository svgFileRepository,
-            SvgFileDealerPermissionRepository dealerPermissionRepository,
-            SvgFileVehicleConfigurationRepository vehicleConfigRepository,
+            SvgFileVehicleNodeRepository vehicleNodeLinkRepository,
             FileStorageService fileStorageService,
             CurrentUserService currentUserService,
             AuditLogService auditLogService
     ) {
         this.svgFileRepository = svgFileRepository;
-        this.dealerPermissionRepository = dealerPermissionRepository;
-        this.vehicleConfigRepository = vehicleConfigRepository;
+        this.vehicleNodeLinkRepository = vehicleNodeLinkRepository;
         this.fileStorageService = fileStorageService;
         this.currentUserService = currentUserService;
         this.auditLogService = auditLogService;
@@ -68,42 +66,11 @@ public class InternalSvgServiceImpl implements InternalSvgService {
     @Override
     @Transactional(readOnly = true)
     public InternalSvgDetailResponse getSvgDetail(Long svgFileId, String device, String ipAddress) {
-        SvgFile svgFile = findAuthorizedSvg(svgFileId, false);
+        SvgFile svgFile = findAuthorizedSvg(svgFileId);
 
-        boolean canView = true;
-        boolean canDownload = true;
-
-        if (!currentUserService.isAdmin()) {
-            User user = currentUserService.getCurrentUser();
-            Long dealerId = user.getDealer() != null ? user.getDealer().getId() : null;
-            if (dealerId == null) {
-                throw new ResourceNotFoundException("SVG file not found with id: " + svgFileId);
-            }
-            SvgFileDealerPermission permission = dealerPermissionRepository
-                    .findBySvgFileIdAndDealerId(svgFileId, dealerId)
-                    .orElseThrow(() -> new ResourceNotFoundException("SVG file not found with id: " + svgFileId));
-
-            canView = permission.isCanView();
-            canDownload = permission.isCanDownload();
-        }
-
-        // Map assigned vehicle configurations
-        List<SvgFileVehicleConfiguration> assignments = vehicleConfigRepository.findBySvgFileId(svgFileId);
-        List<InternalVehicleConfigurationResponse> configs = new ArrayList<>();
-        for (SvgFileVehicleConfiguration assignment : assignments) {
-            VehicleConfiguration vc = assignment.getVehicleConfiguration();
-            if (vc != null && !vc.isDeleted()) {
-                configs.add(new InternalVehicleConfigurationResponse(
-                        vc.getId(),
-                        vc.getProductGroup() != null ? vc.getProductGroup().name() : null,
-                        vc.getProductGroup() != null ? vc.getProductGroup().getDisplayName() : null,
-                        vc.getBrand() != null ? vc.getBrand().getName() : null,
-                        vc.getModel() != null ? vc.getModel().getName() : null,
-                        vc.getYearFrom(),
-                        vc.getYearTo(),
-                        vc.getGenerationCode()
-                ));
-            }
+        List<String> vehicles = new ArrayList<>();
+        for (SvgFileVehicleNode link : vehicleNodeLinkRepository.findBySvgFileId(svgFileId)) {
+            vehicles.add(nodePath(link.getVehicleNode()));
         }
 
         LocalDateTime updatedAt = svgFile.getUpdatedAt() != null ? svgFile.getUpdatedAt() : svgFile.getCreatedAt();
@@ -129,8 +96,8 @@ public class InternalSvgServiceImpl implements InternalSvgService {
                 svgFile.getContentType() != null ? svgFile.getContentType() : "image/svg+xml",
                 svgFile.getChecksum(),
                 svgFile.getStatus() != null ? svgFile.getStatus() : "ACTIVE",
-                configs,
-                new InternalSvgPermissionResponse(canView, canDownload),
+                vehicles,
+                new InternalSvgPermissionResponse(true, true),
                 formattedDate
         );
     }
@@ -144,7 +111,7 @@ public class InternalSvgServiceImpl implements InternalSvgService {
     @Override
     @Transactional(readOnly = true)
     public Resource downloadSvg(Long svgFileId, String device, String ipAddress) {
-        SvgFile svgFile = findAuthorizedSvg(svgFileId, true);
+        SvgFile svgFile = findAuthorizedSvg(svgFileId);
 
         Resource resource = fileStorageService.loadFileAsResource(svgFile.getFilePath());
         if (resource == null || !resource.exists() || !resource.isReadable()) {
@@ -172,10 +139,10 @@ public class InternalSvgServiceImpl implements InternalSvgService {
     @Override
     @Transactional(readOnly = true)
     public String getOriginalFilename(Long svgFileId) {
-        return findAuthorizedSvg(svgFileId, false).getOriginalFilename();
+        return findAuthorizedSvg(svgFileId).getOriginalFilename();
     }
 
-    private SvgFile findAuthorizedSvg(Long svgFileId, boolean checkDownload) {
+    private SvgFile findAuthorizedSvg(Long svgFileId) {
         SvgFile svgFile = svgFileRepository.findById(svgFileId)
                 .orElseThrow(() -> new ResourceNotFoundException("SVG file not found with id: " + svgFileId));
 
@@ -183,33 +150,16 @@ public class InternalSvgServiceImpl implements InternalSvgService {
             throw new ResourceNotFoundException("SVG file not found with id: " + svgFileId);
         }
 
-        if (currentUserService.isAdmin()) {
-            return svgFile;
-        }
-
-        User user = currentUserService.getCurrentUser();
-        Long dealerId = user.getDealer() != null ? user.getDealer().getId() : null;
-
-        if (dealerId == null) {
-            log.warn("[INTERNAL_SVG_ACCESS_DENIED] User '{}' has no dealer assigned; rejecting SVG ID {}", user.getUsername(), svgFileId);
-            throw new ResourceNotFoundException("SVG file not found with id: " + svgFileId);
-        }
-
-        SvgFileDealerPermission permission = dealerPermissionRepository
-                .findBySvgFileIdAndDealerId(svgFileId, dealerId)
-                .orElse(null);
-
-        if (permission == null || !permission.isCanView()) {
-            log.warn("[INTERNAL_SVG_ACCESS_DENIED] Dealer {} has no VIEW permission for SVG ID {}", dealerId, svgFileId);
-            throw new ResourceNotFoundException("SVG file not found with id: " + svgFileId);
-        }
-
-        if (checkDownload && !permission.isCanDownload()) {
-            log.warn("[INTERNAL_SVG_DOWNLOAD_FORBIDDEN] Dealer {} lacks DOWNLOAD permission for SVG ID {}", dealerId, svgFileId);
-            throw new ForbiddenException("You do not have permission to download this file");
-        }
-
         return svgFile;
+    }
+
+    /** "Toyota › Camry › Camry 2.5Q" — đi ngược lên gốc rồi ghép xuôi. */
+    private String nodePath(VehicleNode node) {
+        List<String> names = new ArrayList<>();
+        for (VehicleNode n = node; n != null; n = n.getParent()) {
+            names.add(0, n.getName());
+        }
+        return String.join(" › ", names);
     }
 
     private String formatClientInfo(String device, String ipAddress) {

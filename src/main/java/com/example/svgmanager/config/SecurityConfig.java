@@ -113,10 +113,13 @@ public class SecurityConfig {
                         ).permitAll()
                         // Actuator health endpoint
                         .requestMatchers("/actuator/health", "/actuator/info").permitAll()
-                        // Category endpoints - Read for authenticated users, mutation for ADMIN only
-                        .requestMatchers(HttpMethod.GET, "/api/categories/**").hasAnyRole("ADMIN", "AGENT", "USER")
-                        .requestMatchers("/api/categories/**").hasRole("ADMIN")
-                        .requestMatchers("/api/v1/catalog/**").hasAnyRole("ADMIN", "AGENT", "USER")
+                        // Cây xe 4 cấp (Data Center v2) — toàn bộ API quản trị chỉ cho ADMIN
+                        .requestMatchers("/api/vehicle-nodes/**").hasRole("ADMIN")
+                        // Kho part file (Data Center v2) — toàn bộ chỉ ADMIN
+                        .requestMatchers("/api/admin/files/**").hasRole("ADMIN")
+                        // Thương hiệu đại lý (NGO-165)
+                        .requestMatchers("/api/v1/branding").hasAnyRole("ADMIN", "AGENT", "USER")
+                        .requestMatchers("/api/v1/profile").hasAnyRole("ADMIN", "AGENT", "USER")
                         // User management endpoints (ADMIN and AGENT)
                         .requestMatchers("/api/users/**").hasAnyRole("ADMIN", "AGENT")
                         // SVG endpoints

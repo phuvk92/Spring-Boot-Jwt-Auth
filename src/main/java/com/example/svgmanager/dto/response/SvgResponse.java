@@ -3,8 +3,6 @@ package com.example.svgmanager.dto.response;
 import io.swagger.v3.oas.annotations.media.Schema;
 
 import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.List;
 
 @Schema(description = "SVG file metadata response")
 public class SvgResponse {
@@ -30,17 +28,14 @@ public class SvgResponse {
     @Schema(description = "Status of SVG file", example = "ACTIVE")
     private String status;
 
-    @Schema(description = "Assigned Category metadata")
-    private CategorySummaryResponse category;
+    @Schema(description = "File category name (Ngoại thất, Window film…)", example = "Ngoại thất")
+    private String fileCategory;
 
-    @Schema(description = "Assigned Vehicle Configurations")
-    private List<VehicleConfigurationResponse> vehicleConfigurations = new ArrayList<>();
+    @Schema(description = "Năm xe áp dụng; null = mọi năm", example = "2024")
+    private Integer modelYear;
 
-    @Schema(description = "Number of dealers with active view permissions", example = "3")
-    private int dealerPermissionCount;
-
-    @Schema(description = "Detailed dealer permissions (ADMIN only)")
-    private List<SvgFileDealerPermissionResponse> dealerPermissions;
+    @Schema(description = "Nguồn file: SYSTEM | DEALER", example = "SYSTEM")
+    private String source;
 
     @Schema(description = "Whether current user is authorized to download this file", example = "true")
     private Boolean canDownload;
@@ -63,143 +58,32 @@ public class SvgResponse {
     public SvgResponse() {
     }
 
-    public SvgResponse(Long id, String originalFilename, String storedFilename, Long fileSize,
-                       String contentType, String checksum, String status, CategorySummaryResponse category,
-                       List<VehicleConfigurationResponse> vehicleConfigurations, int dealerPermissionCount,
-                       List<SvgFileDealerPermissionResponse> dealerPermissions, Boolean canDownload,
-                       Boolean canView, UserSummaryResponse uploadedBy, Long agentId,
-                       LocalDateTime createdAt, LocalDateTime updatedAt) {
-        this.id = id;
-        this.originalFilename = originalFilename;
-        this.storedFilename = storedFilename;
-        this.fileSize = fileSize;
-        this.contentType = contentType;
-        this.checksum = checksum;
-        this.status = status;
-        this.category = category;
-        this.vehicleConfigurations = vehicleConfigurations != null ? vehicleConfigurations : new ArrayList<>();
-        this.dealerPermissionCount = dealerPermissionCount;
-        this.dealerPermissions = dealerPermissions;
-        this.canDownload = canDownload;
-        this.canView = canView;
-        this.uploadedBy = uploadedBy;
-        this.agentId = agentId;
-        this.createdAt = createdAt;
-        this.updatedAt = updatedAt;
-    }
-
     public static Builder builder() {
         return new Builder();
     }
 
     public static class Builder {
-        private Long id;
-        private String originalFilename;
-        private String storedFilename;
-        private Long fileSize;
-        private String contentType;
-        private String checksum;
-        private String status;
-        private CategorySummaryResponse category;
-        private List<VehicleConfigurationResponse> vehicleConfigurations = new ArrayList<>();
-        private int dealerPermissionCount;
-        private List<SvgFileDealerPermissionResponse> dealerPermissions;
-        private Boolean canDownload;
-        private Boolean canView;
-        private UserSummaryResponse uploadedBy;
-        private Long agentId;
-        private LocalDateTime createdAt;
-        private LocalDateTime updatedAt;
+        private final SvgResponse r = new SvgResponse();
 
-        public Builder id(Long id) {
-            this.id = id;
-            return this;
-        }
-
-        public Builder originalFilename(String originalFilename) {
-            this.originalFilename = originalFilename;
-            return this;
-        }
-
-        public Builder storedFilename(String storedFilename) {
-            this.storedFilename = storedFilename;
-            return this;
-        }
-
-        public Builder fileSize(Long fileSize) {
-            this.fileSize = fileSize;
-            return this;
-        }
-
-        public Builder contentType(String contentType) {
-            this.contentType = contentType;
-            return this;
-        }
-
-        public Builder checksum(String checksum) {
-            this.checksum = checksum;
-            return this;
-        }
-
-        public Builder status(String status) {
-            this.status = status;
-            return this;
-        }
-
-        public Builder category(CategorySummaryResponse category) {
-            this.category = category;
-            return this;
-        }
-
-        public Builder vehicleConfigurations(List<VehicleConfigurationResponse> vehicleConfigurations) {
-            this.vehicleConfigurations = vehicleConfigurations;
-            return this;
-        }
-
-        public Builder dealerPermissionCount(int dealerPermissionCount) {
-            this.dealerPermissionCount = dealerPermissionCount;
-            return this;
-        }
-
-        public Builder dealerPermissions(List<SvgFileDealerPermissionResponse> dealerPermissions) {
-            this.dealerPermissions = dealerPermissions;
-            return this;
-        }
-
-        public Builder canDownload(Boolean canDownload) {
-            this.canDownload = canDownload;
-            return this;
-        }
-
-        public Builder canView(Boolean canView) {
-            this.canView = canView;
-            return this;
-        }
-
-        public Builder uploadedBy(UserSummaryResponse uploadedBy) {
-            this.uploadedBy = uploadedBy;
-            return this;
-        }
-
-        public Builder agentId(Long agentId) {
-            this.agentId = agentId;
-            return this;
-        }
-
-        public Builder createdAt(LocalDateTime createdAt) {
-            this.createdAt = createdAt;
-            return this;
-        }
-
-        public Builder updatedAt(LocalDateTime updatedAt) {
-            this.updatedAt = updatedAt;
-            return this;
-        }
+        public Builder id(Long v) { r.id = v; return this; }
+        public Builder originalFilename(String v) { r.originalFilename = v; return this; }
+        public Builder storedFilename(String v) { r.storedFilename = v; return this; }
+        public Builder fileSize(Long v) { r.fileSize = v; return this; }
+        public Builder contentType(String v) { r.contentType = v; return this; }
+        public Builder checksum(String v) { r.checksum = v; return this; }
+        public Builder status(String v) { r.status = v; return this; }
+        public Builder fileCategory(String v) { r.fileCategory = v; return this; }
+        public Builder modelYear(Integer v) { r.modelYear = v; return this; }
+        public Builder source(String v) { r.source = v; return this; }
+        public Builder canDownload(Boolean v) { r.canDownload = v; return this; }
+        public Builder canView(Boolean v) { r.canView = v; return this; }
+        public Builder uploadedBy(UserSummaryResponse v) { r.uploadedBy = v; return this; }
+        public Builder agentId(Long v) { r.agentId = v; return this; }
+        public Builder createdAt(LocalDateTime v) { r.createdAt = v; return this; }
+        public Builder updatedAt(LocalDateTime v) { r.updatedAt = v; return this; }
 
         public SvgResponse build() {
-            return new SvgResponse(id, originalFilename, storedFilename, fileSize, contentType, checksum, status,
-                    category, vehicleConfigurations, dealerPermissionCount, dealerPermissions, canDownload, canView,
-                    uploadedBy, agentId, createdAt, updatedAt);
+            return r;
         }
     }
 
@@ -259,36 +143,28 @@ public class SvgResponse {
         this.status = status;
     }
 
-    public CategorySummaryResponse getCategory() {
-        return category;
+    public String getFileCategory() {
+        return fileCategory;
     }
 
-    public void setCategory(CategorySummaryResponse category) {
-        this.category = category;
+    public void setFileCategory(String fileCategory) {
+        this.fileCategory = fileCategory;
     }
 
-    public List<VehicleConfigurationResponse> getVehicleConfigurations() {
-        return vehicleConfigurations;
+    public Integer getModelYear() {
+        return modelYear;
     }
 
-    public void setVehicleConfigurations(List<VehicleConfigurationResponse> vehicleConfigurations) {
-        this.vehicleConfigurations = vehicleConfigurations;
+    public void setModelYear(Integer modelYear) {
+        this.modelYear = modelYear;
     }
 
-    public int getDealerPermissionCount() {
-        return dealerPermissionCount;
+    public String getSource() {
+        return source;
     }
 
-    public void setDealerPermissionCount(int dealerPermissionCount) {
-        this.dealerPermissionCount = dealerPermissionCount;
-    }
-
-    public List<SvgFileDealerPermissionResponse> getDealerPermissions() {
-        return dealerPermissions;
-    }
-
-    public void setDealerPermissions(List<SvgFileDealerPermissionResponse> dealerPermissions) {
-        this.dealerPermissions = dealerPermissions;
+    public void setSource(String source) {
+        this.source = source;
     }
 
     public Boolean getCanDownload() {

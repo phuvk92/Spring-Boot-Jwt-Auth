@@ -1,21 +1,15 @@
 package com.example.svgmanager.integration;
 
-import com.example.svgmanager.dto.request.CreateCategoryRequest;
-import com.example.svgmanager.dto.request.UpdateCategoryRequest;
 import com.example.svgmanager.dto.request.CreateUserRequest;
 import com.example.svgmanager.dto.request.UpdateUserRequest;
 import com.example.svgmanager.dto.request.UpdateUserRoleRequest;
 import com.example.svgmanager.dto.request.UpdateUserStatusRequest;
-import com.example.svgmanager.entity.Category;
 import com.example.svgmanager.entity.Role;
 import com.example.svgmanager.entity.SvgFile;
 import com.example.svgmanager.entity.User;
-import com.example.svgmanager.repository.CategoryRepository;
 import com.example.svgmanager.repository.SvgFileRepository;
 import com.example.svgmanager.entity.Dealer;
-import com.example.svgmanager.entity.SvgFileDealerPermission;
 import com.example.svgmanager.repository.DealerRepository;
-import com.example.svgmanager.repository.SvgFileDealerPermissionRepository;
 import com.example.svgmanager.repository.UserRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.persistence.EntityManager;
@@ -58,13 +52,7 @@ class AgentDataScopeIntegrationTest {
     private SvgFileRepository svgFileRepository;
 
     @Autowired
-    private CategoryRepository categoryRepository;
-
-    @Autowired
     private DealerRepository dealerRepository;
-
-    @Autowired
-    private SvgFileDealerPermissionRepository svgFileDealerPermissionRepository;
 
     @Autowired
     private ObjectMapper objectMapper;
@@ -81,12 +69,6 @@ class AgentDataScopeIntegrationTest {
     private SvgFile svgA;
     private SvgFile svgB;
 
-    private Category categoryRoot;
-    private Category brandAbarth;
-    private Category model124;
-    private Category variantBase;
-    private Category year2020;
-    private Category submodelHatchback;
     private SvgFile svgAdmin;
 
     private SecurityMockMvcRequestPostProcessors.JwtRequestPostProcessor jwtAdmin() {
@@ -138,18 +120,9 @@ class AgentDataScopeIntegrationTest {
     void setUp() {
         // Clean all existing data to prevent isolation failures
         svgFileRepository.deleteAll();
-        categoryRepository.deleteAll();
         userRepository.deleteAll();
         entityManager.flush();
         entityManager.clear();
-
-        // 1. Setup 6-level category tree
-        categoryRoot = categoryRepository.save(new Category("Vehicles", "Phương tiện giao thông", "category", null, 1));
-        brandAbarth = categoryRepository.save(new Category("Abarth", "Abarth", "brand", categoryRoot, 1));
-        model124 = categoryRepository.save(new Category("124", "124", "model", brandAbarth, 1));
-        variantBase = categoryRepository.save(new Category("Base", "Base", "variant", model124, 1));
-        year2020 = categoryRepository.save(new Category("2020", "2020", "year", variantBase, 1));
-        submodelHatchback = categoryRepository.save(new Category("Hatchback", "Hatchback", "submodel", year2020, 1));
 
         // 2. Setup users
         admin = userRepository.save(User.builder()
@@ -218,7 +191,6 @@ class AgentDataScopeIntegrationTest {
                 .contentType("image/svg+xml")
                 .uploadedBy(agentA)
                 .agent(agentA)
-                .category(submodelHatchback)
                 .build());
 
         svgB = svgFileRepository.save(SvgFile.builder()
@@ -229,7 +201,6 @@ class AgentDataScopeIntegrationTest {
                 .contentType("image/svg+xml")
                 .uploadedBy(userB)
                 .agent(agentB)
-                .category(submodelHatchback)
                 .build());
 
         svgAdmin = svgFileRepository.save(SvgFile.builder()
@@ -240,7 +211,6 @@ class AgentDataScopeIntegrationTest {
                 .contentType("image/svg+xml")
                 .uploadedBy(admin)
                 .agent(null)
-                .category(submodelHatchback)
                 .build());
 
         entityManager.flush();
@@ -300,7 +270,6 @@ class AgentDataScopeIntegrationTest {
 
         mockMvc.perform(multipart("/api/svg")
                         .file(file)
-                        .param("categoryId", String.valueOf(submodelHatchback.getId()))
                         .with(jwtAgentA()))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.agentId").value(agentA.getId()))
@@ -410,154 +379,10 @@ class AgentDataScopeIntegrationTest {
     }
 
     @Test
-    @DisplayName("Case 17: User cannot upload SVG without mandatory categoryId -> 400 Bad Request")
-    void uploadSvg_WithoutCategoryId_Fails400() throws Exception {
-        MockMultipartFile file = new MockMultipartFile(
-                "file", "car.svg", "image/svg+xml",
-                "<svg><circle cx=\"50\" cy=\"50\" r=\"40\"/></svg>".getBytes()
-        );
-
-        mockMvc.perform(multipart("/api/svg")
-                        .file(file)
-                        .with(jwtAgentA()))
-                .andExpect(status().isBadRequest());
-    }
-
-    @Test
     @DisplayName("Case 18: Unauthenticated request to /api/svg is rejected with 401")
     void unauthenticatedAccess_Returns401() throws Exception {
         mockMvc.perform(get("/api/svg"))
                 .andExpect(status().isUnauthorized());
-    }
-
-    // ==========================================
-    // SECTION 51: CATEGORY SECURITY & FUNCTIONAL TESTS
-    // ==========================================
-
-    @Test
-    @DisplayName("Case 19: Unauthenticated request to /api/categories -> 401 Unauthorized")
-    void unauthenticated_CategoryList_Returns401() throws Exception {
-        mockMvc.perform(get("/api/categories"))
-                .andExpect(status().isUnauthorized());
-    }
-
-    @Test
-    @DisplayName("Case 20: AGENT cannot create Category -> 403 Forbidden")
-    void agent_CannotCreateCategory_Returns403() throws Exception {
-        CreateCategoryRequest req = new CreateCategoryRequest("IllegalBrand", "Illegal Brand", categoryRoot.getId(), 1);
-        mockMvc.perform(post("/api/categories")
-                .with(jwtAgentA())
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(req)))
-                .andExpect(status().isForbidden());
-    }
-
-    @Test
-    @DisplayName("Case 21: AGENT cannot update Category -> 403 Forbidden")
-    void agent_CannotUpdateCategory_Returns403() throws Exception {
-        UpdateCategoryRequest req = new UpdateCategoryRequest("HackedLabel", "Hacked Label", null, 1);
-        mockMvc.perform(put("/api/categories/" + categoryRoot.getId())
-                .with(jwtAgentA())
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(req)))
-                .andExpect(status().isForbidden());
-    }
-
-    @Test
-    @DisplayName("Case 22: AGENT cannot delete Category -> 403 Forbidden")
-    void agent_CannotDeleteCategory_Returns403() throws Exception {
-        mockMvc.perform(delete("/api/categories/" + categoryRoot.getId())
-                .with(jwtAgentA()))
-                .andExpect(status().isForbidden());
-    }
-
-    @Test
-    @DisplayName("Case 23: USER cannot mutate Category -> 403 Forbidden")
-    void user_CannotMutateCategory_Returns403() throws Exception {
-        CreateCategoryRequest req = new CreateCategoryRequest("UserBrand", "User Brand", categoryRoot.getId(), 1);
-        mockMvc.perform(post("/api/categories")
-                .with(jwtUserA())
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(req)))
-                .andExpect(status().isForbidden());
-
-        mockMvc.perform(delete("/api/categories/" + categoryRoot.getId())
-                .with(jwtUserA()))
-                .andExpect(status().isForbidden());
-    }
-
-    @Test
-    @DisplayName("Case 24: ADMIN can create Category -> auto computes level")
-    void admin_CanCreateCategory_AutoComputesLevel() throws Exception {
-        // Root category -> level 'category'
-        CreateCategoryRequest rootReq = new CreateCategoryRequest("Maintenance", "Bảo dưỡng", null, 2);
-        mockMvc.perform(post("/api/categories")
-                .with(jwtAdmin())
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(rootReq)))
-                .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.value").value("Maintenance"))
-                .andExpect(jsonPath("$.level").value("category"))
-                .andExpect(jsonPath("$.parentId").isEmpty());
-
-        // Child of brand -> level 'model'
-        CreateCategoryRequest modelReq = new CreateCategoryRequest("124 Spider", "124 Spider", brandAbarth.getId(), 2);
-        mockMvc.perform(post("/api/categories")
-                .with(jwtAdmin())
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(modelReq)))
-                .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.value").value("124 Spider"))
-                .andExpect(jsonPath("$.level").value("model"))
-                .andExpect(jsonPath("$.parentId").value(brandAbarth.getId()));
-    }
-
-    @Test
-    @DisplayName("Case 25: Circular hierarchy detection on PUT -> 400 Bad Request")
-    void updateCategory_CircularHierarchy_Returns400() throws Exception {
-        // Attempt to make categoryRoot have submodelHatchback as parent
-        UpdateCategoryRequest circularReq = new UpdateCategoryRequest("Vehicles", "Vehicles", submodelHatchback.getId(), 1);
-        mockMvc.perform(put("/api/categories/" + categoryRoot.getId())
-                .with(jwtAdmin())
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(circularReq)))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("Circular hierarchy detected")));
-    }
-
-    @Test
-    @DisplayName("Case 26: ADMIN cannot delete category that has children -> 409 Conflict (CATEGORY_HAS_CHILDREN)")
-    void admin_CannotDeleteCategory_WithChildren_Returns409() throws Exception {
-        mockMvc.perform(delete("/api/categories/" + categoryRoot.getId())
-                .with(jwtAdmin()))
-                .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("CATEGORY_HAS_CHILDREN")));
-    }
-
-    @Test
-    @DisplayName("Case 27: ADMIN cannot delete category in use by SVG -> 409 Conflict (CATEGORY_IN_USE)")
-    void admin_CannotDeleteCategory_InUseBySvg_Returns409() throws Exception {
-        mockMvc.perform(delete("/api/categories/" + submodelHatchback.getId())
-                .with(jwtAdmin()))
-                .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("CATEGORY_IN_USE")));
-    }
-
-    @Test
-    @DisplayName("Case 28: ADMIN can delete leaf unused category -> 204 No Content")
-    void admin_CanDeleteUnusedLeafCategory_Returns204() throws Exception {
-        CreateCategoryRequest leafReq = new CreateCategoryRequest("TempModel", "Temp Model", brandAbarth.getId(), 99);
-        String resp = mockMvc.perform(post("/api/categories")
-                .with(jwtAdmin())
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(leafReq)))
-                .andExpect(status().isCreated())
-                .andReturn().getResponse().getContentAsString();
-        Long leafId = objectMapper.readTree(resp).get("id").asLong();
-
-        mockMvc.perform(delete("/api/categories/" + leafId)
-                .with(jwtAdmin()))
-                .andExpect(status().isNoContent());
     }
 
     // ==========================================
@@ -737,38 +562,6 @@ class AgentDataScopeIntegrationTest {
                 .andExpect(jsonPath("$.email").value("tech_cutter@alpha.com"))
                 .andExpect(jsonPath("$.dealerId").value(dealerA.getId()))
                 .andExpect(jsonPath("$.dealerName").value("Alpha Auto Film"));
-    }
-
-    @Test
-    @DisplayName("Case 37: Agent can see SVG files permitted to agent's dealer by Admin -> 200 OK")
-    void agent_CanSeeSvgFilesPermittedToDealer() throws Exception {
-        Dealer dealerA = dealerRepository.save(Dealer.builder()
-                .code("DEALER_AGENT_A2")
-                .name("Alpha Auto Film 2")
-                .status("ACTIVE")
-                .build());
-        agentA.setDealer(dealerA);
-        userRepository.save(agentA);
-
-        SvgFile adminSvg = svgFileRepository.save(SvgFile.builder()
-                .originalFilename("dealer_assigned_pattern.svg")
-                .storedFilename("dealer_assigned_pattern_stored.svg")
-                .filePath("/tmp/dealer_assigned_pattern.svg")
-                .fileSize(2048L)
-                .contentType("image/svg+xml")
-                .category(submodelHatchback)
-                .uploadedBy(admin)
-                .agent(admin)
-                .build());
-
-        svgFileDealerPermissionRepository.save(new SvgFileDealerPermission(adminSvg, dealerA, true, false));
-        entityManager.flush();
-        entityManager.clear();
-
-        mockMvc.perform(get("/api/svg").with(jwtAgentA()))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.content[?(@.originalFilename == 'dealer_assigned_pattern.svg')]").isNotEmpty())
-                .andExpect(jsonPath("$.content[?(@.originalFilename == 'dealer_assigned_pattern.svg')].canView").value(true));
     }
 
     @Test

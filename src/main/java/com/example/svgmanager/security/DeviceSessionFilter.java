@@ -33,6 +33,15 @@ public class DeviceSessionFilter extends OncePerRequestFilter {
 
     private static final String INTERNAL_PREFIX = "/api/internal/";
 
+    /**
+     * Endpoint app-cắt ngoài {@code /api/internal/**} cũng phải gắn phiên máy ACTIVE —
+     * máy bị gỡ → 401 SESSION_REVOKED như phần còn lại (AC của NGO-165).
+     * Liệt kê tường minh thay vì cả prefix /api/v1/ vì catalog/files vẫn phục vụ portal web.
+     */
+    private static final Set<String> EXTRA_ENFORCED_PATHS = Set.of(
+            "/api/v1/branding"
+    );
+
     /** Đường tự xử lý thiết bị trong service (đăng nhập, làm mới, đăng xuất) — không cần phiên sẵn có. */
     private static final Set<String> EXEMPT = Set.of(
             "/api/internal/auth/login",
@@ -53,7 +62,7 @@ public class DeviceSessionFilter extends OncePerRequestFilter {
     protected boolean shouldNotFilter(HttpServletRequest request) {
         String path = request.getRequestURI().substring(request.getContextPath().length());
         return !userDeviceService.isEnforced()
-                || !path.startsWith(INTERNAL_PREFIX)
+                || !(path.startsWith(INTERNAL_PREFIX) || EXTRA_ENFORCED_PATHS.contains(path))
                 || EXEMPT.contains(path);
     }
 
