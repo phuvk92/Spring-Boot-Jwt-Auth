@@ -24,6 +24,8 @@ public final class ErrorCodes {
     public static final String UNSUPPORTED_FORMAT = "UNSUPPORTED_FORMAT";
     /** SVG không khai đơn vị (width/height + viewBox) — server không hỏi lại được thợ (DS-108). */
     public static final String SVG_UNITS_MISSING = "SVG_UNITS_MISSING";
+    /** GET /api/v1/designs/{id}/versions với id không tồn tại hoặc không phải bản của user — khác với mảng rỗng. */
+    public static final String DESIGN_NOT_FOUND = "DESIGN_NOT_FOUND";
 
     private ErrorCodes() {
     }
