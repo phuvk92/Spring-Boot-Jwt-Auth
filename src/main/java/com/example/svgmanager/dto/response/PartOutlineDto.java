@@ -12,12 +12,15 @@ import io.swagger.v3.oas.annotations.media.Schema;
 @Schema(description = "PartOutline matching 09-files-id-geometry.json contract")
 public class PartOutlineDto {
 
-    @Schema(description = "Id đầy đủ của part: <fileId>--<partKey>, giữ dấu tiếng Việt",
-            example = "abarth-695-695-2024-hatchback-3-cửa--full-body--đèn-trái")
+    @Schema(description = "Id đầy đủ của part: <fileId>--<layout>--<partKey>, giữ dấu tiếng Việt",
+            example = "abarth-695-695-2024-hatchback-3-cửa--full-body--nested--đèn-trái")
     private String partId;
 
     @Schema(example = "Đèn trái")
     private String name;
+
+    @Schema(description = "Bố cục part: nested (đã xếp) hoặc raw (chưa xếp) — SA-DanhMucXe-v2 §8", example = "nested")
+    private String layout;
 
     @Schema(description = "Đường dẫn SVG, gốc ở góc trên-trái hộp bao của part")
     private String pathData;
@@ -46,8 +49,15 @@ public class PartOutlineDto {
     public PartOutlineDto(String partId, String name, String pathData, Double widthMm,
                           Double heightMm, Double xMm, Double yMm,
                           Integer nodeCount, Integer holeCount) {
+        this(partId, name, "nested", pathData, widthMm, heightMm, xMm, yMm, nodeCount, holeCount);
+    }
+
+    public PartOutlineDto(String partId, String name, String layout, String pathData, Double widthMm,
+                          Double heightMm, Double xMm, Double yMm,
+                          Integer nodeCount, Integer holeCount) {
         this.partId = partId;
         this.name = name;
+        this.layout = layout;
         this.pathData = pathData;
         this.widthMm = widthMm;
         this.heightMm = heightMm;
@@ -71,6 +81,14 @@ public class PartOutlineDto {
 
     public void setName(String name) {
         this.name = name;
+    }
+
+    public String getLayout() {
+        return layout;
+    }
+
+    public void setLayout(String layout) {
+        this.layout = layout;
     }
 
     public String getPathData() {

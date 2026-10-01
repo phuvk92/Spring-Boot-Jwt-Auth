@@ -28,6 +28,10 @@ public final class ErrorCodes {
     public static final String SVG_UNITS_MISSING = "SVG_UNITS_MISSING";
     /** GET /api/v1/designs/{id}/versions với id không tồn tại hoặc không phải bản của user — khác với mảng rỗng. */
     public static final String DESIGN_NOT_FOUND = "DESIGN_NOT_FOUND";
+    /** Upload/sửa part file thiếu cả hai bản nested và raw (SA-DanhMucXe-v2 §8). */
+    public static final String FILE_REQUIRED = "FILE_REQUIRED";
+    /** Upload/sửa part file có cả hai bản nhưng số part khác nhau (SA-DanhMucXe-v2 §8). */
+    public static final String LAYOUT_PART_MISMATCH = "LAYOUT_PART_MISMATCH";
 
     private ErrorCodes() {
     }

@@ -90,8 +90,11 @@ public class SvgController {
     @GetMapping(value = {"/{id}/preview", "/{id}/content"})
     @PreAuthorize("hasAnyRole('ADMIN', 'AGENT')")
     @Operation(summary = "Preview SVG file content", description = "Streams SVG content for browser inline preview.")
-    public ResponseEntity<Resource> previewSvg(@PathVariable Long id) {
-        Resource resource = svgService.previewSvg(id);
+    public ResponseEntity<Resource> previewSvg(
+            @PathVariable Long id,
+            @Parameter(description = "Bản bố cục: nested (đã xếp) hoặc raw (chưa xếp)")
+            @RequestParam(value = "layout", required = false) String layout) {
+        Resource resource = svgService.previewSvg(id, layout);
         return ResponseEntity.ok()
                 .contentType(MediaType.parseMediaType("image/svg+xml"))
                 .header(HttpHeaders.CONTENT_DISPOSITION, "inline")
@@ -102,9 +105,12 @@ public class SvgController {
     @GetMapping("/{id}/download")
     @PreAuthorize("hasAnyRole('ADMIN', 'AGENT')")
     @Operation(summary = "Download SVG file", description = "Downloads SVG file as attachment.")
-    public ResponseEntity<Resource> downloadSvg(@PathVariable Long id) {
-        Resource resource = svgService.downloadSvg(id);
-        String originalFilename = svgService.getOriginalFilename(id);
+    public ResponseEntity<Resource> downloadSvg(
+            @PathVariable Long id,
+            @Parameter(description = "Bản bố cục: nested (đã xếp) hoặc raw (chưa xếp)")
+            @RequestParam(value = "layout", required = false) String layout) {
+        Resource resource = svgService.downloadSvg(id, layout);
+        String originalFilename = svgService.getOriginalFilename(id, layout);
         return ResponseEntity.ok()
                 .contentType(MediaType.APPLICATION_OCTET_STREAM)
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + originalFilename + "\"")

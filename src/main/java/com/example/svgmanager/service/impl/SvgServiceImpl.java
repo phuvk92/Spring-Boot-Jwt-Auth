@@ -243,26 +243,55 @@ public class SvgServiceImpl implements SvgService {
 
     @Override
     @Transactional(readOnly = true)
-    public Resource previewSvg(Long id) {
+    public Resource previewSvg(Long id, String layout) {
         SvgFile svgFile = findAuthorizedSvg(id);
-        Resource resource = fileStorageService.loadFileAsResource(svgFile.getFilePath());
-        log.info("[SVG_PREVIEWED] SVG file previewed: id={}, originalName='{}'", id, svgFile.getOriginalFilename());
+        String path = resolveFilePathForLayout(svgFile, layout);
+        Resource resource = fileStorageService.loadFileAsResource(path);
+        log.info("[SVG_PREVIEWED] SVG file previewed: id={}, layout={}, originalName='{}'", id, layout, svgFile.getOriginalFilename());
         return resource;
     }
 
     @Override
     @Transactional(readOnly = true)
-    public Resource downloadSvg(Long id) {
+    public Resource downloadSvg(Long id, String layout) {
         SvgFile svgFile = findAuthorizedSvg(id);
-        Resource resource = fileStorageService.loadFileAsResource(svgFile.getFilePath());
-        log.info("[SVG_DOWNLOADED] SVG file downloaded: id={}, originalName='{}'", id, svgFile.getOriginalFilename());
+        String path = resolveFilePathForLayout(svgFile, layout);
+        Resource resource = fileStorageService.loadFileAsResource(path);
+        log.info("[SVG_DOWNLOADED] SVG file downloaded: id={}, layout={}, originalName='{}'", id, layout, svgFile.getOriginalFilename());
         return resource;
     }
 
     @Override
     @Transactional(readOnly = true)
-    public String getOriginalFilename(Long id) {
-        return findAuthorizedSvg(id).getOriginalFilename();
+    public String getOriginalFilename(Long id, String layout) {
+        SvgFile svgFile = findAuthorizedSvg(id);
+        if ("raw".equalsIgnoreCase(layout)) {
+            return svgFile.getRawOriginalFilename() != null ? svgFile.getRawOriginalFilename() : svgFile.getOriginalFilename();
+        }
+        return svgFile.getOriginalFilename() != null ? svgFile.getOriginalFilename() : svgFile.getRawOriginalFilename();
+    }
+
+    private String resolveFilePathForLayout(SvgFile svgFile, String layout) {
+        if ("raw".equalsIgnoreCase(layout)) {
+            if (svgFile.getRawFilePath() != null && !svgFile.getRawFilePath().isBlank()) {
+                return svgFile.getRawFilePath();
+            }
+            throw new ResourceNotFoundException("File không có bản chưa xếp (raw): " + svgFile.getId());
+        }
+        if ("nested".equalsIgnoreCase(layout)) {
+            if (svgFile.getFilePath() != null && !svgFile.getFilePath().isBlank()) {
+                return svgFile.getFilePath();
+            }
+            throw new ResourceNotFoundException("File không có bản đã xếp (nested): " + svgFile.getId());
+        }
+        // Mặc định bản đã xếp nếu có, không thì bản chưa xếp
+        if (svgFile.getFilePath() != null && !svgFile.getFilePath().isBlank()) {
+            return svgFile.getFilePath();
+        }
+        if (svgFile.getRawFilePath() != null && !svgFile.getRawFilePath().isBlank()) {
+            return svgFile.getRawFilePath();
+        }
+        throw new ResourceNotFoundException("Không tìm thấy nội dung file SVG với ID: " + svgFile.getId());
     }
 
     @Override
@@ -303,12 +332,17 @@ public class SvgServiceImpl implements SvgService {
             }
         }
 
-        String originalFilename = svgFile.getOriginalFilename();
+        String originalFilename = svgFile.getOriginalFilename() != null ? svgFile.getOriginalFilename() : svgFile.getRawOriginalFilename();
 
         try {
-            fileStorageService.deleteFile(svgFile.getFilePath());
+            if (svgFile.getFilePath() != null) {
+                fileStorageService.deleteFile(svgFile.getFilePath());
+            }
+            if (svgFile.getRawFilePath() != null) {
+                fileStorageService.deleteFile(svgFile.getRawFilePath());
+            }
         } catch (Exception e) {
-            log.warn("Could not delete physical file for SVG ID {}: {}", id, svgFile.getFilePath(), e);
+            log.warn("Could not delete physical file for SVG ID {}: {}", id, e.getMessage());
         }
 
         svgFileRepository.delete(svgFile);

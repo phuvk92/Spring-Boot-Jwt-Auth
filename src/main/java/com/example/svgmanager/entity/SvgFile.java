@@ -25,16 +25,16 @@ public class SvgFile {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "original_filename", nullable = false, length = 255)
+    @Column(name = "original_filename", length = 255)
     private String originalFilename;
 
-    @Column(name = "stored_filename", nullable = false, unique = true, length = 255)
+    @Column(name = "stored_filename", unique = true, length = 255)
     private String storedFilename;
 
-    @Column(name = "file_path", nullable = false, length = 1000)
+    @Column(name = "file_path", length = 1000)
     private String filePath;
 
-    @Column(name = "file_size", nullable = false)
+    @Column(name = "file_size")
     private Long fileSize;
 
     @Column(name = "content_type", length = 100)
@@ -42,6 +42,22 @@ public class SvgFile {
 
     @Column(name = "checksum", length = 128)
     private String checksum;
+
+    // ---- Bản chưa xếp (RAW) — SA-DanhMucXe-v2 §8 (NGO-378) ----------------------
+    @Column(name = "raw_stored_filename", length = 255)
+    private String rawStoredFilename;
+
+    @Column(name = "raw_original_filename", length = 255)
+    private String rawOriginalFilename;
+
+    @Column(name = "raw_file_path", length = 1000)
+    private String rawFilePath;
+
+    @Column(name = "raw_file_size")
+    private Long rawFileSize;
+
+    @Column(name = "raw_checksum", length = 128)
+    private String rawChecksum;
 
     @Column(name = "status", nullable = false, length = 50)
     private String status = "ACTIVE";
@@ -380,5 +396,55 @@ public class SvgFile {
 
     public void setParts(List<SvgFilePart> parts) {
         this.parts = parts != null ? parts : new ArrayList<>();
+    }
+
+    public boolean hasNested() {
+        return (this.storedFilename != null && !this.storedFilename.isBlank())
+                || (this.filePath != null && !this.filePath.isBlank());
+    }
+
+    public boolean hasRaw() {
+        return (this.rawStoredFilename != null && !this.rawStoredFilename.isBlank())
+                || (this.rawFilePath != null && !this.rawFilePath.isBlank());
+    }
+
+    public String getRawStoredFilename() {
+        return rawStoredFilename;
+    }
+
+    public void setRawStoredFilename(String rawStoredFilename) {
+        this.rawStoredFilename = rawStoredFilename;
+    }
+
+    public String getRawOriginalFilename() {
+        return rawOriginalFilename;
+    }
+
+    public void setRawOriginalFilename(String rawOriginalFilename) {
+        this.rawOriginalFilename = rawOriginalFilename;
+    }
+
+    public String getRawFilePath() {
+        return rawFilePath;
+    }
+
+    public void setRawFilePath(String rawFilePath) {
+        this.rawFilePath = rawFilePath;
+    }
+
+    public Long getRawFileSize() {
+        return rawFileSize;
+    }
+
+    public void setRawFileSize(Long rawFileSize) {
+        this.rawFileSize = rawFileSize;
+    }
+
+    public String getRawChecksum() {
+        return rawChecksum;
+    }
+
+    public void setRawChecksum(String rawChecksum) {
+        this.rawChecksum = rawChecksum;
     }
 }

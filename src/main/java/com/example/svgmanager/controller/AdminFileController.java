@@ -66,33 +66,39 @@ public class AdminFileController {
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @PreAuthorize("hasRole('ADMIN')")
     @Operation(summary = "Upload file thiết kế mới",
-            description = "Chỉ .svg (kiểm cả đuôi lẫn nội dung — khác → 400 UNSUPPORTED_FORMAT). "
-                    + "File không khai đơn vị → 400 SVG_UNITS_MISSING. Server tách part + hình học (SA §4).")
+            description = "Nhận nestedFile? + rawFile? (>= 1 file). Chỉ .svg (kiểm cả đuôi lẫn nội dung — khác → 400 UNSUPPORTED_FORMAT). "
+                    + "File không khai đơn vị → 400 SVG_UNITS_MISSING. Server tách part + hình học (SA §4/§8).")
     @ApiResponses({
             @ApiResponse(responseCode = "201", description = "Đã tạo file + part",
                     content = @Content(schema = @Schema(implementation = AdminFileResponse.class))),
-            @ApiResponse(responseCode = "400", description = "Định dạng sai / thiếu đơn vị / node không hợp lệ",
+            @ApiResponse(responseCode = "400", description = "Định dạng sai / thiếu file / số part lệch / node không hợp lệ",
                     content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
     })
     public ResponseEntity<AdminFileResponse> createFile(
-            @RequestPart("file") MultipartFile file,
+            @RequestPart(value = "nestedFile", required = false) MultipartFile nestedFile,
+            @RequestPart(value = "rawFile", required = false) MultipartFile rawFile,
+            @RequestPart(value = "file", required = false) MultipartFile legacyFile,
             @RequestParam("name") String name,
             @RequestParam("categoryId") Long categoryId,
             @RequestParam(value = "year", required = false) Integer year,
             @RequestParam("vehicleNodeIds") List<Long> vehicleNodeIds,
             @RequestPart(value = "thumbnail", required = false) MultipartFile thumbnail) {
+        MultipartFile effectiveNested = nestedFile != null ? nestedFile : legacyFile;
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(adminFileService.createFile(file, name, categoryId, year, vehicleNodeIds, thumbnail));
+                .body(adminFileService.createFile(effectiveNested, rawFile, name, categoryId, year, vehicleNodeIds, thumbnail));
     }
 
     @PutMapping(value = "/{id}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @PreAuthorize("hasRole('ADMIN')")
     @Operation(summary = "Sửa file trong kho",
-            description = "Như POST nhưng mọi trường tuỳ chọn; file mới (nếu có) được tách lại part, "
-                    + "thay toàn bộ svg_file_parts. year= (rỗng) xoá năm — file hiện mọi năm.")
+            description = "Như POST nhưng mọi trường tuỳ chọn; thay riêng từng file hoặc bỏ một bản (removeNested/removeRaw).")
     public ResponseEntity<AdminFileResponse> updateFile(
             @PathVariable Long id,
-            @RequestPart(value = "file", required = false) MultipartFile file,
+            @RequestPart(value = "nestedFile", required = false) MultipartFile nestedFile,
+            @RequestPart(value = "rawFile", required = false) MultipartFile rawFile,
+            @RequestPart(value = "file", required = false) MultipartFile legacyFile,
+            @RequestParam(value = "removeNested", required = false, defaultValue = "false") boolean removeNested,
+            @RequestParam(value = "removeRaw", required = false, defaultValue = "false") boolean removeRaw,
             @RequestParam(value = "name", required = false) String name,
             @RequestParam(value = "categoryId", required = false) Long categoryId,
             @RequestParam(value = "year", required = false) Integer year,
@@ -102,7 +108,9 @@ public class AdminFileController {
         // Tham số year HIỆN DIỆN (kể cả rỗng) nghĩa là client muốn đặt lại năm — để
         // phân biệt "không gửi" (giữ nguyên) với "gửi rỗng" (xoá năm → mọi năm).
         boolean yearPresent = request.getParameterMap().containsKey("year");
-        return ResponseEntity.ok(adminFileService.updateFile(id, file, name, categoryId,
+        MultipartFile effectiveNested = nestedFile != null ? nestedFile : legacyFile;
+        return ResponseEntity.ok(adminFileService.updateFile(id, effectiveNested, rawFile,
+                removeNested, removeRaw, name, categoryId,
                 year, yearPresent, vehicleNodeIds, thumbnail));
     }
 

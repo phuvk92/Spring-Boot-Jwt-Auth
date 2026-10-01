@@ -262,4 +262,182 @@ class AdminFilesPostgresIntegrationTest {
         mockMvc.perform(get("/api/admin/files").with(asUser()))
                 .andExpect(status().isForbidden());
     }
+
+    // ── AC NGO-378: Part file hai cách xếp (SA §8) ──────────────────────
+
+    private MockMultipartFile nestedSvg(String content) {
+        return new MockMultipartFile("nestedFile", "nested.svg", "image/svg+xml",
+                content.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+    }
+
+    private MockMultipartFile rawSvg(String content) {
+        return new MockMultipartFile("rawFile", "raw.svg", "image/svg+xml",
+                content.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+    }
+
+    @Test
+    @DisplayName("NGO-378: Upload chỉ nested / chỉ raw / thiếu cả hai → 400 FILE_REQUIRED")
+    void upload_singleLayout_orNone() throws Exception {
+        String svg1 = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"10mm\" height=\"10mm\" viewBox=\"0 0 10 10\"><rect width=\"10\" height=\"10\"/></svg>";
+
+        // 1. Chỉ nested
+        mockMvc.perform(multipart("/api/admin/files")
+                        .file(nestedSvg(svg1))
+                        .param("name", "Chi Nested")
+                        .param("categoryId", "1")
+                        .param("vehicleNodeIds", String.valueOf(MODEL_CAMRY_25Q))
+                        .with(asAdmin()))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.hasNested", is(true)))
+                .andExpect(jsonPath("$.hasRaw", is(false)))
+                .andExpect(jsonPath("$.partCount", is(1)));
+
+        // 2. Chỉ raw
+        MvcResult rawRes = mockMvc.perform(multipart("/api/admin/files")
+                        .file(rawSvg(svg1))
+                        .param("name", "Chi Raw")
+                        .param("categoryId", "1")
+                        .param("vehicleNodeIds", String.valueOf(MODEL_CAMRY_25Q))
+                        .with(asAdmin()))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.hasNested", is(false)))
+                .andExpect(jsonPath("$.hasRaw", is(true)))
+                .andExpect(jsonPath("$.partCount", is(1)))
+                .andReturn();
+
+        long rawId = ((Integer) com.jayway.jsonpath.JsonPath.read(rawRes.getResponse().getContentAsString(), "$.id")).longValue();
+        String rawFileKey = com.jayway.jsonpath.JsonPath.read(rawRes.getResponse().getContentAsString(), "$.fileKey");
+
+        // Gọi content raw
+        mockMvc.perform(get("/api/svg/{id}/content", rawId).param("layout", "raw").with(asAdmin()))
+                .andExpect(status().isOk());
+        // Geometry trả layout = "raw"
+        mockMvc.perform(get("/api/v1/files/{id}/geometry", rawFileKey).with(asUser()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.parts[0].layout", is("raw")))
+                .andExpect(jsonPath("$.parts[0].partId", containsString("--raw--")));
+
+        // 3. Thiếu cả hai → 400 FILE_REQUIRED
+        mockMvc.perform(multipart("/api/admin/files")
+                        .param("name", "Khong file")
+                        .param("categoryId", "1")
+                        .param("vehicleNodeIds", String.valueOf(MODEL_CAMRY_25Q))
+                        .with(asAdmin()))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code", is("FILE_REQUIRED")));
+    }
+
+    @Test
+    @DisplayName("NGO-378: Upload cả hai bản nhưng số part khác nhau → 400 LAYOUT_PART_MISMATCH (kèm 2 số)")
+    void upload_partMismatch_rejected() throws Exception {
+        String svg1Part = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"10mm\" height=\"10mm\" viewBox=\"0 0 10 10\"><rect width=\"10\" height=\"10\"/></svg>";
+        String svg2Parts = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"10mm\" height=\"10mm\" viewBox=\"0 0 10 10\"><rect width=\"5\" height=\"5\"/><circle cx=\"8\" cy=\"8\" r=\"1\"/></svg>";
+
+        mockMvc.perform(multipart("/api/admin/files")
+                        .file(nestedSvg(svg1Part))
+                        .file(rawSvg(svg2Parts))
+                        .param("name", "Mismatch")
+                        .param("categoryId", "1")
+                        .param("vehicleNodeIds", String.valueOf(MODEL_CAMRY_25Q))
+                        .with(asAdmin()))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code", is("LAYOUT_PART_MISMATCH")))
+                .andExpect(jsonPath("$.message", containsString("1")))
+                .andExpect(jsonPath("$.message", containsString("2")));
+    }
+
+    @Test
+    @DisplayName("NGO-378: PUT bỏ một bản thành công; PUT bỏ cả hai → 400 FILE_REQUIRED")
+    void put_removeLayouts() throws Exception {
+        String svg = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"10mm\" height=\"10mm\" viewBox=\"0 0 10 10\"><rect width=\"10\" height=\"10\"/></svg>";
+
+        MvcResult res = mockMvc.perform(multipart("/api/admin/files")
+                        .file(nestedSvg(svg))
+                        .file(rawSvg(svg))
+                        .param("name", "Hai ban")
+                        .param("categoryId", "1")
+                        .param("vehicleNodeIds", String.valueOf(MODEL_CAMRY_25Q))
+                        .with(asAdmin()))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.hasNested", is(true)))
+                .andExpect(jsonPath("$.hasRaw", is(true)))
+                .andReturn();
+
+        long id = ((Integer) com.jayway.jsonpath.JsonPath.read(res.getResponse().getContentAsString(), "$.id")).longValue();
+
+        // PUT bỏ bản nested (removeNested=true)
+        mockMvc.perform(multipart("/api/admin/files/" + id)
+                        .param("removeNested", "true")
+                        .with(r -> { r.setMethod("PUT"); return r; })
+                        .with(asAdmin()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.hasNested", is(false)))
+                .andExpect(jsonPath("$.hasRaw", is(true)));
+
+        // PUT bỏ tiếp bản raw (removeRaw=true) → bỏ cả hai → 400
+        mockMvc.perform(multipart("/api/admin/files/" + id)
+                        .param("removeRaw", "true")
+                        .with(r -> { r.setMethod("PUT"); return r; })
+                        .with(asAdmin()))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code", is("FILE_REQUIRED")));
+    }
+
+    @Test
+    @DisplayName("NGO-378 AC: Upload Audi Q6 cả hai bản → geometry 2 x 177 part, layout đúng, partId không trùng, parts chỉ trả 177")
+    void upload_audiQ6_bothLayouts_geometryAndParts() throws Exception {
+        String svgContent = audiSvg();
+
+        MvcResult res = mockMvc.perform(multipart("/api/admin/files")
+                        .file(new MockMultipartFile("nestedFile", "Audi Q6 2024.svg", "image/svg+xml",
+                                svgContent.getBytes(java.nio.charset.StandardCharsets.UTF_8)))
+                        .file(new MockMultipartFile("rawFile", "Audi Q6 2024.svg", "image/svg+xml",
+                                svgContent.getBytes(java.nio.charset.StandardCharsets.UTF_8)))
+                        .param("name", "Audi Q6 2024")
+                        .param("categoryId", String.valueOf(CATEGORY_NGOAI_THAT))
+                        .param("year", "2024")
+                        .param("vehicleNodeIds", String.valueOf(MODEL_CAMRY_25Q))
+                        .with(asAdmin()))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.hasNested", is(true)))
+                .andExpect(jsonPath("$.hasRaw", is(true)))
+                .andExpect(jsonPath("$.partCount", is(177)))
+                .andReturn();
+
+        long id = ((Integer) com.jayway.jsonpath.JsonPath.read(res.getResponse().getContentAsString(), "$.id")).longValue();
+        String fileKey = com.jayway.jsonpath.JsonPath.read(res.getResponse().getContentAsString(), "$.fileKey");
+
+        assertEquals(354, partRepository.countBySvgFileId(id));
+        assertEquals(177, partRepository.countBySvgFileIdAndLayout(id, "NESTED"));
+        assertEquals(177, partRepository.countBySvgFileIdAndLayout(id, "RAW"));
+
+        // GET /api/v1/files/{id}/parts chỉ trả 1 bản (177 part)
+        mockMvc.perform(get("/api/v1/files/{id}/parts", fileKey).with(asUser()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(177)));
+
+        // GET /api/v1/files/{id}/geometry trả 2 x 177 = 354 part
+        MvcResult geoRes = mockMvc.perform(get("/api/v1/files/{id}/geometry", fileKey).with(asUser()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.parts", hasSize(354)))
+                .andReturn();
+
+        String geoJson = geoRes.getResponse().getContentAsString();
+        java.util.List<String> partIds = com.jayway.jsonpath.JsonPath.read(geoJson, "$.parts[*].partId");
+        java.util.List<String> layouts = com.jayway.jsonpath.JsonPath.read(geoJson, "$.parts[*].layout");
+
+        assertEquals(354, partIds.size());
+        assertEquals(354, new java.util.HashSet<>(partIds).size(), "Mọi partId trong geometry phải duy nhất!");
+
+        long nestedCount = layouts.stream().filter("nested"::equals).count();
+        long rawCount = layouts.stream().filter("raw"::equals).count();
+        assertEquals(177, nestedCount);
+        assertEquals(177, rawCount);
+
+        // GET content mặc định (nested) và layout=raw
+        mockMvc.perform(get("/api/svg/{id}/content", id).with(asAdmin()))
+                .andExpect(status().isOk());
+        mockMvc.perform(get("/api/svg/{id}/content", id).param("layout", "raw").with(asAdmin()))
+                .andExpect(status().isOk());
+    }
 }
