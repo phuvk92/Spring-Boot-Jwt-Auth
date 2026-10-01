@@ -4,20 +4,26 @@ import com.example.svgmanager.dto.response.DesignFileDto;
 import com.example.svgmanager.dto.response.DesignFileGeometryDto;
 import com.example.svgmanager.dto.response.PartDto;
 
+import com.example.svgmanager.dto.response.PageResponse;
+
 import java.util.List;
 
 /**
- * Kho file thiết kế cho app cắt — hợp đồng openapi v0.3.0 (KX-30 · KX-32 · KX-35).
+ * Kho file thiết kế cho app cắt — hợp đồng openapi v0.6 (KX-30 · KX-32 · KX-35).
  */
 public interface DesignFileService {
 
     /**
      * File khớp bộ lọc của app thợ (SA-DanhMucXe-v2 §3.3, hợp đồng v0.6):
-     * categoryId và modelId bắt buộc (thiếu → BadRequestException).
-     * Có subtypeId → khớp subtype hoặc model cha; không → khớp model hoặc mọi phiên bản.
-     * year null → mọi năm; có year thì file không ghi năm (NULL) vẫn khớp (Q3).
+     * Mọi tham số tuỳ chọn, phân trang, sắp xếp updatedAt giảm dần.
+     * Cấp xe: brandId / seriesId / modelId khớp file gắn node hoặc node con.
+     * subtypeId khớp file gắn subtype hoặc model cha.
+     * year: model_year = year HOẶC NULL (Q3).
+     * Chỉ trả file ACTIVE, không lọc theo đại lý (Q6).
      */
-    List<DesignFileDto> getFiles(String categoryId, String modelId, String subtypeId, Integer year);
+    PageResponse<DesignFileDto> getFiles(String q, Long categoryId, Integer year,
+                                         Long brandId, Long seriesId, Long modelId, Long subtypeId,
+                                         int page, int size);
 
     /**
      * Part bên trong một file, theo thứ tự đội nội dung dựng.

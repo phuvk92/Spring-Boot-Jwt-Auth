@@ -58,7 +58,7 @@ public interface SvgFileRepository extends JpaRepository<SvgFile, Long>, JpaSpec
      * File không ghi năm không sinh ra giá trị năm nên loại khỏi SELECT.
      * {@code nodeIds} rỗng + noNodeFilter=false thì truyền List.of(-1L) thay vì null.
      */
-    @Query("SELECT DISTINCT f.modelYear FROM SvgFile f JOIN f.vehicleNodes l "
+    @Query("SELECT DISTINCT f.modelYear FROM SvgFile f LEFT JOIN f.vehicleNodes l "
             + "WHERE f.status = 'ACTIVE' AND f.modelYear IS NOT NULL "
             + "AND (:categoryId IS NULL OR f.fileCategory.id = :categoryId) "
             + "AND (:noNodeFilter = true OR l.vehicleNode.id IN :nodeIds) "
