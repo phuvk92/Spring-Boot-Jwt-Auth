@@ -118,6 +118,7 @@ public class AdminFileServiceImpl implements AdminFileService {
                 String like = "%" + q.trim().toLowerCase() + "%";
                 predicates.add(cb.or(
                         cb.like(cb.lower(root.get("originalFilename")), like),
+                        cb.like(cb.lower(root.get("rawOriginalFilename")), like),
                         cb.like(cb.lower(root.get("displayName")), like)));
             }
             if (categoryId != null) {
@@ -167,31 +168,50 @@ public class AdminFileServiceImpl implements AdminFileService {
 
     @Override
     @Transactional
-    public AdminFileResponse createFile(MultipartFile file, String name, Long categoryId, Integer year,
+    public AdminFileResponse createFile(MultipartFile nestedFile, MultipartFile rawFile,
+                                        String name, Long categoryId, Integer year,
                                         List<Long> vehicleNodeIds, MultipartFile thumbnail) {
+        boolean hasNested = nestedFile != null && !nestedFile.isEmpty();
+        boolean hasRaw = rawFile != null && !rawFile.isEmpty();
+        if (!hasNested && !hasRaw) {
+            throw new BadRequestException("Cần tải lên ít nhất một file (nestedFile hoặc rawFile)",
+                    ErrorCodes.FILE_REQUIRED);
+        }
+
         requireName(name);
         FileCategory category = requireCategory(categoryId);
         validateYear(year);
         List<VehicleNode> nodes = resolveVehicleNodes(vehicleNodeIds);
 
-        byte[] svgBytes = readAndValidateSvg(file);
-        // Tách part TRƯỚC khi lưu: file hỏng phải rớt 400, không được để lại bản ghi nửa vời.
-        List<ImportedPart> parts = SvgImport.parseParts(new String(svgBytes, java.nio.charset.StandardCharsets.UTF_8));
-        if (parts.isEmpty()) {
-            throw new BadRequestException("File SVG không chứa hình kín nào để tách part",
-                    ErrorCodes.UNSUPPORTED_FORMAT);
+        byte[] nestedBytes = null;
+        List<ImportedPart> nestedParts = null;
+        if (hasNested) {
+            nestedBytes = readAndValidateSvg(nestedFile);
+            nestedParts = SvgImport.parseParts(new String(nestedBytes, java.nio.charset.StandardCharsets.UTF_8));
+            if (nestedParts.isEmpty()) {
+                throw new BadRequestException("File SVG đã xếp không chứa hình kín nào để tách part",
+                        ErrorCodes.UNSUPPORTED_FORMAT);
+            }
         }
 
-        String storedFilename = UUID.randomUUID() + ".svg";
-        String filePath = fileStorageService.storeFile(svgBytes, storedFilename);
+        byte[] rawBytes = null;
+        List<ImportedPart> rawParts = null;
+        if (hasRaw) {
+            rawBytes = readAndValidateSvg(rawFile);
+            rawParts = SvgImport.parseParts(new String(rawBytes, java.nio.charset.StandardCharsets.UTF_8));
+            if (rawParts.isEmpty()) {
+                throw new BadRequestException("File SVG chưa xếp không chứa hình kín nào để tách part",
+                        ErrorCodes.UNSUPPORTED_FORMAT);
+            }
+        }
+
+        if (hasNested && hasRaw && nestedParts.size() != rawParts.size()) {
+            throw new BadRequestException("Số lượng part không khớp: bản đã xếp có " + nestedParts.size()
+                    + " part, bản chưa xếp có " + rawParts.size() + " part",
+                    ErrorCodes.LAYOUT_PART_MISMATCH);
+        }
 
         SvgFile svgFile = SvgFile.builder()
-                .originalFilename(FileUtils.getCleanFilename(file.getOriginalFilename()))
-                .storedFilename(storedFilename)
-                .filePath(filePath)
-                .fileSize((long) svgBytes.length)
-                .contentType("image/svg+xml")
-                .checksum(ChecksumUtils.calculateSha256(svgBytes))
                 .status("ACTIVE")
                 .uploadedBy(currentUserService.getCurrentUser())
                 .build();
@@ -200,51 +220,195 @@ public class AdminFileServiceImpl implements AdminFileService {
         svgFile.setFileCategory(category);
         svgFile.setModelYear(year);
         svgFile.setSource("SYSTEM");
-        svgFile.setFilmUsage(totalFilmUsage(parts));
 
-        replaceParts(svgFile, parts);
+        if (hasNested) {
+            String storedFilename = UUID.randomUUID() + ".svg";
+            String filePath = fileStorageService.storeFile(nestedBytes, storedFilename);
+            svgFile.setOriginalFilename(FileUtils.getCleanFilename(nestedFile.getOriginalFilename()));
+            svgFile.setStoredFilename(storedFilename);
+            svgFile.setFilePath(filePath);
+            svgFile.setFileSize((long) nestedBytes.length);
+            svgFile.setContentType("image/svg+xml");
+            svgFile.setChecksum(ChecksumUtils.calculateSha256(nestedBytes));
+            svgFile.setFilmUsage(totalFilmUsage(nestedParts));
+            addParts(svgFile, nestedParts, "NESTED");
+        }
+
+        if (hasRaw) {
+            String rawStored = UUID.randomUUID() + ".svg";
+            String rawPath = fileStorageService.storeFile(rawBytes, rawStored);
+            svgFile.setRawOriginalFilename(FileUtils.getCleanFilename(rawFile.getOriginalFilename()));
+            svgFile.setRawStoredFilename(rawStored);
+            svgFile.setRawFilePath(rawPath);
+            svgFile.setRawFileSize((long) rawBytes.length);
+            svgFile.setRawChecksum(ChecksumUtils.calculateSha256(rawBytes));
+            if (!hasNested) {
+                svgFile.setFilmUsage(totalFilmUsage(rawParts));
+            }
+            addParts(svgFile, rawParts, "RAW");
+        }
+
         for (VehicleNode node : nodes) {
             svgFile.getVehicleNodes().add(new SvgFileVehicleNode(svgFile, node));
         }
 
         storeThumbnailIfAny(thumbnail, svgFile);
         SvgFile saved = svgFileRepository.save(svgFile);
-        audit("UPLOAD_PART_FILE", saved, "Upload file thiết kế: " + saved.getOriginalFilename());
+        String savedOrigName = saved.getOriginalFilename() != null ? saved.getOriginalFilename() : saved.getRawOriginalFilename();
+        audit("UPLOAD_PART_FILE", saved, "Upload file thiết kế: " + savedOrigName);
         return toResponse(saved);
     }
 
     @Override
     @Transactional
-    public AdminFileResponse updateFile(Long id, MultipartFile file, String name, Long categoryId,
+    public AdminFileResponse updateFile(Long id, MultipartFile nestedFile, MultipartFile rawFile,
+                                        boolean removeNested, boolean removeRaw,
+                                        String name, Long categoryId,
                                         Integer year, boolean yearPresent,
                                         List<Long> vehicleNodeIds, MultipartFile thumbnail) {
         SvgFile svgFile = svgFileRepository.findById(id)
                 .filter(f -> !"DELETED".equalsIgnoreCase(f.getStatus()))
                 .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy file với ID: " + id));
 
-        if (file != null && !file.isEmpty()) {
-            byte[] svgBytes = readAndValidateSvg(file);
-            List<ImportedPart> parts = SvgImport.parseParts(
-                    new String(svgBytes, java.nio.charset.StandardCharsets.UTF_8));
-            if (parts.isEmpty()) {
-                throw new BadRequestException("File SVG không chứa hình kín nào để tách part",
+        boolean currentHasNested = svgFile.hasNested();
+        boolean currentHasRaw = svgFile.hasRaw();
+
+        boolean newNestedProvided = nestedFile != null && !nestedFile.isEmpty();
+        boolean newRawProvided = rawFile != null && !rawFile.isEmpty();
+
+        boolean willHaveNested = (newNestedProvided || currentHasNested) && !removeNested;
+        boolean willHaveRaw = (newRawProvided || currentHasRaw) && !removeRaw;
+
+        if (!willHaveNested && !willHaveRaw) {
+            throw new BadRequestException("Không thể bỏ cả hai bản file", ErrorCodes.FILE_REQUIRED);
+        }
+
+        byte[] newNestedBytes = null;
+        List<ImportedPart> newNestedParts = null;
+        if (newNestedProvided) {
+            newNestedBytes = readAndValidateSvg(nestedFile);
+            newNestedParts = SvgImport.parseParts(new String(newNestedBytes, java.nio.charset.StandardCharsets.UTF_8));
+            if (newNestedParts.isEmpty()) {
+                throw new BadRequestException("File SVG đã xếp không chứa hình kín nào để tách part",
                         ErrorCodes.UNSUPPORTED_FORMAT);
             }
-            String storedFilename = UUID.randomUUID() + ".svg";
-            String newPath = fileStorageService.storeFile(svgBytes, storedFilename);
+        }
 
+        byte[] newRawBytes = null;
+        List<ImportedPart> newRawParts = null;
+        if (newRawProvided) {
+            newRawBytes = readAndValidateSvg(rawFile);
+            newRawParts = SvgImport.parseParts(new String(newRawBytes, java.nio.charset.StandardCharsets.UTF_8));
+            if (newRawParts.isEmpty()) {
+                throw new BadRequestException("File SVG chưa xếp không chứa hình kín nào để tách part",
+                        ErrorCodes.UNSUPPORTED_FORMAT);
+            }
+        }
+
+        if (willHaveNested && willHaveRaw) {
+            int nestedCount = newNestedProvided ? newNestedParts.size()
+                    : (int) partRepository.countBySvgFileIdAndLayout(id, "NESTED");
+            int rawCount = newRawProvided ? newRawParts.size()
+                    : (int) partRepository.countBySvgFileIdAndLayout(id, "RAW");
+            if (nestedCount != rawCount) {
+                throw new BadRequestException("Số lượng part không khớp: bản đã xếp có " + nestedCount
+                        + " part, bản chưa xếp có " + rawCount + " part",
+                        ErrorCodes.LAYOUT_PART_MISMATCH);
+            }
+        }
+
+        // Xử lý bản NESTED
+        if (removeNested) {
             String oldPath = svgFile.getFilePath();
-            svgFile.setOriginalFilename(FileUtils.getCleanFilename(file.getOriginalFilename()));
-            svgFile.setStoredFilename(storedFilename);
+            svgFile.setOriginalFilename(null);
+            svgFile.setStoredFilename(null);
+            svgFile.setFilePath(null);
+            svgFile.setFileSize(null);
+            svgFile.setChecksum(null);
+            svgFile.getParts().removeIf(p -> "NESTED".equalsIgnoreCase(p.getLayout()));
+            svgFileRepository.flush();
+            if (oldPath != null) {
+                try {
+                    fileStorageService.deleteFile(oldPath);
+                } catch (Exception e) {
+                    log.warn("Không xoá được file vật lý cũ {} của file ID {}", oldPath, id);
+                }
+            }
+        } else if (newNestedProvided) {
+            String oldPath = svgFile.getFilePath();
+            String stored = UUID.randomUUID() + ".svg";
+            String newPath = fileStorageService.storeFile(newNestedBytes, stored);
+            svgFile.setOriginalFilename(FileUtils.getCleanFilename(nestedFile.getOriginalFilename()));
+            svgFile.setStoredFilename(stored);
             svgFile.setFilePath(newPath);
-            svgFile.setFileSize((long) svgBytes.length);
-            svgFile.setChecksum(ChecksumUtils.calculateSha256(svgBytes));
-            svgFile.setFilmUsage(totalFilmUsage(parts));
-            replaceParts(svgFile, parts);
-            try {
-                fileStorageService.deleteFile(oldPath);
-            } catch (Exception e) {
-                log.warn("Không xoá được file vật lý cũ {} của file ID {}", oldPath, id);
+            svgFile.setFileSize((long) newNestedBytes.length);
+            svgFile.setContentType("image/svg+xml");
+            svgFile.setChecksum(ChecksumUtils.calculateSha256(newNestedBytes));
+            svgFile.getParts().removeIf(p -> "NESTED".equalsIgnoreCase(p.getLayout()));
+            svgFileRepository.flush();
+            addParts(svgFile, newNestedParts, "NESTED");
+            if (oldPath != null) {
+                try {
+                    fileStorageService.deleteFile(oldPath);
+                } catch (Exception e) {
+                    log.warn("Không xoá được file vật lý cũ {} của file ID {}", oldPath, id);
+                }
+            }
+        }
+
+        // Xử lý bản RAW
+        if (removeRaw) {
+            String oldRawPath = svgFile.getRawFilePath();
+            svgFile.setRawOriginalFilename(null);
+            svgFile.setRawStoredFilename(null);
+            svgFile.setRawFilePath(null);
+            svgFile.setRawFileSize(null);
+            svgFile.setRawChecksum(null);
+            svgFile.getParts().removeIf(p -> "RAW".equalsIgnoreCase(p.getLayout()));
+            svgFileRepository.flush();
+            if (oldRawPath != null) {
+                try {
+                    fileStorageService.deleteFile(oldRawPath);
+                } catch (Exception e) {
+                    log.warn("Không xoá được file vật lý raw cũ {} của file ID {}", oldRawPath, id);
+                }
+            }
+        } else if (newRawProvided) {
+            String oldRawPath = svgFile.getRawFilePath();
+            String rawStored = UUID.randomUUID() + ".svg";
+            String newRawPath = fileStorageService.storeFile(newRawBytes, rawStored);
+            svgFile.setRawOriginalFilename(FileUtils.getCleanFilename(rawFile.getOriginalFilename()));
+            svgFile.setRawStoredFilename(rawStored);
+            svgFile.setRawFilePath(newRawPath);
+            svgFile.setRawFileSize((long) newRawBytes.length);
+            svgFile.setRawChecksum(ChecksumUtils.calculateSha256(newRawBytes));
+            svgFile.getParts().removeIf(p -> "RAW".equalsIgnoreCase(p.getLayout()));
+            svgFileRepository.flush();
+            addParts(svgFile, newRawParts, "RAW");
+            if (oldRawPath != null) {
+                try {
+                    fileStorageService.deleteFile(oldRawPath);
+                } catch (Exception e) {
+                    log.warn("Không xoá được file vật lý raw cũ {} của file ID {}", oldRawPath, id);
+                }
+            }
+        }
+
+        // Cập nhật filmUsage theo bản đã xếp nếu có, không thì bản chưa xếp
+        if (svgFile.hasNested()) {
+            if (newNestedProvided) {
+                svgFile.setFilmUsage(totalFilmUsage(newNestedParts));
+            }
+        } else if (svgFile.hasRaw()) {
+            if (newRawProvided) {
+                svgFile.setFilmUsage(totalFilmUsage(newRawParts));
+            } else if (removeNested) {
+                List<SvgFilePart> rawCurrent = svgFile.getParts().stream()
+                        .filter(p -> "RAW".equalsIgnoreCase(p.getLayout())).toList();
+                double mm = rawCurrent.stream()
+                        .mapToDouble(p -> Math.max(p.getWidthMm() != null ? p.getWidthMm() : 0.0,
+                                p.getHeightMm() != null ? p.getHeightMm() : 0.0)).sum();
+                svgFile.setFilmUsage(formatFilmUsage(mm));
             }
         }
 
@@ -261,8 +425,6 @@ public class AdminFileServiceImpl implements AdminFileService {
         }
         if (vehicleNodeIds != null) {
             List<VehicleNode> nodes = resolveVehicleNodes(vehicleNodeIds);
-            // Clear + flush xoá orphan trước — gắn lại cùng node ngay sau đó mà để chung
-            // một flush thì insert chạy trước delete, đụng PK (svg_file_id, vehicle_node_id).
             svgFile.getVehicleNodes().clear();
             svgFileRepository.flush();
             for (VehicleNode node : nodes) {
@@ -349,20 +511,14 @@ public class AdminFileServiceImpl implements AdminFileService {
         return nodes;
     }
 
-    /** Thay TOÀN BỘ parts của file — PUT có file mới là tách lại từ đầu (§3.2). */
-    private void replaceParts(SvgFile svgFile, List<ImportedPart> parts) {
-        // Flush xoá orphan TRƯỚC khi thêm part mới: Hibernate insert trước delete trong
-        // cùng một flush, mà part_key mới có thể trùng part_key cũ → đụng UNIQUE
-        // (svg_file_id, part_key). Clear + flush riêng là xoá xong hẳn mới insert.
-        if (!svgFile.getParts().isEmpty()) {
-            svgFile.getParts().clear();
-            svgFileRepository.flush();
-        }
+    /** Thêm parts của file cho một layout cụ thể (NESTED hoặc RAW) — SA §4/§8. */
+    private void addParts(SvgFile svgFile, List<ImportedPart> parts, String layout) {
         Set<String> usedKeys = new HashSet<>();
         int order = 1;
         for (ImportedPart p : parts) {
             SvgFilePart part = new SvgFilePart();
             part.setSvgFile(svgFile);
+            part.setLayout(layout);
             part.setPartKey(uniquePartKey(p.name(), usedKeys));
             part.setName(p.name());
             part.setDisplayOrder(order++);
@@ -463,15 +619,37 @@ public class AdminFileServiceImpl implements AdminFileService {
                 .map(l -> new AdminFileResponse.VehicleRef(
                         l.getVehicleNode().getId(), vehiclePath(l.getVehicleNode())))
                 .toList();
-        int partCount = f.getId() == null ? f.getParts().size()
-                : (int) partRepository.countBySvgFileId(f.getId());
+
+        boolean hasNested = f.hasNested();
+        boolean hasRaw = f.hasRaw();
+
+        int partCount = 0;
+        if (f.getId() == null) {
+            if (hasNested) {
+                partCount = (int) f.getParts().stream().filter(p -> "NESTED".equalsIgnoreCase(p.getLayout())).count();
+            } else if (hasRaw) {
+                partCount = (int) f.getParts().stream().filter(p -> "RAW".equalsIgnoreCase(p.getLayout())).count();
+            }
+        } else {
+            if (hasNested) {
+                partCount = (int) partRepository.countBySvgFileIdAndLayout(f.getId(), "NESTED");
+            } else if (hasRaw) {
+                partCount = (int) partRepository.countBySvgFileIdAndLayout(f.getId(), "RAW");
+            }
+        }
+
+        String origName = f.getOriginalFilename() != null ? f.getOriginalFilename() : f.getRawOriginalFilename();
+        String displayName = f.getDisplayName() != null ? f.getDisplayName() : origName;
+
         return new AdminFileResponse(
                 f.getId(), f.getFileKey(),
-                f.getDisplayName() != null ? f.getDisplayName() : f.getOriginalFilename(),
-                f.getOriginalFilename(),
+                displayName,
+                origName,
                 f.getFileCategory() != null ? f.getFileCategory().getName() : null,
                 f.getModelYear(), vehicles, f.getSource(), partCount, f.getUpdatedAt(),
-                f.getThumbnailPath() != null ? "/api/svg/" + f.getId() + "/thumbnail" : null);
+                f.getThumbnailPath() != null ? "/api/svg/" + f.getId() + "/thumbnail" : null,
+                hasNested,
+                hasRaw);
     }
 
     /** Đường dẫn tên từ gốc tới node: "Toyota › Camry › Camry 2.5Q". */

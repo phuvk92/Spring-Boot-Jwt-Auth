@@ -13,9 +13,10 @@ import java.time.LocalDateTime;
  */
 @Entity
 @Table(name = "svg_file_parts", uniqueConstraints = {
-        @UniqueConstraint(name = "uq_svg_file_part_key", columnNames = {"svg_file_id", "part_key"})
+        @UniqueConstraint(name = "uq_svg_file_part_layout_key", columnNames = {"svg_file_id", "layout", "part_key"})
 }, indexes = {
-        @Index(name = "idx_svg_file_parts_file_id", columnList = "svg_file_id")
+        @Index(name = "idx_svg_file_parts_file_id", columnList = "svg_file_id"),
+        @Index(name = "idx_svg_file_parts_layout", columnList = "svg_file_id, layout")
 })
 @EntityListeners(AuditingEntityListener.class)
 public class SvgFilePart {
@@ -28,7 +29,11 @@ public class SvgFilePart {
     @JoinColumn(name = "svg_file_id", nullable = false)
     private SvgFile svgFile;
 
-    /** Id chuỗi trong hợp đồng (vd 'capo', 'đèn-trái') — duy nhất trong phạm vi một file. */
+    /** Bố cục part: NESTED (đã xếp) hoặc RAW (chưa xếp) — SA-DanhMucXe-v2 §8. */
+    @Column(name = "layout", nullable = false, length = 8)
+    private String layout = "NESTED";
+
+    /** Id chuỗi trong hợp đồng (vd 'capo', 'đèn-trái') — duy nhất trong phạm vi (file, layout). */
     @Column(name = "part_key", nullable = false, length = 100)
     private String partKey;
 
@@ -112,6 +117,14 @@ public class SvgFilePart {
 
     public void setSvgFile(SvgFile svgFile) {
         this.svgFile = svgFile;
+    }
+
+    public String getLayout() {
+        return layout;
+    }
+
+    public void setLayout(String layout) {
+        this.layout = layout;
     }
 
     public String getPartKey() {

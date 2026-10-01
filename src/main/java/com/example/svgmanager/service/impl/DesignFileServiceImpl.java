@@ -144,13 +144,24 @@ public class DesignFileServiceImpl implements DesignFileService {
             }
         }
 
-        int partCount = file.getId() == null
-                ? (file.getParts() != null ? file.getParts().size() : 0)
-                : (int) svgFilePartRepository.countBySvgFileId(file.getId());
+        // Số part theo cách xếp mà client sẽ mở (NGO-378): có bản đã xếp thì đếm NESTED, không thì RAW.
+        // Đếm bằng truy vấn chứ không nạp cả danh sách part — danh sách file đã phân trang (NGO-354).
+        String layout = file.hasNested() ? "NESTED" : file.hasRaw() ? "RAW" : null;
+        int partCount;
+        if (layout == null) {
+            partCount = 0;
+        } else if (file.getId() == null) {
+            partCount = file.getParts() == null ? 0
+                    : (int) file.getParts().stream().filter(p -> layout.equalsIgnoreCase(p.getLayout())).count();
+        } else {
+            partCount = (int) svgFilePartRepository.countBySvgFileIdAndLayout(file.getId(), layout);
+        }
 
+        String displayName = file.getDisplayName() != null ? file.getDisplayName()
+                : (file.getOriginalFilename() != null ? file.getOriginalFilename() : file.getRawOriginalFilename());
         return new DesignFileDto(
                 file.getFileKey(),
-                file.getDisplayName() != null ? file.getDisplayName() : file.getOriginalFilename(),
+                displayName,
                 categoryDto,
                 file.getModelYear(),
                 partCount,
@@ -175,7 +186,8 @@ public class DesignFileServiceImpl implements DesignFileService {
         SvgFile file = svgFileRepository.findByFileKey(fileKey)
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "Không tìm thấy file thiết kế.", ErrorCodes.FILE_NOT_FOUND));
-        return svgFilePartRepository.findBySvgFileIdOrderByDisplayOrderAscIdAsc(file.getId())
+        String layout = file.hasNested() ? "NESTED" : "RAW";
+        return svgFilePartRepository.findBySvgFileIdAndLayoutOrderByDisplayOrderAscIdAsc(file.getId(), layout)
                 .stream()
                 .map(this::toDto)
                 .toList();
@@ -188,7 +200,7 @@ public class DesignFileServiceImpl implements DesignFileService {
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "Không tìm thấy file thiết kế.", ErrorCodes.FILE_NOT_FOUND));
         List<PartOutlineDto> parts = svgFilePartRepository
-                .findBySvgFileIdOrderByDisplayOrderAscIdAsc(file.getId())
+                .findBySvgFileIdOrderByLayoutAscDisplayOrderAscIdAsc(file.getId())
                 .stream()
                 .map(part -> toOutlineDto(file.getFileKey(), part))
                 .toList();
@@ -199,17 +211,21 @@ public class DesignFileServiceImpl implements DesignFileService {
             log.warn("Geometry của file '{}' ước tính {} byte, vượt ngưỡng {} — cân nhắc streaming khi có file thật",
                     fileKey, estimatedBytes, GEOMETRY_WARN_BYTES);
         }
+        String displayName = file.getDisplayName() != null ? file.getDisplayName()
+                : (file.getOriginalFilename() != null ? file.getOriginalFilename() : file.getRawOriginalFilename());
         return new DesignFileGeometryDto(
                 file.getFileKey(),
-                file.getDisplayName() != null ? file.getDisplayName() : file.getOriginalFilename(),
+                displayName,
                 parts);
     }
 
-    /** partId của hợp đồng là ghép {@code <fileId>--<partKey>} — khớp fixture 09. */
+    /** partId của hợp đồng là ghép {@code <fileId>--<layout>--<partKey>} — SA-DanhMucXe-v2 §8.1. */
     private PartOutlineDto toOutlineDto(String fileKey, SvgFilePart part) {
+        String layoutStr = part.getLayout() != null ? part.getLayout().toLowerCase(java.util.Locale.ROOT) : "nested";
         return new PartOutlineDto(
-                fileKey + "--" + part.getPartKey(),
+                fileKey + "--" + layoutStr + "--" + part.getPartKey(),
                 part.getName(),
+                layoutStr,
                 // Thiếu hình học (chưa nạp) → giá trị an toàn, không ném
                 part.getPathData() != null ? part.getPathData() : "",
                 part.getWidthMm() != null ? part.getWidthMm() : 0.0,

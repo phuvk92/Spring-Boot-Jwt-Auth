@@ -18,16 +18,17 @@ public interface AdminFileService {
 
     AdminFileStatsResponse getStats();
 
-    /** Upload file mới: tách part + hình học theo SA §4, sinh file_key, gắn mẫu xe. */
-    AdminFileResponse createFile(MultipartFile file, String name, Long categoryId, Integer year,
+    /** Upload file mới: nestedFile? + rawFile? (>= 1) — tách part + hình học theo SA §4/§8, sinh file_key, gắn mẫu xe. */
+    AdminFileResponse createFile(MultipartFile nestedFile, MultipartFile rawFile,
+                                 String name, Long categoryId, Integer year,
                                  List<Long> vehicleNodeIds, MultipartFile thumbnail);
 
     /**
-     * Sửa file. {@code file} tuỳ chọn — có file mới thì tách lại và thay toàn bộ
-     * svg_file_parts. {@code yearPresent} báo client có gửi tham số year (kể cả rỗng =
-     * xoá năm → hiện mọi năm); cách tham số còn lại: null = giữ nguyên.
+     * Sửa file: thay riêng từng file hoặc xoá một bản (removeNested/removeRaw). Không được bỏ cả hai.
      */
-    AdminFileResponse updateFile(Long id, MultipartFile file, String name, Long categoryId,
+    AdminFileResponse updateFile(Long id, MultipartFile nestedFile, MultipartFile rawFile,
+                                 boolean removeNested, boolean removeRaw,
+                                 String name, Long categoryId,
                                  Integer year, boolean yearPresent,
                                  List<Long> vehicleNodeIds, MultipartFile thumbnail);
 

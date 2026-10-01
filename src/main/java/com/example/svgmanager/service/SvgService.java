@@ -24,11 +24,23 @@ public interface SvgService {
 
     SvgResponse updateSvg(Long id, String status);
 
-    Resource previewSvg(Long id);
+    default Resource previewSvg(Long id) {
+        return previewSvg(id, null);
+    }
 
-    Resource downloadSvg(Long id);
+    Resource previewSvg(Long id, String layout);
 
-    String getOriginalFilename(Long id);
+    default Resource downloadSvg(Long id) {
+        return downloadSvg(id, null);
+    }
+
+    Resource downloadSvg(Long id, String layout);
+
+    default String getOriginalFilename(Long id) {
+        return getOriginalFilename(id, null);
+    }
+
+    String getOriginalFilename(Long id, String layout);
 
     /** Ảnh xem trước tuỳ chọn do đội nội dung gắn (SA v2 §3.2 — thumbnail_path). */
     Resource thumbnailSvg(Long id);

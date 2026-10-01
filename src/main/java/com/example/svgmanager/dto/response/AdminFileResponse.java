@@ -40,7 +40,13 @@ public record AdminFileResponse(
         LocalDateTime updatedAt,
 
         @Schema(description = "Đường dẫn ảnh xem trước, null khi chưa gắn thumbnail")
-        String thumbnailUrl
+        String thumbnailUrl,
+
+        @Schema(description = "Có bản đã xếp (vào vùng cắt) hay không", example = "true")
+        boolean hasNested,
+
+        @Schema(description = "Có bản chưa xếp (vào khu chưa cắt) hay không", example = "true")
+        boolean hasRaw
 ) {
     /** Một mẫu xe file gắn vào, kèm đường dẫn đầy đủ trong cây ("Toyota › Camry › Camry 2.5Q"). */
     public record VehicleRef(Long nodeId, String path) {

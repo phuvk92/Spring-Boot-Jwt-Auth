@@ -169,8 +169,9 @@ class DesignFilesIntegrationTest {
                 .andExpect(jsonPath("$.fileId", is(FILE_KEY)))
                 .andExpect(jsonPath("$.name", is("Ngoại thất — full body 7 mảnh")))
                 .andExpect(jsonPath("$.parts", hasSize(2)))
-                .andExpect(jsonPath("$.parts[0].partId", is(FILE_KEY + "--capo")))
+                .andExpect(jsonPath("$.parts[0].partId", is(FILE_KEY + "--nested--capo")))
                 .andExpect(jsonPath("$.parts[0].name", is("Capo")))
+                .andExpect(jsonPath("$.parts[0].layout", is("nested")))
                 .andExpect(jsonPath("$.parts[0].pathData",
                         is("M 60,0 L 1040,0 C 1080,0 1100,25 1100,60 L 1100,760 C 1100,840 1040,900 950,900 L 150,900 C 60,900 0,840 0,760 L 0,60 C 0,25 20,0 60,0 Z")))
                 .andExpect(jsonPath("$.parts[0].widthMm", is(1100.0)))
@@ -179,7 +180,8 @@ class DesignFilesIntegrationTest {
                 .andExpect(jsonPath("$.parts[0].yMm", is(30.0)))
                 .andExpect(jsonPath("$.parts[0].nodeCount", is(12)))
                 .andExpect(jsonPath("$.parts[0].holeCount", is(0)))
-                .andExpect(jsonPath("$.parts[1].partId", is(FILE_KEY + "--đèn-trái")))
+                .andExpect(jsonPath("$.parts[1].partId", is(FILE_KEY + "--nested--đèn-trái")))
+                .andExpect(jsonPath("$.parts[1].layout", is("nested")))
                 .andExpect(jsonPath("$.parts[1].xMm", is(30.0)))
                 .andExpect(jsonPath("$.parts[1].yMm", is(954.0)))
                 .andExpect(jsonPath("$.parts[1].holeCount", is(1)));
