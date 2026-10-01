@@ -54,7 +54,7 @@ public class CatalogServiceImpl implements CatalogService {
             case "series" -> childrenOf(requireParent(brandId, "brandId", VehicleNodeLevel.BRAND, level));
             case "model" -> childrenOf(requireParent(seriesId, "seriesId", VehicleNodeLevel.SERIES, level));
             case "subtype" -> childrenOf(requireParent(modelId, "modelId", VehicleNodeLevel.MODEL, level));
-            case "year" -> years(categoryId, modelId, subtypeId);
+            case "year" -> years(categoryId, brandId, seriesId, modelId, subtypeId);
             default -> throw new BadRequestException(
                     "Cấp danh mục không hợp lệ: " + level + " (brand | series | model | subtype | year)");
         };
@@ -65,34 +65,51 @@ public class CatalogServiceImpl implements CatalogService {
                 .stream().map(this::toOption).toList();
     }
 
-    private List<CatalogOptionDto> years(String categoryId, String modelId, String subtypeId) {
+    private List<CatalogOptionDto> years(String categoryId, String brandId, String seriesId,
+                                         String modelId, String subtypeId) {
         Long category = parseId(categoryId, "categoryId");
-        List<Long> nodeIds = expandNodes(parseId(modelId, "modelId"), parseId(subtypeId, "subtypeId"));
-        boolean noNodeFilter = nodeIds.isEmpty();
-        List<Integer> years = svgFileRepository.findCatalogYears(
-                category, noNodeFilter ? List.of() : nodeIds, noNodeFilter);
+        Long brand = parseId(brandId, "brandId");
+        Long series = parseId(seriesId, "seriesId");
+        Long model = parseId(modelId, "modelId");
+        Long subtype = parseId(subtypeId, "subtypeId");
+
+        boolean noNodeFilter = (brand == null && series == null && model == null && subtype == null);
+        List<Long> nodeIds;
+        if (noNodeFilter) {
+            nodeIds = List.of(-1L);
+        } else {
+            nodeIds = resolveFilterNodes(brand, series, model, subtype);
+            if (nodeIds.isEmpty()) {
+                return List.of();
+            }
+        }
+        List<Integer> years = svgFileRepository.findCatalogYears(category, nodeIds, noNodeFilter);
         return years.stream().map(y -> new CatalogOptionDto(String.valueOf(y), String.valueOf(y))).toList();
     }
 
-    /**
-     * Node mà file có thể gắn vào để khớp bộ lọc (SA §3.3):
-     * có subtype → {subtype, model}; chỉ có model → {model} + mọi phiên bản của model
-     * (file của model dùng cho mọi phiên bản, và ngược lại file gắn thẳng phiên bản
-     * cũng hiện khi thợ mới chọn tới model).
-     */
-    private List<Long> expandNodes(Long modelId, Long subtypeId) {
-        if (modelId == null) {
-            return List.of();
-        }
-        List<Long> ids = new ArrayList<>();
-        ids.add(modelId);
+    private List<Long> resolveFilterNodes(Long brandId, Long seriesId, Long modelId, Long subtypeId) {
         if (subtypeId != null) {
+            VehicleNode subtype = vehicleNodeRepository.findById(subtypeId).orElse(null);
+            if (subtype == null) {
+                return List.of();
+            }
+            List<Long> ids = new ArrayList<>();
             ids.add(subtypeId);
-        } else {
-            vehicleNodeRepository.findByParentIdOrderByDisplayOrderAscIdAsc(modelId)
-                    .forEach(child -> ids.add(child.getId()));
+            if (subtype.getParent() != null) {
+                ids.add(subtype.getParent().getId());
+            }
+            return ids;
         }
-        return ids;
+        Long nodeFilter = modelId != null ? modelId
+                : seriesId != null ? seriesId
+                : brandId;
+        if (nodeFilter != null) {
+            if (!vehicleNodeRepository.existsById(nodeFilter)) {
+                return List.of();
+            }
+            return vehicleNodeRepository.findSubtreeIds(nodeFilter);
+        }
+        return List.of();
     }
 
     /**

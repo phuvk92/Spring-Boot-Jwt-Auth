@@ -36,11 +36,20 @@ public class DesignFileDto {
     @Schema(description = "Mẫu cập nhật lần cuối")
     private LocalDateTime updatedAt;
 
+    @Schema(description = "Đường dẫn tên từ gốc tới mẫu xe, null nếu file chưa gắn mẫu xe",
+            example = "Toyota › Camry › Camry 2.5Q", nullable = true)
+    private String vehiclePath;
+
     public DesignFileDto() {
     }
 
     public DesignFileDto(String id, String name, CatalogOptionDto category, Integer year, int partCount,
                          String filmUsage, String note, LocalDateTime updatedAt) {
+        this(id, name, category, year, partCount, filmUsage, note, updatedAt, null);
+    }
+
+    public DesignFileDto(String id, String name, CatalogOptionDto category, Integer year, int partCount,
+                         String filmUsage, String note, LocalDateTime updatedAt, String vehiclePath) {
         this.id = id;
         this.name = name;
         this.category = category;
@@ -49,6 +58,7 @@ public class DesignFileDto {
         this.filmUsage = filmUsage;
         this.note = note;
         this.updatedAt = updatedAt;
+        this.vehiclePath = vehiclePath;
     }
 
     public String getId() {
@@ -113,5 +123,13 @@ public class DesignFileDto {
 
     public void setUpdatedAt(LocalDateTime updatedAt) {
         this.updatedAt = updatedAt;
+    }
+
+    public String getVehiclePath() {
+        return vehiclePath;
+    }
+
+    public void setVehiclePath(String vehiclePath) {
+        this.vehiclePath = vehiclePath;
     }
 }

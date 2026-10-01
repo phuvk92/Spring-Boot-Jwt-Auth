@@ -38,7 +38,7 @@ public interface VehicleNodeRepository extends JpaRepository<VehicleNode, Long> 
      * Id các hãng (gốc) là tổ tiên của một trong các node cho trước — quy hồi lên gốc.
      */
     @Query(value = """
-            WITH RECURSIVE ancestors AS (
+            WITH RECURSIVE ancestors(id, parent_id) AS (
                 SELECT id, parent_id FROM vehicle_nodes WHERE id IN (:nodeIds)
                 UNION ALL
                 SELECT n.id, n.parent_id FROM vehicle_nodes n
@@ -52,7 +52,7 @@ public interface VehicleNodeRepository extends JpaRepository<VehicleNode, Long> 
 
     /** Đếm cả nhánh con (mọi hậu duệ, không tính chính node). */
     @Query(value = """
-            WITH RECURSIVE subtree AS (
+            WITH RECURSIVE subtree(id) AS (
                 SELECT id FROM vehicle_nodes WHERE id = :id
                 UNION ALL
                 SELECT n.id FROM vehicle_nodes n JOIN subtree s ON n.parent_id = s.id
@@ -63,7 +63,7 @@ public interface VehicleNodeRepository extends JpaRepository<VehicleNode, Long> 
 
     /** Id của node và mọi hậu duệ — phục vụ xoá nhánh / đếm file mất liên kết. */
     @Query(value = """
-            WITH RECURSIVE subtree AS (
+            WITH RECURSIVE subtree(id) AS (
                 SELECT id FROM vehicle_nodes WHERE id = :id
                 UNION ALL
                 SELECT n.id FROM vehicle_nodes n JOIN subtree s ON n.parent_id = s.id

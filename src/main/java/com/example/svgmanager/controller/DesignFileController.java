@@ -3,6 +3,7 @@ package com.example.svgmanager.controller;
 import com.example.svgmanager.dto.response.DesignFileDto;
 import com.example.svgmanager.dto.response.DesignFileGeometryDto;
 import com.example.svgmanager.dto.response.ErrorResponse;
+import com.example.svgmanager.dto.response.PageResponse;
 import com.example.svgmanager.dto.response.PartDto;
 import com.example.svgmanager.service.DesignFileService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -39,23 +40,31 @@ public class DesignFileController {
 
     @GetMapping("/api/v1/files")
     @PreAuthorize("hasAnyRole('ADMIN', 'AGENT', 'USER')")
-    @Operation(summary = "File thiết kế khớp bộ lọc — Danh mục + Model là đủ mở (KX-30 v2)",
-            description = "Có subtypeId → khớp subtype hoặc model cha; không → model hoặc mọi phiên bản. "
-                    + "year: model_year = year HOẶC NULL (Q3). Chỉ file ACTIVE, không lọc quyền đại lý (Q6).")
+    @Operation(summary = "File thiết kế khớp bộ lọc — mọi tham số tuỳ chọn, phân trang (Data Center v2)",
+            description = "Lọc theo q · categoryId · year · brandId/seriesId/modelId/subtypeId. "
+                    + "Không truyền gì → mọi file ACTIVE. "
+                    + "Cấp xe: brandId/seriesId/modelId khớp file gắn node hoặc bất kỳ node con nào; "
+                    + "subtypeId khớp subtype hoặc model cha. "
+                    + "year: model_year = year HOẶC NULL (Q3). "
+                    + "Chỉ file ACTIVE, không lọc quyền đại lý (Q6). Sắp xếp updatedAt giảm dần.")
     @ApiResponses(value = {
-            @ApiResponse(responseCode = "200", description = "Rỗng = xe có trong danh mục nhưng chưa nạp file (KX-35)",
-                    content = @Content(array = @ArraySchema(schema = @Schema(implementation = DesignFileDto.class)))),
-            @ApiResponse(responseCode = "400", description = "Thiếu categoryId/modelId",
-                    content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+            @ApiResponse(responseCode = "200", description = "Danh sách phân trang các file thiết kế",
+                    content = @Content(schema = @Schema(implementation = PageResponse.class))),
             @ApiResponse(responseCode = "401", description = "Không có phiên còn hiệu lực",
                     content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
     })
-    public ResponseEntity<List<DesignFileDto>> getFiles(
-            @RequestParam String categoryId,
-            @RequestParam String modelId,
-            @RequestParam(required = false) String subtypeId,
-            @RequestParam(required = false) Integer year) {
-        return ResponseEntity.ok(designFileService.getFiles(categoryId, modelId, subtypeId, year));
+    public ResponseEntity<PageResponse<DesignFileDto>> getFiles(
+            @RequestParam(required = false) String q,
+            @RequestParam(required = false) Long categoryId,
+            @RequestParam(required = false) Integer year,
+            @RequestParam(required = false) Long brandId,
+            @RequestParam(required = false) Long seriesId,
+            @RequestParam(required = false) Long modelId,
+            @RequestParam(required = false) Long subtypeId,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        return ResponseEntity.ok(designFileService.getFiles(q, categoryId, year,
+                brandId, seriesId, modelId, subtypeId, page, size));
     }
 
     @GetMapping("/api/v1/files/{id}/parts")

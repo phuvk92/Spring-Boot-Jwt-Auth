@@ -117,7 +117,7 @@ com.example.svgmanager
 | **Xoá node + nhánh con** | `DELETE /api/vehicle-nodes/{id}` | ✅ | ❌ (403) | ❌ (403) | ❌ (401) |
 | **Danh mục file (app thợ)** | `GET /api/v1/file-categories` | ✅ | ✅ | ✅ | ❌ (401) |
 | **Catalog cây xe theo cấp** | `GET /api/v1/catalog/{level}?<idCha>=` | ✅ | ✅ | ✅ | ❌ (401) |
-| **File thiết kế theo bộ lọc** | `GET /api/v1/files?categoryId=&modelId=&subtypeId=&year=` | ✅ | ✅ | ✅ | ❌ (401) |
+| **File thiết kế theo bộ lọc** | `GET /api/v1/files?q=&categoryId=&year=&brandId=&seriesId=&modelId=&subtypeId=&page=0&size=20` | ✅ | ✅ | ✅ | ❌ (401) |
 | **Part trong file** | `GET /api/v1/files/{id}/parts` | ✅ | ✅ | ✅ | ❌ (401) |
 | **Hình học cả file** | `GET /api/v1/files/{id}/geometry` | ✅ | ✅ | ✅ | ❌ (401) |
 
@@ -148,10 +148,10 @@ phân quyền đại lý theo file `svg_file_dealer_permissions` — Q6.)*
 | `GET /api/v1/file-categories` | `[{value,label}]` danh mục `file_categories` đang hiệu lực, theo `display_order` |
 | `GET /api/v1/catalog/brand` | các hãng (node gốc) |
 | `GET /api/v1/catalog/series?brandId=` · `/model?seriesId=` · `/subtype?modelId=` | con của node cha — **thiếu id cha → 400**, id trỏ sai cấp → 400 |
-| `GET /api/v1/catalog/year?categoryId=&modelId=&subtypeId=` | các năm có file khớp, giảm dần; tham số nào truyền thì lọc theo đó |
-| `GET /api/v1/files?categoryId=&modelId=&subtypeId=&year=` | `DesignFile[]` — `categoryId`/`modelId` bắt buộc (400); có `subtypeId` → khớp subtype hoặc model cha, không → model hoặc mọi phiên bản; `year` khớp `model_year = year OR NULL` (Q3); chỉ `ACTIVE`, không lọc đại lý (Q6) |
+| `GET /api/v1/catalog/year?categoryId=&brandId=&seriesId=&modelId=&subtypeId=` | các năm có file khớp, giảm dần; tham số nào truyền thì lọc theo đó (cho phép thiếu `modelId`) |
+| `GET /api/v1/files?q=&categoryId=&year=&brandId=&seriesId=&modelId=&subtypeId=&page=0&size=20` | `PageResponse<DesignFileDto>` — mọi tham số tuỳ chọn; `q` khớp tên hiển thị hoặc tên file gốc; cấp xe: `brandId`/`seriesId`/`modelId` khớp file gắn node hoặc node con; `subtypeId` khớp subtype hoặc model cha; `year` khớp `model_year = year OR NULL` (Q3); sắp xếp `updatedAt` giảm dần; chỉ file `ACTIVE`, không lọc đại lý (Q6) |
 
-`DesignFile.category` là `{value,label}` (CatalogOption), `year` null = dùng cho mọi năm.
+`DesignFileDto` có `vehiclePath` (`"Toyota › Camry › Camry 2.5Q"`, `null` nếu chưa gắn), `category` là `{value,label}` (CatalogOption), `year` null = dùng cho mọi năm.
 
 ---
 

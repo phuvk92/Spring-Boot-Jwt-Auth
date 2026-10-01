@@ -24,8 +24,7 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 
-import static org.hamcrest.Matchers.hasSize;
-import static org.hamcrest.Matchers.is;
+import static org.hamcrest.Matchers.*;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -117,7 +116,8 @@ class CatalogFilesIntegrationTest {
     }
 
     private void link(SvgFile file, VehicleNode node) {
-        linkRepository.save(new SvgFileVehicleNode(file, node));
+        SvgFileVehicleNode link = linkRepository.save(new SvgFileVehicleNode(file, node));
+        file.getVehicleNodes().add(link);
     }
 
     // ---------- file-categories & catalog ----------
@@ -188,10 +188,10 @@ class CatalogFilesIntegrationTest {
                 .andExpect(status().isBadRequest());
     }
 
-    // ---------- /api/v1/files — 4 nhánh khớp ----------
+    // ---------- /api/v1/files — 4 nhánh khớp + phân trang + tham số tuỳ chọn ----------
 
     @Test
-    @DisplayName("files: có subtype + có năm → khớp subtype hoặc model, năm NULL vẫn khớp (Q3)")
+    @DisplayName("files: có subtype + có năm → khớp subtype hoặc model, năm NULL vẫn khớp (Q3), có vehiclePath")
     void files_withSubtypeAndYear() throws Exception {
         link(saveFile("model-2024", ngoaiThat, 2024, "ACTIVE"), camry25q); // gắn thẳng vào model
         link(saveFile("subtype-any-year", ngoaiThat, null, "ACTIVE"), banQ);
@@ -204,12 +204,15 @@ class CatalogFilesIntegrationTest {
                         .param("year", "2024")
                         .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_USER"))))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$", hasSize(2)))
-                .andExpect(jsonPath("$[0].id", is("model-2024")))
-                .andExpect(jsonPath("$[0].category.value", is(String.valueOf(ngoaiThat.getId()))))
-                .andExpect(jsonPath("$[0].category.label", is("Ngoại thất")))
-                .andExpect(jsonPath("$[0].year", is(2024)))
-                .andExpect(jsonPath("$[1].id", is("subtype-any-year")));
+                .andExpect(jsonPath("$.content", hasSize(2)))
+                .andExpect(jsonPath("$.totalElements", is(2)))
+                .andExpect(jsonPath("$.content[0].id", is("subtype-any-year")))
+                .andExpect(jsonPath("$.content[0].vehiclePath", is("Toyota › Camry › Camry 2.5Q › Bản Q")))
+                .andExpect(jsonPath("$.content[1].id", is("model-2024")))
+                .andExpect(jsonPath("$.content[1].category.value", is(String.valueOf(ngoaiThat.getId()))))
+                .andExpect(jsonPath("$.content[1].category.label", is("Ngoại thất")))
+                .andExpect(jsonPath("$.content[1].year", is(2024)))
+                .andExpect(jsonPath("$.content[1].vehiclePath", is("Toyota › Camry › Camry 2.5Q")));
     }
 
     @Test
@@ -227,9 +230,10 @@ class CatalogFilesIntegrationTest {
                         .param("subtypeId", String.valueOf(banQ.getId()))
                         .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_USER"))))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$", hasSize(2)))
-                .andExpect(jsonPath("$[0].id", is("f-model")))
-                .andExpect(jsonPath("$[1].id", is("f-subtype")));
+                .andExpect(jsonPath("$.content", hasSize(2)))
+                .andExpect(jsonPath("$.totalElements", is(2)))
+                .andExpect(jsonPath("$.content[0].id", is("f-subtype")))
+                .andExpect(jsonPath("$.content[1].id", is("f-model")));
     }
 
     @Test
@@ -246,10 +250,9 @@ class CatalogFilesIntegrationTest {
                         .param("year", "2024")
                         .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_USER"))))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$", hasSize(3)))
-                .andExpect(jsonPath("$[0].id", is("f-model-2024")))
-                .andExpect(jsonPath("$[1].id", is("f-subQ-2024")))
-                .andExpect(jsonPath("$[2].id", is("f-subH-null")));
+                .andExpect(jsonPath("$.content", hasSize(3)))
+                .andExpect(jsonPath("$.totalElements", is(3)))
+                .andExpect(jsonPath("$.content[*].id", containsInAnyOrder("f-model-2024", "f-subQ-2024", "f-subH-null")));
     }
 
     @Test
@@ -268,25 +271,38 @@ class CatalogFilesIntegrationTest {
                         .param("modelId", String.valueOf(camry25q.getId()))
                         .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_USER"))))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$", hasSize(3)));
+                .andExpect(jsonPath("$.content", hasSize(3)))
+                .andExpect(jsonPath("$.totalElements", is(3)));
     }
 
     @Test
-    @DisplayName("files: thiếu modelId → 400, không trả dữ liệu mẫu")
-    void files_missingModelId_returns400() throws Exception {
+    @DisplayName("files: không truyền gì → mọi file ACTIVE, file DELETED không hiện")
+    void files_noParams_returnsAllActive() throws Exception {
+        link(saveFile("f-active-1", ngoaiThat, 2024, "ACTIVE"), camry25q);
+        link(saveFile("f-active-2", noiThat, null, "ACTIVE"), banQ);
+        saveFile("f-unlinked", ngoaiThat, 2023, "ACTIVE"); // file chưa gắn
+        link(saveFile("f-deleted", ngoaiThat, 2024, "DELETED"), camry25q);
+
+        mockMvc.perform(get("/api/v1/files")
+                        .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_USER"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements", is(3)))
+                .andExpect(jsonPath("$.content", hasSize(3)))
+                .andExpect(jsonPath("$.content[?(@.id == 'f-deleted')]").doesNotExist());
+    }
+
+    @Test
+    @DisplayName("files: chỉ categoryId (không modelId) → hợp lệ, lọc đúng")
+    void files_onlyCategoryId_valid() throws Exception {
+        link(saveFile("f-ngoai", ngoaiThat, 2024, "ACTIVE"), camry25q);
+        link(saveFile("f-noi", noiThat, 2024, "ACTIVE"), camry25q);
+
         mockMvc.perform(get("/api/v1/files")
                         .param("categoryId", String.valueOf(ngoaiThat.getId()))
                         .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_USER"))))
-                .andExpect(status().isBadRequest());
-    }
-
-    @Test
-    @DisplayName("files: thiếu categoryId → 400")
-    void files_missingCategoryId_returns400() throws Exception {
-        mockMvc.perform(get("/api/v1/files")
-                        .param("modelId", String.valueOf(camry25q.getId()))
-                        .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_USER"))))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements", is(1)))
+                .andExpect(jsonPath("$.content[0].id", is("f-ngoai")));
     }
 
     @Test
