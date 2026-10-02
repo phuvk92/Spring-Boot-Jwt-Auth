@@ -1,6 +1,7 @@
 package com.example.svgmanager.service.impl;
 
 import com.example.svgmanager.dto.response.CatalogOptionDto;
+import com.example.svgmanager.dto.response.CutAreaDto;
 import com.example.svgmanager.dto.response.DesignFileDto;
 import com.example.svgmanager.dto.response.DesignFileGeometryDto;
 import com.example.svgmanager.dto.response.PageResponse;
@@ -159,7 +160,7 @@ public class DesignFileServiceImpl implements DesignFileService {
 
         String displayName = file.getDisplayName() != null ? file.getDisplayName()
                 : (file.getOriginalFilename() != null ? file.getOriginalFilename() : file.getRawOriginalFilename());
-        return new DesignFileDto(
+        DesignFileDto dto = new DesignFileDto(
                 file.getFileKey(),
                 displayName,
                 categoryDto,
@@ -169,6 +170,8 @@ public class DesignFileServiceImpl implements DesignFileService {
                 file.getNote(),
                 file.getUpdatedAt() != null ? file.getUpdatedAt() : file.getCreatedAt(),
                 path);
+        dto.setCutArea(CutAreaDto.of(file.getCutAreaLengthMm(), file.getCutAreaWidthMm()));
+        return dto;
     }
 
     /** Đường dẫn tên từ gốc tới node: "Toyota › Camry › Camry 2.5Q". */
@@ -213,10 +216,12 @@ public class DesignFileServiceImpl implements DesignFileService {
         }
         String displayName = file.getDisplayName() != null ? file.getDisplayName()
                 : (file.getOriginalFilename() != null ? file.getOriginalFilename() : file.getRawOriginalFilename());
-        return new DesignFileGeometryDto(
+        DesignFileGeometryDto geometry = new DesignFileGeometryDto(
                 file.getFileKey(),
                 displayName,
                 parts);
+        geometry.setCutArea(CutAreaDto.of(file.getCutAreaLengthMm(), file.getCutAreaWidthMm()));
+        return geometry;
     }
 
     /** partId của hợp đồng là ghép {@code <fileId>--<layout>--<partKey>} — SA-DanhMucXe-v2 §8.1. */

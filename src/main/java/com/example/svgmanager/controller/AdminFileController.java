@@ -67,7 +67,9 @@ public class AdminFileController {
     @PreAuthorize("hasRole('ADMIN')")
     @Operation(summary = "Upload file thiết kế mới",
             description = "Nhận nestedFile? + rawFile? (>= 1 file). Chỉ .svg (kiểm cả đuôi lẫn nội dung — khác → 400 UNSUPPORTED_FORMAT). "
-                    + "File không khai đơn vị → 400 SVG_UNITS_MISSING. Server tách part + hình học (SA §4/§8).")
+                    + "File không khai đơn vị → 400 SVG_UNITS_MISSING. Server tách part + hình học (SA §4/§8). "
+                    + "Khổ cắt tuỳ chọn: cutAreaLengthMm (100–50000) + cutAreaWidthMm (100–2000), phải đủ cả hai "
+                    + "(NGO-399 — thiếu một → 400 CUT_AREA_INCOMPLETE, ngoài giới hạn → 400 CUT_AREA_OUT_OF_RANGE).")
     @ApiResponses({
             @ApiResponse(responseCode = "201", description = "Đã tạo file + part",
                     content = @Content(schema = @Schema(implementation = AdminFileResponse.class))),
@@ -82,16 +84,20 @@ public class AdminFileController {
             @RequestParam("categoryId") Long categoryId,
             @RequestParam(value = "year", required = false) Integer year,
             @RequestParam("vehicleNodeIds") List<Long> vehicleNodeIds,
-            @RequestPart(value = "thumbnail", required = false) MultipartFile thumbnail) {
+            @RequestPart(value = "thumbnail", required = false) MultipartFile thumbnail,
+            @RequestParam(value = "cutAreaLengthMm", required = false) Integer cutAreaLengthMm,
+            @RequestParam(value = "cutAreaWidthMm", required = false) Integer cutAreaWidthMm) {
         MultipartFile effectiveNested = nestedFile != null ? nestedFile : legacyFile;
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(adminFileService.createFile(effectiveNested, rawFile, name, categoryId, year, vehicleNodeIds, thumbnail));
+                .body(adminFileService.createFile(effectiveNested, rawFile, name, categoryId, year,
+                        vehicleNodeIds, thumbnail, cutAreaLengthMm, cutAreaWidthMm));
     }
 
     @PutMapping(value = "/{id}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @PreAuthorize("hasRole('ADMIN')")
     @Operation(summary = "Sửa file trong kho",
-            description = "Như POST nhưng mọi trường tuỳ chọn; thay riêng từng file hoặc bỏ một bản (removeNested/removeRaw).")
+            description = "Như POST nhưng mọi trường tuỳ chọn; thay riêng từng file hoặc bỏ một bản (removeNested/removeRaw). "
+                    + "Khổ cắt: không gửi → giữ nguyên; clearCutArea=true → bỏ khổ đã khai (NGO-399).")
     public ResponseEntity<AdminFileResponse> updateFile(
             @PathVariable Long id,
             @RequestPart(value = "nestedFile", required = false) MultipartFile nestedFile,
@@ -104,6 +110,9 @@ public class AdminFileController {
             @RequestParam(value = "year", required = false) Integer year,
             @RequestParam(value = "vehicleNodeIds", required = false) List<Long> vehicleNodeIds,
             @RequestPart(value = "thumbnail", required = false) MultipartFile thumbnail,
+            @RequestParam(value = "cutAreaLengthMm", required = false) Integer cutAreaLengthMm,
+            @RequestParam(value = "cutAreaWidthMm", required = false) Integer cutAreaWidthMm,
+            @RequestParam(value = "clearCutArea", required = false, defaultValue = "false") boolean clearCutArea,
             HttpServletRequest request) {
         // Tham số year HIỆN DIỆN (kể cả rỗng) nghĩa là client muốn đặt lại năm — để
         // phân biệt "không gửi" (giữ nguyên) với "gửi rỗng" (xoá năm → mọi năm).
@@ -111,7 +120,8 @@ public class AdminFileController {
         MultipartFile effectiveNested = nestedFile != null ? nestedFile : legacyFile;
         return ResponseEntity.ok(adminFileService.updateFile(id, effectiveNested, rawFile,
                 removeNested, removeRaw, name, categoryId,
-                year, yearPresent, vehicleNodeIds, thumbnail));
+                year, yearPresent, vehicleNodeIds, thumbnail,
+                cutAreaLengthMm, cutAreaWidthMm, clearCutArea));
     }
 
     @DeleteMapping("/{id}")

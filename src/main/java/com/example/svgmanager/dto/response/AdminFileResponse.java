@@ -46,7 +46,13 @@ public record AdminFileResponse(
         boolean hasNested,
 
         @Schema(description = "Có bản chưa xếp (vào khu chưa cắt) hay không", example = "true")
-        boolean hasRaw
+        boolean hasRaw,
+
+        @Schema(description = "Chiều dọc cuộn của khổ cắt đã khai, mm; null khi chưa khai", example = "15000", nullable = true)
+        Integer cutAreaLengthMm,
+
+        @Schema(description = "Khổ phim của khổ cắt đã khai, mm; null khi chưa khai", example = "700", nullable = true)
+        Integer cutAreaWidthMm
 ) {
     /** Một mẫu xe file gắn vào, kèm đường dẫn đầy đủ trong cây ("Toyota › Camry › Camry 2.5Q"). */
     public record VehicleRef(Long nodeId, String path) {

@@ -170,7 +170,8 @@ public class AdminFileServiceImpl implements AdminFileService {
     @Transactional
     public AdminFileResponse createFile(MultipartFile nestedFile, MultipartFile rawFile,
                                         String name, Long categoryId, Integer year,
-                                        List<Long> vehicleNodeIds, MultipartFile thumbnail) {
+                                        List<Long> vehicleNodeIds, MultipartFile thumbnail,
+                                        Integer cutAreaLengthMm, Integer cutAreaWidthMm) {
         boolean hasNested = nestedFile != null && !nestedFile.isEmpty();
         boolean hasRaw = rawFile != null && !rawFile.isEmpty();
         if (!hasNested && !hasRaw) {
@@ -220,6 +221,7 @@ public class AdminFileServiceImpl implements AdminFileService {
         svgFile.setFileCategory(category);
         svgFile.setModelYear(year);
         svgFile.setSource("SYSTEM");
+        applyCutArea(svgFile, cutAreaLengthMm, cutAreaWidthMm, false);
 
         if (hasNested) {
             String storedFilename = UUID.randomUUID() + ".svg";
@@ -265,7 +267,8 @@ public class AdminFileServiceImpl implements AdminFileService {
                                         boolean removeNested, boolean removeRaw,
                                         String name, Long categoryId,
                                         Integer year, boolean yearPresent,
-                                        List<Long> vehicleNodeIds, MultipartFile thumbnail) {
+                                        List<Long> vehicleNodeIds, MultipartFile thumbnail,
+                                        Integer cutAreaLengthMm, Integer cutAreaWidthMm, boolean clearCutArea) {
         SvgFile svgFile = svgFileRepository.findById(id)
                 .filter(f -> !"DELETED".equalsIgnoreCase(f.getStatus()))
                 .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy file với ID: " + id));
@@ -432,6 +435,7 @@ public class AdminFileServiceImpl implements AdminFileService {
             }
         }
         storeThumbnailIfAny(thumbnail, svgFile);
+        applyCutArea(svgFile, cutAreaLengthMm, cutAreaWidthMm, clearCutArea);
 
         SvgFile saved = svgFileRepository.save(svgFile);
         audit("UPDATE_PART_FILE", saved, "Cập nhật file thiết kế ID: " + id);
@@ -608,6 +612,34 @@ public class AdminFileServiceImpl implements AdminFileService {
                 .orElseThrow(() -> new BadRequestException("Danh mục file không tồn tại: " + categoryId));
     }
 
+    /**
+     * Khổ cắt theo file (epic NGO-399): chỉ một trong hai → 400 CUT_AREA_INCOMPLETE;
+     * ngoài giới hạn (dài 100–50000, rộng 100–2000 mm) → 400 CUT_AREA_OUT_OF_RANGE.
+     * {@code clear}=true bỏ khổ đã khai; cả hai null (và không clear) → giữ nguyên.
+     */
+    private void applyCutArea(SvgFile file, Integer lengthMm, Integer widthMm, boolean clear) {
+        if (clear) {
+            file.setCutAreaLengthMm(null);
+            file.setCutAreaWidthMm(null);
+            return;
+        }
+        if (lengthMm == null && widthMm == null) {
+            return;
+        }
+        if (lengthMm == null || widthMm == null) {
+            throw new BadRequestException(
+                    "Khổ cắt cần đủ cả hai trường cutAreaLengthMm và cutAreaWidthMm",
+                    ErrorCodes.CUT_AREA_INCOMPLETE);
+        }
+        if (lengthMm < 100 || lengthMm > 50000 || widthMm < 100 || widthMm > 2000) {
+            throw new BadRequestException(
+                    "Khổ cắt ngoài giới hạn: chiều dài 100–50000 mm, khổ phim 100–2000 mm",
+                    ErrorCodes.CUT_AREA_OUT_OF_RANGE);
+        }
+        file.setCutAreaLengthMm(lengthMm);
+        file.setCutAreaWidthMm(widthMm);
+    }
+
     private void validateYear(Integer year) {
         if (year != null && (year < 1900 || year > 2100)) {
             throw new BadRequestException("Năm xe phải trong 1900..2100: " + year);
@@ -649,7 +681,9 @@ public class AdminFileServiceImpl implements AdminFileService {
                 f.getModelYear(), vehicles, f.getSource(), partCount, f.getUpdatedAt(),
                 f.getThumbnailPath() != null ? "/api/svg/" + f.getId() + "/thumbnail" : null,
                 hasNested,
-                hasRaw);
+                hasRaw,
+                f.getCutAreaLengthMm(),
+                f.getCutAreaWidthMm());
     }
 
     /** Đường dẫn tên từ gốc tới node: "Toyota › Camry › Camry 2.5Q". */

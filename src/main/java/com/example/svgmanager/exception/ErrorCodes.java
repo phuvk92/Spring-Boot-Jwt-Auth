@@ -32,6 +32,10 @@ public final class ErrorCodes {
     public static final String FILE_REQUIRED = "FILE_REQUIRED";
     /** Upload/sửa part file có cả hai bản nhưng số part khác nhau (SA-DanhMucXe-v2 §8). */
     public static final String LAYOUT_PART_MISMATCH = "LAYOUT_PART_MISMATCH";
+    /** Khai khổ cắt chỉ một trong hai trường (epic NGO-399). */
+    public static final String CUT_AREA_INCOMPLETE = "CUT_AREA_INCOMPLETE";
+    /** Khổ cắt ngoài giới hạn: chiều dài 100–50000 mm, khổ phim 100–2000 mm (epic NGO-399). */
+    public static final String CUT_AREA_OUT_OF_RANGE = "CUT_AREA_OUT_OF_RANGE";
 
     private ErrorCodes() {
     }

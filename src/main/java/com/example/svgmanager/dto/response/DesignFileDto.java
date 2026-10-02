@@ -40,6 +40,9 @@ public class DesignFileDto {
             example = "Toyota › Camry › Camry 2.5Q", nullable = true)
     private String vehiclePath;
 
+    @Schema(description = "Khổ cắt file khai (NGO-399); null → client dùng mặc định 15000 × 700", nullable = true)
+    private CutAreaDto cutArea;
+
     public DesignFileDto() {
     }
 
@@ -131,5 +134,13 @@ public class DesignFileDto {
 
     public void setVehiclePath(String vehiclePath) {
         this.vehiclePath = vehiclePath;
+    }
+
+    public CutAreaDto getCutArea() {
+        return cutArea;
+    }
+
+    public void setCutArea(CutAreaDto cutArea) {
+        this.cutArea = cutArea;
     }
 }
