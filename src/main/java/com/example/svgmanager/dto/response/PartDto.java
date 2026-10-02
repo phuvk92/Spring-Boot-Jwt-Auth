@@ -23,15 +23,23 @@ public class PartDto {
 
     private String note;
 
+    @Schema(description = "Màu tô hiệu lực của part (#RRGGBB) đọc từ file SVG (NGO-415)", example = "#5CC6D0")
+    private String color;
+
     public PartDto() {
     }
 
     public PartDto(String id, String name, String zone, String filmUsage, String note) {
+        this(id, name, zone, filmUsage, note, null);
+    }
+
+    public PartDto(String id, String name, String zone, String filmUsage, String note, String color) {
         this.id = id;
         this.name = name;
         this.zone = zone;
         this.filmUsage = filmUsage;
         this.note = note;
+        this.color = color;
     }
 
     public String getId() {
@@ -72,5 +80,13 @@ public class PartDto {
 
     public void setNote(String note) {
         this.note = note;
+    }
+
+    public String getColor() {
+        return color;
+    }
+
+    public void setColor(String color) {
+        this.color = color;
     }
 }

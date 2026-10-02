@@ -43,18 +43,27 @@ public class PartOutlineDto {
 
     private Integer holeCount;
 
+    @Schema(description = "Màu tô hiệu lực của part (#RRGGBB) đọc từ file SVG (NGO-415)", example = "#5CC6D0")
+    private String color;
+
     public PartOutlineDto() {
     }
 
     public PartOutlineDto(String partId, String name, String pathData, Double widthMm,
                           Double heightMm, Double xMm, Double yMm,
                           Integer nodeCount, Integer holeCount) {
-        this(partId, name, "nested", pathData, widthMm, heightMm, xMm, yMm, nodeCount, holeCount);
+        this(partId, name, "nested", pathData, widthMm, heightMm, xMm, yMm, nodeCount, holeCount, null);
     }
 
     public PartOutlineDto(String partId, String name, String layout, String pathData, Double widthMm,
                           Double heightMm, Double xMm, Double yMm,
                           Integer nodeCount, Integer holeCount) {
+        this(partId, name, layout, pathData, widthMm, heightMm, xMm, yMm, nodeCount, holeCount, null);
+    }
+
+    public PartOutlineDto(String partId, String name, String layout, String pathData, Double widthMm,
+                          Double heightMm, Double xMm, Double yMm,
+                          Integer nodeCount, Integer holeCount, String color) {
         this.partId = partId;
         this.name = name;
         this.layout = layout;
@@ -65,6 +74,7 @@ public class PartOutlineDto {
         this.yMm = yMm;
         this.nodeCount = nodeCount;
         this.holeCount = holeCount;
+        this.color = color;
     }
 
     public String getPartId() {
@@ -145,5 +155,13 @@ public class PartOutlineDto {
 
     public void setHoleCount(Integer holeCount) {
         this.holeCount = holeCount;
+    }
+
+    public String getColor() {
+        return color;
+    }
+
+    public void setColor(String color) {
+        this.color = color;
     }
 }

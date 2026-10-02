@@ -58,9 +58,18 @@ public final class SvgImport {
     /** {@code _xHHHH_} — cách trình vẽ mã hoá ký tự đặc biệt trong id (điển hình _x0020_ = space). */
     private static final Pattern XML_ESCAPED_CHAR = Pattern.compile("_x([0-9A-Fa-f]{4})_");
 
-    /** Một part tách được từ file — đủ cột hình học của svg_file_parts (V13). */
+    private static final Pattern HEX_COLOR_PATTERN = Pattern.compile("^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$");
+    private static final Pattern RGB_FUNC_PATTERN = Pattern.compile("^rgb\\(\\s*(\\d+)\\s*,\\s*(\\d+)\\s*,\\s*(\\d+)\\s*\\)$", Pattern.CASE_INSENSITIVE);
+
+    /** Một part tách được từ file — đủ cột hình học của svg_file_parts (V13 + V21). */
     public record ImportedPart(String name, String pathData, double widthMm, double heightMm,
-                               double xMm, double yMm, int nodeCount, int holeCount) {
+                               double xMm, double yMm, int nodeCount, int holeCount, String color) {
+
+        /** Constructor tương thích cho các mã gọi cũ không truyền color. */
+        public ImportedPart(String name, String pathData, double widthMm, double heightMm,
+                            double xMm, double yMm, int nodeCount, int holeCount) {
+            this(name, pathData, widthMm, heightMm, xMm, yMm, nodeCount, holeCount, null);
+        }
     }
 
     /**
@@ -108,7 +117,8 @@ public final class SvgImport {
 
         // Gốc viewBox dời về 0 trước khi đổi đơn vị — như client.
         List<Pending> collected = new ArrayList<>();
-        walk(root, Affine.translate(-units.origin.x(), -units.origin.y()), collected);
+        String rootFill = resolveElementFill(root, null);
+        walk(root, Affine.translate(-units.origin.x(), -units.origin.y()), rootFill, collected);
 
         Affine toMm = Affine.scale(units.mmPerUnit, units.mmPerUnit);
         List<ImportedPart> parts = new ArrayList<>();
@@ -127,7 +137,7 @@ public final class SvgImport {
 
             parts.add(new ImportedPart(name, SvgPath.write(local),
                     Math.max(box.width(), 0.001), Math.max(box.height(), 0.001),
-                    box.x(), box.y(), local.nodeCount(), local.holeCount()));
+                    box.x(), box.y(), local.nodeCount(), local.holeCount(), p.color()));
         }
 
         return parts;
@@ -220,11 +230,11 @@ public final class SvgImport {
 
     // ── Duyệt cây ───────────────────────────────────────────────────────
 
-    /** Shape kèm id của phần tử — id làm tên part (§4). */
-    private record Pending(PathShape shape, String rawId) {
+    /** Shape kèm id và màu của phần tử — id làm tên part (§4), color là màu tô (NGO-415). */
+    private record Pending(PathShape shape, String rawId, String color) {
     }
 
-    private static void walk(Element parent, Affine parentMat, List<Pending> shapes) {
+    private static void walk(Element parent, Affine parentMat, String inheritedColor, List<Pending> shapes) {
         NodeList children = parent.getChildNodes();
         for (int k = 0; k < children.getLength(); k++) {
             Node node = children.item(k);
@@ -245,13 +255,15 @@ public final class SvgImport {
                 PathShape shape = buildShape(el, tag);
                 if (!shape.figures().isEmpty()) {
                     String id = attr(el, "id");
+                    String color = resolveElementFill(el, inheritedColor);
                     shapes.add(new Pending(shape.transform(mat),
-                            id == null || id.isEmpty() ? null : id));
+                            id == null || id.isEmpty() ? null : id, color));
                 }
                 continue;
             }
             if (CONTAINER_TAGS.contains(tag)) {
-                walk(el, mat, shapes);
+                String groupColor = resolveElementFill(el, inheritedColor);
+                walk(el, mat, groupColor, shapes);
                 continue;
             }
             if (IGNORED_TAGS.contains(tag)) {
@@ -264,7 +276,8 @@ public final class SvgImport {
                 continue;
             }
             // Thẻ lạ: đi xuyên qua thay vì bỏ — nó thường là bọc quanh hình thật.
-            walk(el, mat, shapes);
+            String unknownColor = resolveElementFill(el, inheritedColor);
+            walk(el, mat, unknownColor, shapes);
         }
     }
 
@@ -474,5 +487,96 @@ public final class SvgImport {
 
     private static boolean isLetterT(char c) {
         return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
+    }
+
+    // ── Xử lý màu tô — NGO-415 ──────────────────────────────────────────
+
+    /**
+     * Xác định màu tô hiệu lực của phần tử:
+     * - inline style (fill: ...) có độ ưu tiên cao nhất
+     * - thuộc tính fill="..."
+     * - kế thừa từ cha nếu phần tử không khai báo fill
+     * - chuẩn hoá #RRGGBB viết hoa, null nếu không có màu hoặc không hợp lệ.
+     */
+    private static String resolveElementFill(Element el, String inheritedColor) {
+        String styleFill = parseInlineStyleFill(attr(el, "style"));
+        if (styleFill != null) {
+            return normalizeColor(styleFill);
+        }
+
+        String fillAttr = attr(el, "fill");
+        if (fillAttr != null) {
+            return normalizeColor(fillAttr);
+        }
+
+        return inheritedColor;
+    }
+
+    /** Trích giá trị fill trong thuộc tính style="..." */
+    private static String parseInlineStyleFill(String style) {
+        if (style == null || style.isBlank()) {
+            return null;
+        }
+        String[] declarations = style.split(";");
+        for (String decl : declarations) {
+            int colon = decl.indexOf(':');
+            if (colon > 0) {
+                String prop = decl.substring(0, colon).trim().toLowerCase(Locale.ROOT);
+                if ("fill".equals(prop)) {
+                    return decl.substring(colon + 1).trim();
+                }
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Chuẩn hoá chuỗi màu sang #RRGGBB (viết hoa):
+     * - Hỗ trợ #RGB (#abc -> #AABBCC)
+     * - Hỗ trợ #RRGGBB
+     * - Hỗ trợ rgb(r, g, b)
+     * - Các giá trị none, transparent, currentColor, url(...) hoặc không hợp lệ -> null
+     */
+    static String normalizeColor(String raw) {
+        if (raw == null) {
+            return null;
+        }
+        String s = raw.trim();
+        if (s.isEmpty()) {
+            return null;
+        }
+        String lower = s.toLowerCase(Locale.ROOT);
+        if ("none".equals(lower) || "transparent".equals(lower) || "currentcolor".equals(lower)
+                || lower.startsWith("url(")) {
+            return null;
+        }
+
+        Matcher hexMatcher = HEX_COLOR_PATTERN.matcher(s);
+        if (hexMatcher.matches()) {
+            String hex = hexMatcher.group(1);
+            if (hex.length() == 3) {
+                char r = hex.charAt(0);
+                char g = hex.charAt(1);
+                char b = hex.charAt(2);
+                return ("#" + r + r + g + g + b + b).toUpperCase(Locale.ROOT);
+            }
+            return ("#" + hex).toUpperCase(Locale.ROOT);
+        }
+
+        Matcher rgbMatcher = RGB_FUNC_PATTERN.matcher(s);
+        if (rgbMatcher.matches()) {
+            try {
+                int r = Integer.parseInt(rgbMatcher.group(1));
+                int g = Integer.parseInt(rgbMatcher.group(2));
+                int b = Integer.parseInt(rgbMatcher.group(3));
+                if (r >= 0 && r <= 255 && g >= 0 && g <= 255 && b >= 0 && b <= 255) {
+                    return String.format(Locale.ROOT, "#%02X%02X%02X", r, g, b);
+                }
+            } catch (NumberFormatException ignored) {
+                return null;
+            }
+        }
+
+        return null;
     }
 }

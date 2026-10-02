@@ -142,10 +142,11 @@ class AdminFilesPostgresIntegrationTest {
         long id = ((Integer) com.jayway.jsonpath.JsonPath.read(res.getResponse().getContentAsString(), "$.id")).longValue();
         SvgFile saved = svgFileRepository.findById(id).orElseThrow();
         assertEquals(177, partRepository.countBySvgFileId(id));
-        // Part đầu tiên có đủ cột hình học V13
+        // Part đầu tiên có đủ cột hình học V13 và màu tô V21 (NGO-415)
         var part0 = partRepository.findBySvgFileIdOrderByDisplayOrderAscIdAsc(id).get(0);
         assertNotNull(part0.getPathData());
         assertTrue(part0.getWidthMm() > 0 && part0.getHeightMm() > 0);
+        assertEquals("#F7ADAF", part0.getColor());
         assertNotNull(saved.getFilmUsage());
     }
 

@@ -533,6 +533,7 @@ public class AdminFileServiceImpl implements AdminFileService {
             part.setYMm(p.yMm());
             part.setNodeCount(p.nodeCount());
             part.setHoleCount(p.holeCount());
+            part.setColor(p.color());
             // film_usage tính từ hộp bao (§4): chiều dài phim ≈ cạnh dài hơn của part.
             part.setFilmUsage(formatFilmUsage(Math.max(p.widthMm(), p.heightMm())));
             svgFile.getParts().add(part);

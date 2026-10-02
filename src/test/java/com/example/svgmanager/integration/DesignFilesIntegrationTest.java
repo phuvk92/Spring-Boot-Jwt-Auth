@@ -87,12 +87,14 @@ class DesignFilesIntegrationTest {
     }
 
     @Test
-    @DisplayName("KX-32: part trong file, đúng thứ tự, đủ 5 trường (khớp fixture 08)")
+    @DisplayName("KX-32: part trong file, đúng thứ tự, đủ 5 trường (khớp fixture 08) + color NGO-415")
     void getFileParts_existingFile_returnsPartsInOrder() throws Exception {
         SvgFile full = saveFile(FILE_KEY, "Ngoại thất — full body 7 mảnh",
                 "6,46 m", "Trọn gói ngoài xe. Bản gốc nhà sản xuất");
-        svgFilePartRepository.save(new SvgFilePart(
-                full, "capo", "Capo", "Ngoại thất", "1,42 m", "Bản gốc nhà sản xuất · 12 node", 0));
+        SvgFilePart p1 = new SvgFilePart(
+                full, "capo", "Capo", "Ngoại thất", "1,42 m", "Bản gốc nhà sản xuất · 12 node", 0);
+        p1.setColor("#5CC6D0");
+        svgFilePartRepository.save(p1);
         svgFilePartRepository.save(new SvgFilePart(
                 full, "đèn-trái", "Đèn trái", "Kính & đèn", "0,24 m", "Có lỗ khoét cảm biến", 1));
         svgFilePartRepository.save(new SvgFilePart(
@@ -108,7 +110,9 @@ class DesignFilesIntegrationTest {
                 .andExpect(jsonPath("$[0].zone", is("Ngoại thất")))
                 .andExpect(jsonPath("$[0].filmUsage", is("1,42 m")))
                 .andExpect(jsonPath("$[0].note", is("Bản gốc nhà sản xuất · 12 node")))
+                .andExpect(jsonPath("$[0].color", is("#5CC6D0")))
                 .andExpect(jsonPath("$[1].id", is("đèn-trái")))
+                .andExpect(jsonPath("$[1].color").doesNotExist())
                 .andExpect(jsonPath("$[2].id", is("đèn-phải")));
     }
 
@@ -137,7 +141,7 @@ class DesignFilesIntegrationTest {
     private SvgFilePart savePartWithGeometry(SvgFile file, String partKey, String name,
                                              String pathData, double widthMm, double heightMm,
                                              double xMm, double yMm, int nodeCount, int holeCount,
-                                             int displayOrder) {
+                                             int displayOrder, String color) {
         SvgFilePart part = new SvgFilePart(file, partKey, name, null, null, null, displayOrder);
         part.setPathData(pathData);
         part.setWidthMm(widthMm);
@@ -146,20 +150,21 @@ class DesignFilesIntegrationTest {
         part.setYMm(yMm);
         part.setNodeCount(nodeCount);
         part.setHoleCount(holeCount);
+        part.setColor(color);
         return svgFilePartRepository.save(part);
     }
 
     @Test
-    @DisplayName("F-56: geometry cả file, đủ 9 trường PartOutline, khớp fixture 09 (dấu tiếng Việt giữ nguyên)")
+    @DisplayName("F-56: geometry cả file, đủ 9 trường PartOutline + color NGO-415, khớp fixture 09")
     void getFileGeometry_existingFile_returnsGeometry() throws Exception {
         SvgFile full = saveFile(FILE_KEY, "Ngoại thất — full body 7 mảnh",
                 "6,46 m", "Trọn gói ngoài xe");
         savePartWithGeometry(full, "capo", "Capo",
                 "M 60,0 L 1040,0 C 1080,0 1100,25 1100,60 L 1100,760 C 1100,840 1040,900 950,900 L 150,900 C 60,900 0,840 0,760 L 0,60 C 0,25 20,0 60,0 Z",
-                1100, 900, 30, 30, 12, 0, 0);
+                1100, 900, 30, 30, 12, 0, 0, "#5CC6D0");
         savePartWithGeometry(full, "đèn-trái", "Đèn trái",
                 "M 0,60 C 40,10 120,0 210,0 C 320,0 400,20 420,80 C 430,130 380,190 280,198 C 150,208 40,170 0,120 Z M 120,70 C 160,55 220,60 240,95 C 250,125 210,150 170,145 C 130,140 105,105 120,70 Z",
-                420, 198, 30, 954, 14, 1, 1);
+                420, 198, 30, 954, 14, 1, 1, null);
 
         mockMvc.perform(get("/api/v1/files/{id}/geometry", FILE_KEY)
                         .with(jwt().jwt(j -> j.subject("kc-user"))
@@ -180,11 +185,13 @@ class DesignFilesIntegrationTest {
                 .andExpect(jsonPath("$.parts[0].yMm", is(30.0)))
                 .andExpect(jsonPath("$.parts[0].nodeCount", is(12)))
                 .andExpect(jsonPath("$.parts[0].holeCount", is(0)))
+                .andExpect(jsonPath("$.parts[0].color", is("#5CC6D0")))
                 .andExpect(jsonPath("$.parts[1].partId", is(FILE_KEY + "--nested--đèn-trái")))
                 .andExpect(jsonPath("$.parts[1].layout", is("nested")))
                 .andExpect(jsonPath("$.parts[1].xMm", is(30.0)))
                 .andExpect(jsonPath("$.parts[1].yMm", is(954.0)))
-                .andExpect(jsonPath("$.parts[1].holeCount", is(1)));
+                .andExpect(jsonPath("$.parts[1].holeCount", is(1)))
+                .andExpect(jsonPath("$.parts[1].color").doesNotExist());
     }
 
     @Test

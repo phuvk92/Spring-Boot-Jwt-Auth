@@ -238,12 +238,13 @@ public class DesignFileServiceImpl implements DesignFileService {
                 part.getXMm() != null ? part.getXMm() : 0.0,
                 part.getYMm() != null ? part.getYMm() : 0.0,
                 part.getNodeCount() != null ? part.getNodeCount() : 0,
-                part.getHoleCount() != null ? part.getHoleCount() : 0);
+                part.getHoleCount() != null ? part.getHoleCount() : 0,
+                part.getColor());
     }
 
     private PartDto toDto(SvgFilePart part) {
         return new PartDto(part.getPartKey(), part.getName(), part.getZone(),
-                part.getFilmUsage(), part.getNote());
+                part.getFilmUsage(), part.getNote(), part.getColor());
     }
 
 }

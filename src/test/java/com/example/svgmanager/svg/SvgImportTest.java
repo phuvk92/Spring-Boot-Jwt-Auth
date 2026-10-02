@@ -125,5 +125,57 @@ class SvgImportTest {
             assertEquals(Integer.parseInt(c[5]), p.nodeCount(), "nodeCount part " + (i + 1));
             assertEquals(Integer.parseInt(c[6]), p.holeCount(), "holeCount part " + (i + 1));
         }
+
+        // Kiểm đủ 5 màu tô khác nhau trên 177 part của Audi Q6
+        java.util.Set<String> colors = parts.stream()
+                .map(ImportedPart::color)
+                .collect(java.util.stream.Collectors.toSet());
+        assertEquals(java.util.Set.of("#5CC6D0", "#F7ADAF", "#718FC8", "#F58634", "#FEFEFE"), colors);
+    }
+
+    @Test
+    @DisplayName("NGO-415: Màu tô chuẩn hoá #RRGGBB, kế thừa từ <g>, ưu tiên inline style hơn fill attribute")
+    void partColors_resolutionAndInheritance() {
+        String svg = """
+                <svg xmlns="http://www.w3.org/2000/svg" width="100mm" height="100mm" viewBox="0 0 100 100">
+                  <g fill="#abc">
+                    <rect id="p1" x="0" y="0" width="10" height="10"/>
+                    <rect id="p2" x="10" y="0" width="10" height="10" fill="#f58634"/>
+                    <rect id="p3" x="20" y="0" width="10" height="10" fill="#f58634" style="fill: #5cc6d0; stroke: #333"/>
+                    <rect id="p4" x="30" y="0" width="10" height="10" fill="none"/>
+                    <rect id="p5" x="40" y="0" width="10" height="10" style="fill: rgb(247, 173, 175)"/>
+                    <rect id="p6" x="50" y="0" width="10" height="10" fill="transparent"/>
+                    <rect id="p7" x="60" y="0" width="10" height="10" fill="url(#grad1)"/>
+                  </g>
+                  <rect id="p8" x="70" y="0" width="10" height="10"/>
+                </svg>""";
+        List<ImportedPart> parts = SvgImport.parseParts(svg);
+        assertEquals(8, parts.size());
+        assertEquals("#AABBCC", parts.get(0).color(), "Kế thừa #abc -> #AABBCC");
+        assertEquals("#F58634", parts.get(1).color(), "Ghi đè fill=\"#f58634\"");
+        assertEquals("#5CC6D0", parts.get(2).color(), "style=\"fill: #5cc6d0\" ưu tiên hơn fill attribute");
+        assertNull(parts.get(3).color(), "fill=\"none\" -> null");
+        assertEquals("#F7ADAF", parts.get(4).color(), "style=\"fill: rgb(247, 173, 175)\" -> #F7ADAF");
+        assertNull(parts.get(5).color(), "transparent -> null");
+        assertNull(parts.get(6).color(), "url(#grad1) -> null");
+        assertNull(parts.get(7).color(), "Không khai báo màu -> null");
+    }
+
+    @Test
+    @DisplayName("NGO-415: normalizeColor hỗ trợ #RGB, #RRGGBB, rgb() và bỏ qua giá trị đặc biệt/hỏng")
+    void normalizeColor_cases() {
+        assertEquals("#123456", SvgImport.normalizeColor("#123456"));
+        assertEquals("#AABBCC", SvgImport.normalizeColor("#abc"));
+        assertEquals("#00FF80", SvgImport.normalizeColor("rgb(0, 255, 128)"));
+        assertEquals("#000000", SvgImport.normalizeColor("rgb(0,0,0)"));
+        assertNull(SvgImport.normalizeColor("none"));
+        assertNull(SvgImport.normalizeColor("NONE"));
+        assertNull(SvgImport.normalizeColor("transparent"));
+        assertNull(SvgImport.normalizeColor("currentColor"));
+        assertNull(SvgImport.normalizeColor("url(#someId)"));
+        assertNull(SvgImport.normalizeColor("invalid"));
+        assertNull(SvgImport.normalizeColor(""));
+        assertNull(SvgImport.normalizeColor(null));
+        assertNull(SvgImport.normalizeColor("rgb(300, 0, 0)"));
     }
 }
