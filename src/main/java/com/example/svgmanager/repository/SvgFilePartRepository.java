@@ -1,7 +1,9 @@
 package com.example.svgmanager.repository;
 
+import com.example.svgmanager.entity.SvgFile;
 import com.example.svgmanager.entity.SvgFilePart;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
@@ -18,4 +20,9 @@ public interface SvgFilePartRepository extends JpaRepository<SvgFilePart, Long> 
     long countBySvgFileId(Long svgFileId);
 
     long countBySvgFileIdAndLayout(Long svgFileId, String layout);
+
+    boolean existsByColorIsNull();
+
+    @Query("SELECT DISTINCT p.svgFile FROM SvgFilePart p WHERE p.color IS NULL")
+    List<SvgFile> findDistinctSvgFilesWithNullColor();
 }

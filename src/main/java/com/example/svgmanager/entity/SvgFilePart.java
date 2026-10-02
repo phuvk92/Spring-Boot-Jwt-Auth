@@ -85,6 +85,10 @@ public class SvgFilePart {
     @Column(name = "hole_count")
     private Integer holeCount;
 
+    /** Màu tô hiệu lực của part (#RRGGBB) đọc từ file SVG (NGO-415). */
+    @Column(name = "color", length = 7)
+    private String color;
+
     @CreatedDate
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
@@ -229,6 +233,14 @@ public class SvgFilePart {
 
     public void setHoleCount(Integer holeCount) {
         this.holeCount = holeCount;
+    }
+
+    public String getColor() {
+        return color;
+    }
+
+    public void setColor(String color) {
+        this.color = color;
     }
 
     public LocalDateTime getCreatedAt() {
