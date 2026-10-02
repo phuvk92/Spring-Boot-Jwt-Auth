@@ -162,6 +162,47 @@ class SvgImportTest {
     }
 
     @Test
+    @DisplayName("Màu từ lớp CSS trong <style> — đúng khuôn file CorelDraw (bản đã xếp vios 2025 trên prod)")
+    void partColors_fromCssClasses_coreldraw() {
+        // Rút gọn từ file thật: CDATA, lớp stroke (.str0) không phải màu tô, path mang hai lớp "fil0 str0".
+        String svg = """
+                <svg xmlns="http://www.w3.org/2000/svg" width="100mm" height="100mm" viewBox="0 0 100 100">
+                 <defs>
+                  <style type="text/css">
+                   <![CDATA[
+                    .str0 {stroke:#373435;stroke-width:7.87;stroke-miterlimit:22.9256}
+                    .fil2 {fill:#FEFEFE}
+                    .fil0 {fill:#F7ADAF}
+                    /* chú thích */ .fil3, .fil9 {fill:#5CC6D0}
+                    .fil1 {fill:#718FC8}
+                    .khong {fill:none}
+                   ]]>
+                  </style>
+                 </defs>
+                 <g id="Layer_x0020_1">
+                  <path id="p1" class="fil0 str0" d="M0 0 H10 V10 H0 Z"/>
+                  <path id="p2" class="str0 fil3" d="M10 0 H20 V10 H10 Z"/>
+                  <path id="p3" class="fil9" d="M20 0 H30 V10 H20 Z"/>
+                  <path id="p4" class="fil0 fil1" d="M30 0 H40 V10 H30 Z"/>
+                  <path id="p5" class="fil0" fill="#000000" d="M40 0 H50 V10 H40 Z"/>
+                  <path id="p6" class="fil0" style="fill:#F58634" d="M50 0 H60 V10 H50 Z"/>
+                  <path id="p7" class="str0" d="M60 0 H70 V10 H60 Z"/>
+                  <path id="p8" class="khong" fill="#123456" d="M70 0 H80 V10 H70 Z"/>
+                 </g>
+                </svg>""";
+        List<ImportedPart> parts = SvgImport.parseParts(svg);
+        assertEquals(8, parts.size());
+        assertEquals("#F7ADAF", parts.get(0).color(), "class=\"fil0 str0\" — lấy fill của .fil0, bỏ .str0");
+        assertEquals("#5CC6D0", parts.get(1).color(), "thứ tự lớp trên phần tử không quan trọng");
+        assertEquals("#5CC6D0", parts.get(2).color(), "bộ chọn danh sách .fil3, .fil9");
+        assertEquals("#718FC8", parts.get(3).color(), "hai lớp cùng đặt fill: quy tắc đứng sau (.fil1) thắng");
+        assertEquals("#F7ADAF", parts.get(4).color(), "lớp CSS thắng thuộc tính fill");
+        assertEquals("#F58634", parts.get(5).color(), "style trên phần tử thắng lớp CSS");
+        assertNull(parts.get(6).color(), "chỉ có lớp stroke — không màu tô");
+        assertNull(parts.get(7).color(), "lớp đặt fill:none — không màu, không rơi về thuộc tính");
+    }
+
+    @Test
     @DisplayName("NGO-415: normalizeColor hỗ trợ #RGB, #RRGGBB, rgb() và bỏ qua giá trị đặc biệt/hỏng")
     void normalizeColor_cases() {
         assertEquals("#123456", SvgImport.normalizeColor("#123456"));

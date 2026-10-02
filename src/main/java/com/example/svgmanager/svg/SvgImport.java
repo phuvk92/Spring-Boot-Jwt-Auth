@@ -16,7 +16,9 @@ import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
 import java.io.StringReader;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Locale;
 import java.util.Set;
 import java.util.regex.Matcher;
@@ -117,8 +119,9 @@ public final class SvgImport {
 
         // Gốc viewBox dời về 0 trước khi đổi đơn vị — như client.
         List<Pending> collected = new ArrayList<>();
-        String rootFill = resolveElementFill(root, null);
-        walk(root, Affine.translate(-units.origin.x(), -units.origin.y()), rootFill, collected);
+        Map<String, String> classFills = parseClassFills(root);
+        String rootFill = resolveElementFill(root, null, classFills);
+        walk(root, Affine.translate(-units.origin.x(), -units.origin.y()), rootFill, collected, classFills);
 
         Affine toMm = Affine.scale(units.mmPerUnit, units.mmPerUnit);
         List<ImportedPart> parts = new ArrayList<>();
@@ -234,7 +237,8 @@ public final class SvgImport {
     private record Pending(PathShape shape, String rawId, String color) {
     }
 
-    private static void walk(Element parent, Affine parentMat, String inheritedColor, List<Pending> shapes) {
+    private static void walk(Element parent, Affine parentMat, String inheritedColor, List<Pending> shapes,
+                             Map<String, String> classFills) {
         NodeList children = parent.getChildNodes();
         for (int k = 0; k < children.getLength(); k++) {
             Node node = children.item(k);
@@ -255,15 +259,15 @@ public final class SvgImport {
                 PathShape shape = buildShape(el, tag);
                 if (!shape.figures().isEmpty()) {
                     String id = attr(el, "id");
-                    String color = resolveElementFill(el, inheritedColor);
+                    String color = resolveElementFill(el, inheritedColor, classFills);
                     shapes.add(new Pending(shape.transform(mat),
                             id == null || id.isEmpty() ? null : id, color));
                 }
                 continue;
             }
             if (CONTAINER_TAGS.contains(tag)) {
-                String groupColor = resolveElementFill(el, inheritedColor);
-                walk(el, mat, groupColor, shapes);
+                String groupColor = resolveElementFill(el, inheritedColor, classFills);
+                walk(el, mat, groupColor, shapes, classFills);
                 continue;
             }
             if (IGNORED_TAGS.contains(tag)) {
@@ -276,8 +280,8 @@ public final class SvgImport {
                 continue;
             }
             // Thẻ lạ: đi xuyên qua thay vì bỏ — nó thường là bọc quanh hình thật.
-            String unknownColor = resolveElementFill(el, inheritedColor);
-            walk(el, mat, unknownColor, shapes);
+            String unknownColor = resolveElementFill(el, inheritedColor, classFills);
+            walk(el, mat, unknownColor, shapes, classFills);
         }
     }
 
@@ -494,14 +498,35 @@ public final class SvgImport {
     /**
      * Xác định màu tô hiệu lực của phần tử:
      * - inline style (fill: ...) có độ ưu tiên cao nhất
-     * - thuộc tính fill="..."
+     * - quy tắc lớp CSS trong {@code <style>} ({@code .fil0 {fill:#F7ADAF}}) — CorelDraw xuất màu kiểu này
+     *   (02/10: bản đã xếp "vios 2025" trên prod mất hết màu vì chưa đọc lớp CSS)
+     * - thuộc tính fill="..." (CSS thắng thuộc tính trình bày, đúng thứ tự của trình duyệt)
      * - kế thừa từ cha nếu phần tử không khai báo fill
      * - chuẩn hoá #RRGGBB viết hoa, null nếu không có màu hoặc không hợp lệ.
      */
-    private static String resolveElementFill(Element el, String inheritedColor) {
+    private static String resolveElementFill(Element el, String inheritedColor, Map<String, String> classFills) {
         String styleFill = parseInlineStyleFill(attr(el, "style"));
         if (styleFill != null) {
             return normalizeColor(styleFill);
+        }
+
+        String classes = attr(el, "class");
+        if (classes != null && !classFills.isEmpty()) {
+            // Nhiều lớp cùng đặt fill: quy tắc đứng SAU trong stylesheet thắng (cùng độ ưu tiên CSS).
+            String winner = null;
+            int winnerOrder = -1;
+            for (String c : classes.trim().split("\\s+")) {
+                String v = classFills.get(c);
+                if (v == null) continue;
+                int order = Integer.parseInt(v.substring(0, v.indexOf('|')));
+                if (order > winnerOrder) {
+                    winnerOrder = order;
+                    winner = v.substring(v.indexOf('|') + 1);
+                }
+            }
+            if (winner != null) {
+                return normalizeColor(winner);   // "none" ở lớp CSS ⇒ null, không kế thừa
+            }
         }
 
         String fillAttr = attr(el, "fill");
@@ -510,6 +535,38 @@ public final class SvgImport {
         }
 
         return inheritedColor;
+    }
+
+    /**
+     * Bảng lớp CSS → fill từ mọi thẻ {@code <style>} của file. Chỉ nhận bộ chọn một lớp đơn ({@code .fil0},
+     * kể cả danh sách {@code .a, .b}) — đủ cho file CorelDraw/Illustrator; bộ chọn phức tạp hơn bỏ qua.
+     * Giá trị lưu dạng {@code "<thứ tự>|<fill>"} để quy tắc đứng sau thắng khi phần tử mang nhiều lớp.
+     */
+    static Map<String, String> parseClassFills(Element root) {
+        Map<String, String> out = new HashMap<>();
+        NodeList all = root.getElementsByTagName("*");
+        int order = 0;
+        for (int i = 0; i < all.getLength(); i++) {
+            if (!(all.item(i) instanceof Element el) || !"style".equals(localName(el))) {
+                continue;
+            }
+            String css = el.getTextContent();
+            if (css == null) continue;
+            css = css.replaceAll("(?s)/\\*.*?\\*/", "");
+            java.util.regex.Matcher m = java.util.regex.Pattern.compile("([^{}]+)\\{([^{}]*)\\}").matcher(css);
+            while (m.find()) {
+                String fill = parseInlineStyleFill(m.group(2));
+                if (fill == null) continue;          // lớp chỉ có stroke (.str0) — không phải màu tô
+                order++;
+                for (String sel : m.group(1).split(",")) {
+                    String t = sel.trim();
+                    if (t.matches("\\.[A-Za-z_][\\w-]*")) {
+                        out.put(t.substring(1), order + "|" + fill);
+                    }
+                }
+            }
+        }
+        return out;
     }
 
     /** Trích giá trị fill trong thuộc tính style="..." */
