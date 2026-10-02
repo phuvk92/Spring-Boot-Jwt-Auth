@@ -107,6 +107,14 @@ public class SvgFile {
     @Column(name = "note", columnDefinition = "TEXT")
     private String note;
 
+    /** Khổ cắt khai theo file (epic NGO-399): chiều dọc cuộn, trục X — mm, 100–50000. NULL khi chưa khai. */
+    @Column(name = "cut_area_length_mm")
+    private Integer cutAreaLengthMm;
+
+    /** Khổ phim, trục Y — mm, 100–2000. Hai cột khổ cắt cùng NULL hoặc cùng có giá trị (chk_svg_files_cut_area). */
+    @Column(name = "cut_area_width_mm")
+    private Integer cutAreaWidthMm;
+
     @OneToMany(mappedBy = "svgFile", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("displayOrder ASC, id ASC")
     private List<SvgFilePart> parts = new ArrayList<>();
@@ -388,6 +396,22 @@ public class SvgFile {
 
     public void setNote(String note) {
         this.note = note;
+    }
+
+    public Integer getCutAreaLengthMm() {
+        return cutAreaLengthMm;
+    }
+
+    public void setCutAreaLengthMm(Integer cutAreaLengthMm) {
+        this.cutAreaLengthMm = cutAreaLengthMm;
+    }
+
+    public Integer getCutAreaWidthMm() {
+        return cutAreaWidthMm;
+    }
+
+    public void setCutAreaWidthMm(Integer cutAreaWidthMm) {
+        this.cutAreaWidthMm = cutAreaWidthMm;
     }
 
     public List<SvgFilePart> getParts() {

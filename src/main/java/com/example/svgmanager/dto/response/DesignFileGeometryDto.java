@@ -21,6 +21,9 @@ public class DesignFileGeometryDto {
 
     private List<PartOutlineDto> parts;
 
+    @Schema(description = "Khổ cắt file khai (NGO-399); null → client dùng mặc định 15000 × 700", nullable = true)
+    private CutAreaDto cutArea;
+
     public DesignFileGeometryDto() {
     }
 
@@ -52,5 +55,13 @@ public class DesignFileGeometryDto {
 
     public void setParts(List<PartOutlineDto> parts) {
         this.parts = parts;
+    }
+
+    public CutAreaDto getCutArea() {
+        return cutArea;
+    }
+
+    public void setCutArea(CutAreaDto cutArea) {
+        this.cutArea = cutArea;
     }
 }

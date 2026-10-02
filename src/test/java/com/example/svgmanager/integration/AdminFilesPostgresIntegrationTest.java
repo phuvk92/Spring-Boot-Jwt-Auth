@@ -440,4 +440,153 @@ class AdminFilesPostgresIntegrationTest {
         mockMvc.perform(get("/api/svg/{id}/content", id).param("layout", "raw").with(asAdmin()))
                 .andExpect(status().isOk());
     }
+
+    // ── AC NGO-400: Khổ cắt theo file (epic NGO-399) ────────────────────
+
+    private static final String SVG_1PART =
+            "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"10mm\" height=\"10mm\" viewBox=\"0 0 10 10\">"
+                    + "<rect width=\"10\" height=\"10\"/></svg>";
+
+    @Test
+    @DisplayName("NGO-400: upload kèm khổ cắt → response, geometry và danh sách trả đúng cutArea")
+    void upload_withCutArea() throws Exception {
+        MvcResult res = mockMvc.perform(multipart("/api/admin/files")
+                        .file(svgPart(SVG_1PART))
+                        .param("name", "Co Kho Cat").param("categoryId", "1")
+                        .param("vehicleNodeIds", String.valueOf(MODEL_CAMRY_25Q))
+                        .param("cutAreaLengthMm", "15000")
+                        .param("cutAreaWidthMm", "700")
+                        .with(asAdmin()))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.cutAreaLengthMm", is(15000)))
+                .andExpect(jsonPath("$.cutAreaWidthMm", is(700)))
+                .andReturn();
+        String fileKey = com.jayway.jsonpath.JsonPath.read(res.getResponse().getContentAsString(), "$.fileKey");
+
+        mockMvc.perform(get("/api/v1/files/{id}/geometry", fileKey).with(asUser()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.cutArea.lengthMm", is(15000)))
+                .andExpect(jsonPath("$.cutArea.widthMm", is(700)));
+
+        mockMvc.perform(get("/api/v1/files").param("q", "Co Kho Cat").with(asUser()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[0].cutArea.lengthMm", is(15000)))
+                .andExpect(jsonPath("$.content[0].cutArea.widthMm", is(700)));
+    }
+
+    @Test
+    @DisplayName("NGO-400: upload không khai khổ → cutArea null khắp nơi (dữ liệu cũ tương đương)")
+    void upload_withoutCutArea_nullEverywhere() throws Exception {
+        MvcResult res = mockMvc.perform(multipart("/api/admin/files")
+                        .file(svgPart(SVG_1PART))
+                        .param("name", "Khong Kho Cat").param("categoryId", "1")
+                        .param("vehicleNodeIds", String.valueOf(MODEL_CAMRY_25Q))
+                        .with(asAdmin()))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.cutAreaLengthMm").value(org.hamcrest.Matchers.nullValue()))
+                .andExpect(jsonPath("$.cutAreaWidthMm").value(org.hamcrest.Matchers.nullValue()))
+                .andReturn();
+        String fileKey = com.jayway.jsonpath.JsonPath.read(res.getResponse().getContentAsString(), "$.fileKey");
+
+        mockMvc.perform(get("/api/v1/files/{id}/geometry", fileKey).with(asUser()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.cutArea").value(org.hamcrest.Matchers.nullValue()));
+    }
+
+    @Test
+    @DisplayName("NGO-400: chỉ một trường khổ → 400 CUT_AREA_INCOMPLETE; ngoài giới hạn → 400 CUT_AREA_OUT_OF_RANGE")
+    void upload_cutAreaValidation() throws Exception {
+        mockMvc.perform(multipart("/api/admin/files")
+                        .file(svgPart(SVG_1PART))
+                        .param("name", "x").param("categoryId", "1")
+                        .param("vehicleNodeIds", String.valueOf(MODEL_CAMRY_25Q))
+                        .param("cutAreaLengthMm", "15000")
+                        .with(asAdmin()))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code", is("CUT_AREA_INCOMPLETE")));
+
+        mockMvc.perform(multipart("/api/admin/files")
+                        .file(svgPart(SVG_1PART))
+                        .param("name", "x").param("categoryId", "1")
+                        .param("vehicleNodeIds", String.valueOf(MODEL_CAMRY_25Q))
+                        .param("cutAreaWidthMm", "700")
+                        .with(asAdmin()))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code", is("CUT_AREA_INCOMPLETE")));
+
+        mockMvc.perform(multipart("/api/admin/files")
+                        .file(svgPart(SVG_1PART))
+                        .param("name", "x").param("categoryId", "1")
+                        .param("vehicleNodeIds", String.valueOf(MODEL_CAMRY_25Q))
+                        .param("cutAreaLengthMm", "99")
+                        .param("cutAreaWidthMm", "700")
+                        .with(asAdmin()))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code", is("CUT_AREA_OUT_OF_RANGE")));
+
+        mockMvc.perform(multipart("/api/admin/files")
+                        .file(svgPart(SVG_1PART))
+                        .param("name", "x").param("categoryId", "1")
+                        .param("vehicleNodeIds", String.valueOf(MODEL_CAMRY_25Q))
+                        .param("cutAreaLengthMm", "15000")
+                        .param("cutAreaWidthMm", "2001")
+                        .with(asAdmin()))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code", is("CUT_AREA_OUT_OF_RANGE")));
+    }
+
+    @Test
+    @DisplayName("NGO-400: PUT đổi khổ, clearCutArea → null, không gửi → giữ nguyên")
+    void put_cutArea_updateClearKeep() throws Exception {
+        MvcResult res = mockMvc.perform(multipart("/api/admin/files")
+                        .file(svgPart(SVG_1PART))
+                        .param("name", "Kho Cat Put").param("categoryId", "1")
+                        .param("vehicleNodeIds", String.valueOf(MODEL_CAMRY_25Q))
+                        .param("cutAreaLengthMm", "15000")
+                        .param("cutAreaWidthMm", "700")
+                        .with(asAdmin()))
+                .andExpect(status().isCreated())
+                .andReturn();
+        long id = ((Integer) com.jayway.jsonpath.JsonPath.read(res.getResponse().getContentAsString(), "$.id")).longValue();
+
+        // PUT không gửi trường khổ → giữ nguyên
+        mockMvc.perform(multipart("/api/admin/files/" + id)
+                        .param("name", "Kho Cat Put 2")
+                        .with(r -> { r.setMethod("PUT"); return r; })
+                        .with(asAdmin()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.cutAreaLengthMm", is(15000)))
+                .andExpect(jsonPath("$.cutAreaWidthMm", is(700)));
+
+        // PUT đổi khổ
+        mockMvc.perform(multipart("/api/admin/files/" + id)
+                        .param("cutAreaLengthMm", "30000")
+                        .param("cutAreaWidthMm", "1520")
+                        .with(r -> { r.setMethod("PUT"); return r; })
+                        .with(asAdmin()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.cutAreaLengthMm", is(30000)))
+                .andExpect(jsonPath("$.cutAreaWidthMm", is(1520)));
+
+        // PUT thiếu một trường → 400 CUT_AREA_INCOMPLETE
+        mockMvc.perform(multipart("/api/admin/files/" + id)
+                        .param("cutAreaLengthMm", "20000")
+                        .with(r -> { r.setMethod("PUT"); return r; })
+                        .with(asAdmin()))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code", is("CUT_AREA_INCOMPLETE")));
+
+        // clearCutArea → về null
+        mockMvc.perform(multipart("/api/admin/files/" + id)
+                        .param("clearCutArea", "true")
+                        .with(r -> { r.setMethod("PUT"); return r; })
+                        .with(asAdmin()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.cutAreaLengthMm").value(org.hamcrest.Matchers.nullValue()))
+                .andExpect(jsonPath("$.cutAreaWidthMm").value(org.hamcrest.Matchers.nullValue()));
+
+        SvgFile saved = svgFileRepository.findById(id).orElseThrow();
+        assertNull(saved.getCutAreaLengthMm());
+        assertNull(saved.getCutAreaWidthMm());
+    }
 }
