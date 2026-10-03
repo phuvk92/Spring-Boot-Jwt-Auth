@@ -8,6 +8,7 @@ import org.springframework.stereotype.Repository;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface WorkDesignVersionRepository extends JpaRepository<WorkDesignVersion, Long> {
@@ -18,4 +19,8 @@ public interface WorkDesignVersionRepository extends JpaRepository<WorkDesignVer
     /** versionCount của SavedDesign — gom một query cho cả trang, tránh N+1. */
     @Query("select v.workDesign.id, count(v) from WorkDesignVersion v where v.workDesign.id in :ids group by v.workDesign.id")
     List<Object[]> countGroupedByWorkDesignIds(@Param("ids") Collection<Long> ids);
+
+    Optional<WorkDesignVersion> findByWorkDesignIdAndNumber(Long workDesignId, int number);
+
+    Optional<WorkDesignVersion> findByWorkDesignIdAndCurrentTrue(Long workDesignId);
 }

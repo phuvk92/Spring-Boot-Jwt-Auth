@@ -223,4 +223,165 @@ class SavedDesignsIntegrationTest {
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code", is("DESIGN_NOT_FOUND")));
     }
+
+    @Test
+    @DisplayName("POST /api/v1/designs: lần Lưu đầu tạo bản làm việc và version 1 (201 Created)")
+    void createDesign_Success() throws Exception {
+        String json = """
+                {
+                    "name": "Abarth-695-2024",
+                    "category": "Ngoại thất",
+                    "vehicleLabel": "Abarth 695 · 2024",
+                    "sourceTemplateId": "tpl-abarth-695-2024",
+                    "payload": {
+                        "cutArea": { "widthMm": 1500, "heightMm": 1500 },
+                        "parts": [
+                            { "partId": "p1", "name": "Capo", "yMm": 0, "heightMm": 1200 },
+                            { "partId": "p2", "name": "Cản trước", "yMm": 1200, "heightMm": 800 }
+                        ]
+                    }
+                }
+                """;
+
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/api/v1/designs")
+                        .with(jwtAs("kc-sd-a", "sd_user_a"))
+                        .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                        .content(json))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.id").exists())
+                .andExpect(jsonPath("$.name", is("Abarth-695-2024")))
+                .andExpect(jsonPath("$.category", is("Ngoại thất")))
+                .andExpect(jsonPath("$.vehicleLabel", is("Abarth 695 · 2024")))
+                .andExpect(jsonPath("$.sourceTemplateId", is("tpl-abarth-695-2024")))
+                .andExpect(jsonPath("$.partCount", is(2)))
+                .andExpect(jsonPath("$.filmUsage", is("2,00 m")))
+                .andExpect(jsonPath("$.cutArea", is("1500 × 1500")))
+                .andExpect(jsonPath("$.versionCount", is(1)))
+                .andExpect(jsonPath("$.hasBeenCut", is(false)));
+    }
+
+    @Test
+    @DisplayName("PUT /api/v1/designs/{id}: các lần Lưu sau thêm version mới, tăng versionCount, không đổi sourceTemplateId")
+    void updateDesign_Success() throws Exception {
+        WorkDesign d = design(userA, "wd-up-1", "Bản gốc", LocalDateTime.now().minusDays(1));
+        version(d, 1, LocalDateTime.now().minusDays(1), "MAY-XUONG-01", "Bản đầu", true);
+
+        String updateJson = """
+                {
+                    "name": "Bản đã sửa",
+                    "category": "Ngoại thất",
+                    "vehicleLabel": "Abarth 695 · 2024",
+                    "sourceTemplateId": "tpl-khac-khong-duoc-doi",
+                    "payload": {
+                        "cutArea": { "widthMm": 2000, "heightMm": 1500 },
+                        "parts": [
+                            { "partId": "p1", "name": "Nóc xe", "yMm": 0, "heightMm": 1500 }
+                        ]
+                    }
+                }
+                """;
+
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put("/api/v1/designs/wd-up-1")
+                        .with(jwtAs("kc-sd-a", "sd_user_a"))
+                        .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                        .content(updateJson))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id", is("wd-up-1")))
+                .andExpect(jsonPath("$.name", is("Bản đã sửa")))
+                .andExpect(jsonPath("$.sourceTemplateId", is("tpl-abarth-695-2024"))) // Không đổi
+                .andExpect(jsonPath("$.partCount", is(1)))
+                .andExpect(jsonPath("$.filmUsage", is("1,50 m")))
+                .andExpect(jsonPath("$.cutArea", is("2000 × 1500")))
+                .andExpect(jsonPath("$.versionCount", is(2)));
+
+        // Kiểm tra versions list
+        mockMvc.perform(get("/api/v1/designs/wd-up-1/versions").with(jwtAs("kc-sd-a", "sd_user_a")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(2)))
+                .andExpect(jsonPath("$[0].number", is(2)))
+                .andExpect(jsonPath("$[0].isCurrent", is(true)))
+                .andExpect(jsonPath("$[1].number", is(1)))
+                .andExpect(jsonPath("$[1].isCurrent", is(false)));
+    }
+
+    @Test
+    @DisplayName("GET /api/v1/designs/{id}/content: lấy content bản hiện hành hoặc chỉ định version")
+    void getContent_Success() throws Exception {
+        WorkDesign d = design(userA, "wd-content-1", "Bản content", LocalDateTime.now().minusDays(1));
+        WorkDesignVersion v1 = version(d, 1, LocalDateTime.now().minusDays(2), "MAY-01", "Bản 1", false);
+        v1.setPayload("{\"layout\":\"version-1\"}");
+        versionRepository.save(v1);
+
+        WorkDesignVersion v2 = version(d, 2, LocalDateTime.now().minusDays(1), "MAY-01", "Bản 2", true);
+        v2.setPayload("{\"layout\":\"version-2\"}");
+        versionRepository.save(v2);
+
+        // Mặc định lấy version hiện tại (v2)
+        mockMvc.perform(get("/api/v1/designs/wd-content-1/content").with(jwtAs("kc-sd-a", "sd_user_a")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id", is("wd-content-1")))
+                .andExpect(jsonPath("$.version", is(2)))
+                .andExpect(jsonPath("$.payload.layout", is("version-2")));
+
+        // Chỉ định version=1
+        mockMvc.perform(get("/api/v1/designs/wd-content-1/content?version=1").with(jwtAs("kc-sd-a", "sd_user_a")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id", is("wd-content-1")))
+                .andExpect(jsonPath("$.version", is(1)))
+                .andExpect(jsonPath("$.payload.layout", is("version-1")));
+    }
+
+    @Test
+    @DisplayName("PUT hoặc GET content của user khác → 404 DESIGN_NOT_FOUND")
+    void otherUserDesign_Returns404() throws Exception {
+        WorkDesign d = design(userB, "wd-user-b", "Bản của B", LocalDateTime.now());
+        WorkDesignVersion v = version(d, 1, LocalDateTime.now(), "MAY-01", "Bản 1", true);
+        v.setPayload("{\"layout\":\"b\"}");
+        versionRepository.save(v);
+
+        String updateJson = "{\"name\":\"Sửa trộm\",\"payload\":{\"cutArea\":{\"widthMm\":100,\"heightMm\":100}}}";
+
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put("/api/v1/designs/wd-user-b")
+                        .with(jwtAs("kc-sd-a", "sd_user_a"))
+                        .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                        .content(updateJson))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code", is("DESIGN_NOT_FOUND")));
+
+        mockMvc.perform(get("/api/v1/designs/wd-user-b/content").with(jwtAs("kc-sd-a", "sd_user_a")))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code", is("DESIGN_NOT_FOUND")));
+    }
+
+    @Test
+    @DisplayName("Payload rỗng hoặc thiếu tên → 400 DESIGN_INVALID")
+    void invalidPayload_Returns400() throws Exception {
+        String noNameJson = "{\"payload\":{\"cutArea\":{\"widthMm\":100,\"heightMm\":100}}}";
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/api/v1/designs")
+                        .with(jwtAs("kc-sd-a", "sd_user_a"))
+                        .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                        .content(noNameJson))
+                .andExpect(status().isBadRequest());
+
+        String nullPayloadJson = "{\"name\":\"Thiếu payload\",\"payload\":null}";
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/api/v1/designs")
+                        .with(jwtAs("kc-sd-a", "sd_user_a"))
+                        .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                        .content(nullPayloadJson))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @DisplayName("Payload vượt quá 20 MB → 413 DESIGN_TOO_LARGE")
+    void payloadTooLarge_Returns413() throws Exception {
+        String largeString = "a".repeat(20 * 1024 * 1024 + 10);
+        String json = "{\"name\":\"Bản siêu nặng\",\"payload\":\"" + largeString + "\"}";
+
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/api/v1/designs")
+                        .with(jwtAs("kc-sd-a", "sd_user_a"))
+                        .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                        .content(json))
+                .andExpect(status().isPayloadTooLarge())
+                .andExpect(jsonPath("$.code", is("DESIGN_TOO_LARGE")));
+    }
 }

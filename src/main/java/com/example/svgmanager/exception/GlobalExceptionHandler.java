@@ -281,6 +281,53 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE).body(errorResponse);
     }
 
+    @ExceptionHandler(org.springframework.http.converter.HttpMessageNotReadableException.class)
+    public ResponseEntity<ErrorResponse> handleHttpMessageNotReadableException(
+            org.springframework.http.converter.HttpMessageNotReadableException ex,
+            HttpServletRequest request
+    ) {
+        log.warn("Message not readable on {}: {}", request.getRequestURI(), ex.getMessage());
+        String msg = ex.getMessage();
+        if (msg != null && (msg.contains("StreamReadConstraints") || msg.contains("exceeds the maximum allowed") || msg.contains("max-string-length"))) {
+            ErrorResponse errorResponse = ErrorResponse.builder()
+                    .timestamp(LocalDateTime.now())
+                    .status(HttpStatus.PAYLOAD_TOO_LARGE.value())
+                    .error(HttpStatus.PAYLOAD_TOO_LARGE.getReasonPhrase())
+                    .message("Bản làm việc vượt quá dung lượng tối đa cho phép (20 MB).")
+                    .path(request.getRequestURI())
+                    .code(ErrorCodes.DESIGN_TOO_LARGE)
+                    .build();
+            return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE).body(errorResponse);
+        }
+
+        ErrorResponse errorResponse = ErrorResponse.builder()
+                .timestamp(LocalDateTime.now())
+                .status(HttpStatus.BAD_REQUEST.value())
+                .error(HttpStatus.BAD_REQUEST.getReasonPhrase())
+                .message("Dữ liệu gửi lên không đúng định dạng JSON hợp lệ.")
+                .path(request.getRequestURI())
+                .code(ErrorCodes.DESIGN_INVALID)
+                .build();
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(errorResponse);
+    }
+
+    @ExceptionHandler(PayloadTooLargeException.class)
+    public ResponseEntity<ErrorResponse> handlePayloadTooLargeException(
+            PayloadTooLargeException ex,
+            HttpServletRequest request
+    ) {
+        log.warn("Payload too large: {}", ex.getMessage());
+        ErrorResponse errorResponse = ErrorResponse.builder()
+                .timestamp(LocalDateTime.now())
+                .status(HttpStatus.PAYLOAD_TOO_LARGE.value())
+                .error(HttpStatus.PAYLOAD_TOO_LARGE.getReasonPhrase())
+                .message(ex.getMessage())
+                .path(request.getRequestURI())
+                .code(ex.getCode())
+                .build();
+        return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE).body(errorResponse);
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErrorResponse> handleGlobalException(
             Exception ex,
