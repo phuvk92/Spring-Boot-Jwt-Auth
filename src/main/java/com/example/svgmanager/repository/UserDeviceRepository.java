@@ -27,10 +27,11 @@ public interface UserDeviceRepository extends JpaRepository<UserDevice, Long>, J
 
     // ── Thống kê thiết bị toàn hệ thống (F-57 · NGO-422) ────────────────────────
 
-    /** Tổng số máy ACTIVE toàn hệ thống */
-    long countByStatus(DeviceStatus status);
+    /** Tổng số máy ACTIVE toàn hệ thống (loại user soft-deleted) */
+    @Query("SELECT COUNT(d) FROM UserDevice d WHERE d.status = :status AND d.user.deleted = false")
+    long countByStatus(@Param("status") DeviceStatus status);
 
-    /** Tổng số máy ACTIVE theo đại lý (AGENT scope) */
+    /** Tổng số máy ACTIVE theo đại lý (AGENT scope, loại user soft-deleted) */
     @Query("SELECT COUNT(d) FROM UserDevice d WHERE d.status = :status AND d.user.dealer.id = :dealerId AND d.user.deleted = false")
     long countByStatusAndDealerId(@Param("status") DeviceStatus status, @Param("dealerId") Long dealerId);
 

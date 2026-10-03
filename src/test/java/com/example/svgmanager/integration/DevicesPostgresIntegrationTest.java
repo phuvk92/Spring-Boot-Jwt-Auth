@@ -386,6 +386,33 @@ class DevicesPostgresIntegrationTest {
     }
 
     @Test
+    @DisplayName("ADMIN: kiểm tra soft-deleted user không được tính vào registered và stats")
+    void admin_GetStats_ExcludesSoftDeletedUsers() throws Exception {
+        // Tạo thêm user đã bị soft-deleted có 1 máy ACTIVE
+        User softDeletedUser = User.builder()
+                .username("deleted_user_ngo422")
+                .email("deleted_user@pcut.vn")
+                .fullName("Người Đã Xoá")
+                .keycloakUserId("kc-user-del")
+                .role(Role.USER)
+                .dealer(dealerA)
+                .agent(agentA)
+                .enabled(false)
+                .deleted(true)
+                .build();
+        softDeletedUser.setMaxDevices(1);
+        softDeletedUser = userRepository.save(softDeletedUser);
+
+        UserDevice delDev = UserDevice.register(softDeletedUser, "dev-uuid-del", "PC Đã Xoá", "Windows", "1.1.1.1", "sid-del", LocalDateTime.now());
+        userDeviceRepository.save(delDev);
+
+        // Stats registered cho ADMIN vẫn phải là 3 (không tính máy của user soft-deleted)
+        mockMvc.perform(get("/api/devices/stats").with(jwtAdmin()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.registered").value(3));
+    }
+
+    @Test
     @DisplayName("USER: gọi GET /api/devices/stats -> 403 Forbidden")
     void user_GetStats_Forbidden() throws Exception {
         mockMvc.perform(get("/api/devices/stats").with(jwtUser()))
