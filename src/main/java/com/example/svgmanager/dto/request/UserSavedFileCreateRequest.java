@@ -59,6 +59,9 @@ public class UserSavedFileCreateRequest {
     @Schema(description = "Trục Y", nullable = true, example = "1520")
     private Double axisY;
 
+    @Schema(description = "file_key của part file trong kho mà bản này được tạo từ", nullable = true, example = "audi-q6-2024-full")
+    private String sourceFileKey;
+
     @Schema(description = "Mô tả / ghi chú", nullable = true, example = "Mẫu cắt cửa xe BMW X5 G05")
     private String description;
 
@@ -102,6 +105,8 @@ public class UserSavedFileCreateRequest {
     public void setAxisX(Double axisX) { this.axisX = axisX; }
     public Double getAxisY() { return axisY; }
     public void setAxisY(Double axisY) { this.axisY = axisY; }
+    public String getSourceFileKey() { return sourceFileKey; }
+    public void setSourceFileKey(String sourceFileKey) { this.sourceFileKey = sourceFileKey; }
     public String getDescription() { return description; }
     public void setDescription(String description) { this.description = description; }
 }

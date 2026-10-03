@@ -10,6 +10,8 @@ import com.example.svgmanager.repository.FileCategoryRepository;
 import com.example.svgmanager.repository.UserSvgFileRepository;
 import com.example.svgmanager.repository.UserSvgFileSpecification;
 import com.example.svgmanager.repository.VehicleNodeRepository;
+import com.example.svgmanager.repository.SvgFileRepository;
+import com.example.svgmanager.service.AuditLogService;
 import com.example.svgmanager.service.FileStorageService;
 import com.example.svgmanager.service.SvgSanitizerService;
 import com.example.svgmanager.service.UserSvgFileService;
@@ -35,19 +37,25 @@ public class UserSvgFileServiceImpl implements UserSvgFileService {
     private final UserSvgFileRepository userSvgFileRepository;
     private final FileCategoryRepository fileCategoryRepository;
     private final VehicleNodeRepository vehicleNodeRepository;
+    private final SvgFileRepository svgFileRepository;
     private final FileStorageService fileStorageService;
     private final SvgSanitizerService svgSanitizerService;
+    private final AuditLogService auditLogService;
 
     public UserSvgFileServiceImpl(UserSvgFileRepository userSvgFileRepository,
                                   FileCategoryRepository fileCategoryRepository,
                                   VehicleNodeRepository vehicleNodeRepository,
+                                  SvgFileRepository svgFileRepository,
                                   FileStorageService fileStorageService,
-                                  SvgSanitizerService svgSanitizerService) {
+                                  SvgSanitizerService svgSanitizerService,
+                                  AuditLogService auditLogService) {
         this.userSvgFileRepository = userSvgFileRepository;
         this.fileCategoryRepository = fileCategoryRepository;
         this.vehicleNodeRepository = vehicleNodeRepository;
+        this.svgFileRepository = svgFileRepository;
         this.fileStorageService = fileStorageService;
         this.svgSanitizerService = svgSanitizerService;
+        this.auditLogService = auditLogService;
     }
 
     @Override
@@ -72,6 +80,7 @@ public class UserSvgFileServiceImpl implements UserSvgFileService {
             String rollLengthUnit,
             Double axisX,
             Double axisY,
+            String sourceFileKey,
             String description
     ) {
         if (fileBytes == null || fileBytes.length == 0) {
@@ -139,6 +148,7 @@ public class UserSvgFileServiceImpl implements UserSvgFileService {
                 .rollLengthUnit(StringUtils.hasText(rollLengthUnit) ? rollLengthUnit : "MM")
                 .axisX(axisX != null ? axisX : rollLength)
                 .axisY(axisY != null ? axisY : filmWidth)
+                .sourceFileKey(StringUtils.hasText(sourceFileKey) ? sourceFileKey.trim() : null)
                 .description(description)
                 .status("ACTIVE")
                 .user(currentUser)
@@ -149,7 +159,187 @@ public class UserSvgFileServiceImpl implements UserSvgFileService {
         log.info("[USER_SAVED_SVG_CREATED] id={}, fileName='{}', userId={}",
                 saved.getId(), saved.getFileName(), currentUser != null ? currentUser.getId() : null);
 
+        if (currentUser != null) {
+            auditLogService.log(
+                    currentUser.getUsername(),
+                    currentUser.getRole() != null ? currentUser.getRole().name() : "USER",
+                    "USER_SVG_CREATE",
+                    "UserSvgFile",
+                    saved.getId(),
+                    "Tạo bản lưu SVG: " + saved.getFileName()
+            );
+        }
+
         return toResponse(saved);
+    }
+
+    @Override
+    @Transactional
+    public UserSavedFileResponse updateUserFile(
+            User currentUser,
+            Long id,
+            byte[] fileBytes,
+            String originalFilename,
+            String customFileName,
+            Long categoryId,
+            Long vehicleNodeId,
+            String brandName,
+            String modelName,
+            Integer yearFrom,
+            Integer yearTo,
+            String generationCode,
+            String productGroup,
+            String productGroupName,
+            Double filmWidth,
+            String filmWidthUnit,
+            Double rollLength,
+            String rollLengthUnit,
+            Double axisX,
+            Double axisY,
+            String sourceFileKey,
+            String description
+    ) {
+        if (currentUser == null) {
+            throw new ResourceNotFoundException("File bản lưu không tồn tại", ErrorCodes.FILE_NOT_FOUND);
+        }
+
+        UserSvgFile existing = userSvgFileRepository.findByIdAndUserId(id, currentUser.getId())
+                .orElseThrow(() -> new ResourceNotFoundException("File bản lưu không tồn tại", ErrorCodes.FILE_NOT_FOUND));
+
+        if (fileBytes == null || fileBytes.length == 0) {
+            throw new BadRequestException("Nội dung file SVG không được để trống", ErrorCodes.FILE_REQUIRED);
+        }
+
+        // 1. Sanitize & validate SVG
+        byte[] sanitizedBytes = svgSanitizerService.sanitizeAndValidateSvg(fileBytes);
+        String checksum = "sha256:" + ChecksumUtils.calculateSha256(sanitizedBytes);
+
+        // 2. Store new file physically & delete old file
+        String oldFilePath = existing.getFilePath();
+        String storedFilename = UUID.randomUUID().toString() + ".svg";
+        String filePath = fileStorageService.storeFile(sanitizedBytes, storedFilename);
+
+        if (StringUtils.hasText(oldFilePath)) {
+            try {
+                fileStorageService.deleteFile(oldFilePath);
+            } catch (Exception e) {
+                log.warn("[USER_SAVED_SVG_CLEANUP_WARN] Không thể xoá file cũ {}: {}", oldFilePath, e.getMessage());
+            }
+        }
+
+        // 3. Update file content & metadata
+        existing.setFilePath(filePath);
+        existing.setStoredFileName(storedFilename);
+        existing.setFileSize((long) sanitizedBytes.length);
+        existing.setChecksum(checksum);
+        existing.setMimeType("image/svg+xml");
+
+        // 4. Update display filename / original filename if provided
+        if (StringUtils.hasText(originalFilename)) {
+            existing.setOriginalFileName(originalFilename.trim());
+        }
+        if (StringUtils.hasText(customFileName)) {
+            String finalDisplay = customFileName.trim();
+            if (!finalDisplay.toLowerCase().endsWith(".svg")) {
+                finalDisplay += ".svg";
+            }
+            existing.setFileName(finalDisplay);
+        } else if (StringUtils.hasText(originalFilename) && !StringUtils.hasText(existing.getFileName())) {
+            String finalDisplay = originalFilename.trim();
+            if (!finalDisplay.toLowerCase().endsWith(".svg")) {
+                finalDisplay += ".svg";
+            }
+            existing.setFileName(finalDisplay);
+        }
+
+        // 5. Update category if provided
+        if (categoryId != null) {
+            FileCategory category = fileCategoryRepository.findById(categoryId).orElse(null);
+            existing.setCategory(category);
+        }
+
+        // 6. Update vehicle node & hierarchy if provided
+        if (vehicleNodeId != null) {
+            VehicleNode vehicleNode = vehicleNodeRepository.findById(vehicleNodeId).orElse(null);
+            existing.setVehicleNode(vehicleNode);
+            if (vehicleNode != null) {
+                if (!StringUtils.hasText(brandName)) {
+                    brandName = resolveBrandName(vehicleNode);
+                }
+                if (!StringUtils.hasText(modelName)) {
+                    modelName = resolveModelName(vehicleNode);
+                }
+            }
+        }
+
+        if (StringUtils.hasText(brandName)) {
+            existing.setBrandName(brandName);
+        }
+        if (StringUtils.hasText(modelName)) {
+            existing.setModelName(modelName);
+        }
+        if (yearFrom != null) {
+            existing.setYearFrom(yearFrom);
+        }
+        if (yearTo != null) {
+            existing.setYearTo(yearTo);
+        }
+        if (StringUtils.hasText(generationCode)) {
+            existing.setGenerationCode(generationCode);
+        }
+        if (StringUtils.hasText(productGroup)) {
+            existing.setProductGroup(productGroup);
+        }
+        if (StringUtils.hasText(productGroupName)) {
+            existing.setProductGroupName(productGroupName);
+        }
+
+        // 7. Update dimensions if provided
+        if (filmWidth != null) {
+            existing.setFilmWidth(filmWidth);
+        }
+        if (StringUtils.hasText(filmWidthUnit)) {
+            existing.setFilmWidthUnit(filmWidthUnit);
+        }
+        if (rollLength != null) {
+            existing.setRollLength(rollLength);
+        }
+        if (StringUtils.hasText(rollLengthUnit)) {
+            existing.setRollLengthUnit(rollLengthUnit);
+        }
+        if (axisX != null) {
+            existing.setAxisX(axisX);
+        }
+        if (axisY != null) {
+            existing.setAxisY(axisY);
+        }
+
+        // 8. Update sourceFileKey if provided
+        if (StringUtils.hasText(sourceFileKey)) {
+            existing.setSourceFileKey(sourceFileKey.trim());
+        }
+
+        // 9. Update description if provided
+        if (description != null) {
+            existing.setDescription(description);
+        }
+
+        existing.setUpdatedAt(LocalDateTime.now());
+        UserSvgFile updated = userSvgFileRepository.save(existing);
+
+        log.info("[USER_SAVED_SVG_UPDATED] id={}, fileName='{}', userId={}",
+                updated.getId(), updated.getFileName(), currentUser.getId());
+
+        auditLogService.log(
+                currentUser.getUsername(),
+                currentUser.getRole() != null ? currentUser.getRole().name() : "USER",
+                "USER_SVG_UPDATE",
+                "UserSvgFile",
+                updated.getId(),
+                "Cập nhật bản lưu SVG: " + updated.getFileName()
+        );
+
+        return toResponse(updated);
     }
 
     @Override
@@ -330,6 +520,18 @@ public class UserSvgFileServiceImpl implements UserSvgFileService {
                     entity.getDealer().getId(),
                     entity.getDealer().getName()
             ));
+        }
+
+        // Source file key and name
+        if (StringUtils.hasText(entity.getSourceFileKey())) {
+            resp.setSourceFileKey(entity.getSourceFileKey());
+            svgFileRepository.findByFileKey(entity.getSourceFileKey())
+                    .ifPresent(sf -> {
+                        String name = StringUtils.hasText(sf.getDisplayName())
+                                ? sf.getDisplayName()
+                                : sf.getOriginalFilename();
+                        resp.setSourceFileName(name);
+                    });
         }
 
         return resp;
