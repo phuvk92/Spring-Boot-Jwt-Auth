@@ -36,6 +36,10 @@ public final class ErrorCodes {
     public static final String CUT_AREA_INCOMPLETE = "CUT_AREA_INCOMPLETE";
     /** Khổ cắt ngoài giới hạn: chiều dài 100–50000 mm, khổ phim 100–2000 mm (epic NGO-399). */
     public static final String CUT_AREA_OUT_OF_RANGE = "CUT_AREA_OUT_OF_RANGE";
+    /** Bản làm việc vượt quá dung lượng tối đa cho phép (20 MB) — F-36. */
+    public static final String DESIGN_TOO_LARGE = "DESIGN_TOO_LARGE";
+    /** Payload bản làm việc rỗng hoặc không hợp lệ — F-36. */
+    public static final String DESIGN_INVALID = "DESIGN_INVALID";
 
     private ErrorCodes() {
     }

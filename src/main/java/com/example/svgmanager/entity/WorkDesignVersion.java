@@ -42,6 +42,14 @@ public class WorkDesignVersion {
     @Column(name = "is_current", nullable = false)
     private boolean current;
 
+    /** Nội dung đã mã hoá / dữ liệu layout (CL-39, F-36). Server không giải mã. */
+    @Column(name = "payload", columnDefinition = "TEXT")
+    private String payload;
+
+    /** Dung lượng payload tính bằng byte (F-36). */
+    @Column(name = "payload_size")
+    private Integer payloadSize;
+
     public Long getId() { return id; }
     public WorkDesign getWorkDesign() { return workDesign; }
     public void setWorkDesign(WorkDesign workDesign) { this.workDesign = workDesign; }
@@ -55,4 +63,8 @@ public class WorkDesignVersion {
     public void setNote(String note) { this.note = note; }
     public boolean isCurrent() { return current; }
     public void setCurrent(boolean current) { this.current = current; }
+    public String getPayload() { return payload; }
+    public void setPayload(String payload) { this.payload = payload; }
+    public Integer getPayloadSize() { return payloadSize; }
+    public void setPayloadSize(Integer payloadSize) { this.payloadSize = payloadSize; }
 }

@@ -15,4 +15,6 @@ public interface WorkDesignRepository extends JpaRepository<WorkDesign, Long> {
 
     /** Tra cứu cho endpoint versions — KÈM chủ sở hữu: bản của người khác = 404, không lộ tồn tại. */
     Optional<WorkDesign> findByDesignKeyAndOwnerId(String designKey, Long ownerUserId);
+
+    boolean existsByDesignKey(String designKey);
 }
