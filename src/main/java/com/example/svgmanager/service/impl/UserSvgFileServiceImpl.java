@@ -206,6 +206,10 @@ public class UserSvgFileServiceImpl implements UserSvgFileService {
         UserSvgFile existing = userSvgFileRepository.findByIdAndUserId(id, currentUser.getId())
                 .orElseThrow(() -> new ResourceNotFoundException("File bản lưu không tồn tại", ErrorCodes.FILE_NOT_FOUND));
 
+        if ("DELETED".equalsIgnoreCase(existing.getStatus())) {
+            throw new ResourceNotFoundException("File bản lưu không tồn tại", ErrorCodes.FILE_NOT_FOUND);
+        }
+
         if (fileBytes == null || fileBytes.length == 0) {
             throw new BadRequestException("Nội dung file SVG không được để trống", ErrorCodes.FILE_REQUIRED);
         }
@@ -409,8 +413,14 @@ public class UserSvgFileServiceImpl implements UserSvgFileService {
     @Override
     @Transactional(readOnly = true)
     public UserSavedFileResponse getUserFile(User currentUser, Long id) {
+        if (currentUser == null) {
+            throw new ResourceNotFoundException("File bản lưu không tồn tại", ErrorCodes.FILE_NOT_FOUND);
+        }
         UserSvgFile file = userSvgFileRepository.findByIdAndUserId(id, currentUser.getId())
                 .orElseThrow(() -> new ResourceNotFoundException("File bản lưu không tồn tại", ErrorCodes.FILE_NOT_FOUND));
+        if ("DELETED".equalsIgnoreCase(file.getStatus())) {
+            throw new ResourceNotFoundException("File bản lưu không tồn tại", ErrorCodes.FILE_NOT_FOUND);
+        }
         return toResponse(file);
     }
 
@@ -425,9 +435,46 @@ public class UserSvgFileServiceImpl implements UserSvgFileService {
     @Override
     @Transactional(readOnly = true)
     public Resource downloadUserFile(User currentUser, Long id) {
+        if (currentUser == null) {
+            throw new ResourceNotFoundException("File bản lưu không tồn tại", ErrorCodes.FILE_NOT_FOUND);
+        }
         UserSvgFile file = userSvgFileRepository.findByIdAndUserId(id, currentUser.getId())
                 .orElseThrow(() -> new ResourceNotFoundException("File bản lưu không tồn tại", ErrorCodes.FILE_NOT_FOUND));
+        if ("DELETED".equalsIgnoreCase(file.getStatus())) {
+            throw new ResourceNotFoundException("File bản lưu không tồn tại", ErrorCodes.FILE_NOT_FOUND);
+        }
         return fileStorageService.loadFileAsResource(file.getFilePath());
+    }
+
+    @Override
+    @Transactional
+    public void deleteUserFile(User currentUser, Long id) {
+        if (currentUser == null) {
+            throw new ResourceNotFoundException("File bản lưu không tồn tại", ErrorCodes.FILE_NOT_FOUND);
+        }
+        UserSvgFile file = userSvgFileRepository.findByIdAndUserId(id, currentUser.getId())
+                .orElseThrow(() -> new ResourceNotFoundException("File bản lưu không tồn tại", ErrorCodes.FILE_NOT_FOUND));
+
+        if ("DELETED".equalsIgnoreCase(file.getStatus())) {
+            throw new ResourceNotFoundException("File bản lưu không tồn tại", ErrorCodes.FILE_NOT_FOUND);
+        }
+
+        // Xoá mềm: cập nhật status = DELETED, file vật lý trên đĩa giữ nguyên (Lịch sử cắt / đối soát còn trỏ tới)
+        file.setStatus("DELETED");
+        file.setUpdatedAt(LocalDateTime.now());
+        userSvgFileRepository.save(file);
+
+        log.info("[USER_SAVED_SVG_DELETED] id={}, fileName='{}', userId={}",
+                file.getId(), file.getFileName(), currentUser.getId());
+
+        auditLogService.log(
+                currentUser.getUsername(),
+                currentUser.getRole() != null ? currentUser.getRole().name() : "USER",
+                "USER_SVG_DELETE",
+                "UserSvgFile",
+                file.getId(),
+                "Xoá mềm bản lưu SVG: " + file.getFileName()
+        );
     }
 
     @Override

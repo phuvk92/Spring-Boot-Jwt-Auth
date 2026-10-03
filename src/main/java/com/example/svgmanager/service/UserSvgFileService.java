@@ -89,6 +89,8 @@ public interface UserSvgFileService {
 
     Resource downloadUserFile(User currentUser, Long id);
 
+    void deleteUserFile(User currentUser, Long id);
+
     String getOriginalFilename(Long id);
 
     byte[] getAdminFileBytes(Long id);

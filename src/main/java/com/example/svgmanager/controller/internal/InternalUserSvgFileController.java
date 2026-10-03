@@ -282,4 +282,18 @@ public class InternalUserSvgFileController {
 
         return ResponseEntity.ok().headers(headers).body(resource);
     }
+
+    @DeleteMapping("/{id}")
+    @Operation(summary = "Xoá mềm một bản lưu SVG của chính người dùng",
+            description = "Chỉ xoá bản thuộc chính user. Đặt status = DELETED, file SVG trên đĩa giữ nguyên. Trả 204.")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "204", description = "Xoá bản lưu thành công"),
+            @ApiResponse(responseCode = "401", description = "Chưa xác thực", content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+            @ApiResponse(responseCode = "404", description = "Không tìm thấy bản lưu hoặc không thuộc người dùng", content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    })
+    public ResponseEntity<Void> deleteMyFile(@PathVariable Long id) {
+        User currentUser = currentUserService.getCurrentUser();
+        userSvgFileService.deleteUserFile(currentUser, id);
+        return ResponseEntity.noContent().build();
+    }
 }

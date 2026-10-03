@@ -438,13 +438,26 @@ class CutHistoryPostgresIntegrationTest {
                 .andExpect(jsonPath("$.designId", is(designIdA)))
                 .andExpect(jsonPath("$.designVersion", is(1)));
 
-        // Kiểm tra GET /api/v1/cuts thấy designId trả về đúng để client "Mở lại"
+        // Kiểm tra GET /api/v1/cuts thấy designId trả về đúng để client "Mở lại" và có designAvailable = true
         mockMvc.perform(get("/api/v1/cuts")
                         .with(jwtAs("kc-pg-cut-a", "pg_cut_user_a", "sid-pg-A"))
                         .contentType(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.jobs[0].designId", is(designIdA)))
-                .andExpect(jsonPath("$.jobs[0].designVersion", is(1)));
+                .andExpect(jsonPath("$.jobs[0].designVersion", is(1)))
+                .andExpect(jsonPath("$.jobs[0].designAvailable", is(true)));
+
+        // Xoá mềm bản lưu fileA
+        fileA.setStatus("DELETED");
+        userSvgFileRepository.save(fileA);
+
+        // GET /api/v1/cuts vẫn trả dòng lịch sử, nhưng designAvailable = false (để app ẩn nút "Mở lại")
+        mockMvc.perform(get("/api/v1/cuts")
+                        .with(jwtAs("kc-pg-cut-a", "pg_cut_user_a", "sid-pg-A"))
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.jobs[0].designId", is(designIdA)))
+                .andExpect(jsonPath("$.jobs[0].designAvailable", is(false)));
 
         // 2. Gửi với designId của userB -> bỏ liên kết (designId = null, designVersion = null)
         String jsonB = """

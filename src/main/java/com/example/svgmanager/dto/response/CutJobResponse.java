@@ -48,6 +48,9 @@ public class CutJobResponse {
     @Schema(description = "Phiên bản của bản làm việc", example = "1", nullable = true)
     private Integer designVersion;
 
+    @Schema(description = "Bản lưu còn khả dụng để mở lại (true) hay đã bị xoá / không khả dụng (false)", example = "true", nullable = true)
+    private Boolean designAvailable;
+
     public CutJobResponse() {
     }
 
@@ -71,4 +74,6 @@ public class CutJobResponse {
     public void setDesignId(String designId) { this.designId = designId; }
     public Integer getDesignVersion() { return designVersion; }
     public void setDesignVersion(Integer designVersion) { this.designVersion = designVersion; }
+    public Boolean getDesignAvailable() { return designAvailable; }
+    public void setDesignAvailable(Boolean designAvailable) { this.designAvailable = designAvailable; }
 }

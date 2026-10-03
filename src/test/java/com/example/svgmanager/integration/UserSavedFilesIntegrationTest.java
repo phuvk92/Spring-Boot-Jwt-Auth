@@ -536,4 +536,81 @@ class UserSavedFilesIntegrationTest {
                 .andExpect(jsonPath("$.sourceFileKey", is("bmw-door-template-key")))
                 .andExpect(jsonPath("$.sourceFileName", is("BMW G05 Door Template")));
     }
+
+    // ==========================================
+    // 6. SOFT DELETE TESTS (NGO-450)
+    // ==========================================
+
+    @Test
+    @DisplayName("USER can soft delete own file via DELETE /api/internal/user-files/{id} -> 204")
+    void user_canDeleteOwnFile_returns204() throws Exception {
+        mockMvc.perform(delete("/api/internal/user-files/" + fileUser1.getId()).with(asUser1()))
+                .andExpect(status().isNoContent());
+
+        // GET detail -> 404
+        mockMvc.perform(get("/api/internal/user-files/" + fileUser1.getId()).with(asUser1()))
+                .andExpect(status().isNotFound());
+
+        // Download -> 404
+        mockMvc.perform(get("/api/internal/user-files/" + fileUser1.getId() + "/download").with(asUser1()))
+                .andExpect(status().isNotFound());
+
+        // List user files -> empty
+        mockMvc.perform(get("/api/internal/user-files").with(asUser1()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements", is(0)));
+
+        // PUT on deleted file -> 404
+        MockMultipartFile file = new MockMultipartFile(
+                "file",
+                "revive.svg",
+                "image/svg+xml",
+                VALID_SVG.getBytes(StandardCharsets.UTF_8)
+        );
+        mockMvc.perform(multipart("/api/internal/user-files/" + fileUser1.getId())
+                        .file(file)
+                        .with(request -> { request.setMethod("PUT"); return request; })
+                        .param("fileName", "Revive.svg")
+                        .with(asUser1()))
+                .andExpect(status().isNotFound());
+
+        // ADMIN default list excludes deleted file
+        mockMvc.perform(get("/api/admin/user-files").with(asAdmin()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements", is(1)))
+                .andExpect(jsonPath("$.content[0].fileName", is("Toyota_Camry_Window.svg")));
+
+        // ADMIN filter status=DELETED sees deleted file
+        mockMvc.perform(get("/api/admin/user-files")
+                        .param("status", "DELETED")
+                        .with(asAdmin()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements", is(1)))
+                .andExpect(jsonPath("$.content[0].id", is(fileUser1.getId().intValue())))
+                .andExpect(jsonPath("$.content[0].status", is("DELETED")));
+
+        // ADMIN filter status=ALL sees both files
+        mockMvc.perform(get("/api/admin/user-files")
+                        .param("status", "ALL")
+                        .with(asAdmin()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements", is(2)));
+    }
+
+    @Test
+    @DisplayName("USER cannot delete another user's file via DELETE /api/internal/user-files/{id} -> 404")
+    void user_cannotDeleteOtherUserFile_returns404() throws Exception {
+        mockMvc.perform(delete("/api/internal/user-files/" + fileUser2.getId()).with(asUser1()))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    @DisplayName("USER deleting already DELETED file returns 404")
+    void user_deleteAlreadyDeletedFile_returns404() throws Exception {
+        mockMvc.perform(delete("/api/internal/user-files/" + fileUser1.getId()).with(asUser1()))
+                .andExpect(status().isNoContent());
+
+        mockMvc.perform(delete("/api/internal/user-files/" + fileUser1.getId()).with(asUser1()))
+                .andExpect(status().isNotFound());
+    }
 }

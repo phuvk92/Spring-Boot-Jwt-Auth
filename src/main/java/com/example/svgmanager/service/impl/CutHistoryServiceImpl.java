@@ -100,7 +100,28 @@ public class CutHistoryServiceImpl implements CutHistoryService {
         dto.setOutcome(j.getOutcome() != null ? j.getOutcome().contractValue() : null);
         dto.setDesignId(j.getDesignId());
         dto.setDesignVersion(j.getDesignVersion());
+
+        // Cờ designAvailable: khi có designId, kiểm tra xem bản lưu có còn tồn tại và không bị xoá (status != DELETED)
+        if (StringUtils.hasText(j.getDesignId())) {
+            boolean available = isDesignAvailable(j.getDesignId().trim());
+            dto.setDesignAvailable(available);
+        } else {
+            dto.setDesignAvailable(null);
+        }
+
         return dto;
+    }
+
+    private boolean isDesignAvailable(String designId) {
+        try {
+            Long userFileId = Long.parseLong(designId);
+            var opt = userSvgFileRepository.findById(userFileId);
+            if (opt.isPresent()) {
+                return !"DELETED".equalsIgnoreCase(opt.get().getStatus());
+            }
+        } catch (NumberFormatException ignored) {
+        }
+        return workDesignRepository.existsByDesignKey(designId);
     }
 
     private CutStatsResponse toStats(List<CutJob> rows) {
@@ -196,7 +217,7 @@ public class CutHistoryServiceImpl implements CutHistoryService {
             boolean matched = false;
             if (userFileId != null) {
                 var userSvgFile = userSvgFileRepository.findByIdAndUserId(userFileId, currentUser.getId()).orElse(null);
-                if (userSvgFile != null) {
+                if (userSvgFile != null && !"DELETED".equalsIgnoreCase(userSvgFile.getStatus())) {
                     effectiveDesignId = candidateKey;
                     effectiveDesignVersion = request.getDesignVersion();
                     matched = true;

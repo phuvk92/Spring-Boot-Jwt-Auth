@@ -494,7 +494,20 @@ class CutHistoryIntegrationTest {
                         .contentType(org.springframework.http.MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.jobs[0].designId", is(designIdA)))
-                .andExpect(jsonPath("$.jobs[0].designVersion", is(1)));
+                .andExpect(jsonPath("$.jobs[0].designVersion", is(1)))
+                .andExpect(jsonPath("$.jobs[0].designAvailable", is(true)));
+
+        // Xoá mềm file bản lưu
+        fileA.setStatus("DELETED");
+        userSvgFileRepository.save(fileA);
+
+        // GET /api/v1/cuts vẫn trả dòng lịch sử, nhưng cờ designAvailable = false
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/v1/cuts")
+                        .with(jwtAs("kc-cut-a", "cut_user_a", "sid-A"))
+                        .contentType(org.springframework.http.MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.jobs[0].designId", is(designIdA)))
+                .andExpect(jsonPath("$.jobs[0].designAvailable", is(false)));
     }
 }
 

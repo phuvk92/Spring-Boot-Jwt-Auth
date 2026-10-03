@@ -96,6 +96,9 @@ class UserSavedFilesPostgresIntegrationTest {
     @Autowired
     private UserSvgFileRepository userSvgFileRepository;
 
+    @Autowired
+    private com.example.svgmanager.service.FileStorageService fileStorageService;
+
     private User userA;
     private User userB;
     private SvgFile catalogSvg;
@@ -229,5 +232,44 @@ class UserSavedFilesPostgresIntegrationTest {
                         .param("fileName", "Hacked.svg")
                         .with(asUserB()))
                 .andExpect(status().isNotFound());
+
+        // 6. User B không thể DELETE bản của User A -> 404
+        mockMvc.perform(delete("/api/internal/user-files/" + savedId).with(asUserB()))
+                .andExpect(status().isNotFound());
+
+        // 7. User A DELETE bản của mình -> 204
+        mockMvc.perform(delete("/api/internal/user-files/" + savedId).with(asUserA()))
+                .andExpect(status().isNoContent());
+
+        // 8. Sau khi xoá: danh sách của User A không còn
+        mockMvc.perform(get("/api/internal/user-files").with(asUserA()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements", is(0)));
+
+        // 9. GET /{id} -> 404
+        mockMvc.perform(get("/api/internal/user-files/" + savedId).with(asUserA()))
+                .andExpect(status().isNotFound());
+
+        // 10. GET /{id}/download -> 404
+        mockMvc.perform(get("/api/internal/user-files/" + savedId + "/download").with(asUserA()))
+                .andExpect(status().isNotFound());
+
+        // 11. PUT lên bản đã xoá -> 404
+        mockMvc.perform(multipart("/api/internal/user-files/" + savedId)
+                        .file(fileV2)
+                        .with(request -> { request.setMethod("PUT"); return request; })
+                        .param("fileName", "Revive.svg")
+                        .with(asUserA()))
+                .andExpect(status().isNotFound());
+
+        // 12. Xoá lại lần 2 -> 404
+        mockMvc.perform(delete("/api/internal/user-files/" + savedId).with(asUserA()))
+                .andExpect(status().isNotFound());
+
+        // 13. File vật lý trên đĩa vẫn giữ nguyên (xoá mềm)
+        var entityInDb = userSvgFileRepository.findById(savedId).orElseThrow();
+        assertThat(entityInDb.getStatus()).isEqualTo("DELETED");
+        org.springframework.core.io.Resource physicalResource = fileStorageService.loadFileAsResource(entityInDb.getFilePath());
+        assertThat(physicalResource.exists()).isTrue();
     }
 }
