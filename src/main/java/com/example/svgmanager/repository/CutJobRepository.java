@@ -10,4 +10,6 @@ import java.util.List;
 public interface CutJobRepository extends JpaRepository<CutJob, Long> {
 
     List<CutJob> findByUserDeviceIdOrderByCutAtDesc(Long userDeviceId);
+
+    boolean existsByUserDeviceIdAndDesignId(Long userDeviceId, String designId);
 }

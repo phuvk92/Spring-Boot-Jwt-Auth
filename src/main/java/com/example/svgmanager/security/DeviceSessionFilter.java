@@ -39,7 +39,8 @@ public class DeviceSessionFilter extends OncePerRequestFilter {
      * Liệt kê tường minh thay vì cả prefix /api/v1/ vì catalog/files vẫn phục vụ portal web.
      */
     private static final Set<String> EXTRA_ENFORCED_PATHS = Set.of(
-            "/api/v1/branding"
+            "/api/v1/branding",
+            "/api/v1/cuts"
     );
 
     /** Đường tự xử lý thiết bị trong service (đăng nhập, làm mới, đăng xuất) — không cần phiên sẵn có. */
