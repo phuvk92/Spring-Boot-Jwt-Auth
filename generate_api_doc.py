@@ -230,7 +230,7 @@ def create_document():
     sub_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
     sub_p.paragraph_format.space_before = Pt(0)
     sub_p.paragraph_format.space_after = Pt(24)
-    r_sub = sub_p.add_run("Bao gồm: Nhóm Internal API cho Client Máy Cắt, Quản lý Cấu hình Xe, Kho Mẫu SVG, Đại Lý & Người Dùng")
+    r_sub = sub_p.add_run("Bao gồm: Nhóm Internal API cho Client Máy Cắt, Quản lý Cấu hình Xe, Kho Mẫu SVG, Quản Trị Bản Đã Lưu (User Saved Files), Đại Lý & Người Dùng")
     r_sub.font.name = 'Arial'
     r_sub.font.size = Pt(10.5)
     r_sub.font.italic = True
@@ -528,6 +528,132 @@ def create_document():
         "  - HTTP 404 Not Found: File không tồn tại hoặc Đại lý không có quyền VIEW."
     )
 
+    # API 2.7: Save User SVG File
+    add_header_styled(doc, "2.7. Lưu Bản Vẽ SVG Người Dùng (Internal Save User SVG File)", level=2)
+    p = doc.add_paragraph()
+    p.add_run("• Endpoint: ").bold = True
+    p.add_run("POST /api/internal/user-files\n")
+    p.add_run("• Header: ").bold = True
+    p.add_run("Authorization: Bearer <accessToken> (Bắt buộc - Role USER, AGENT hoặc ADMIN)\n")
+    p.add_run("• Định dạng hỗ trợ: ").bold = True
+    p.add_run("Hệ thống hỗ trợ 02 hình thức nạp dữ liệu linh hoạt:\n")
+    p.add_run("   1) multipart/form-data: Tải file nhị phân đính kèm (param 'file') kèm metadata.\n")
+    p.add_run("   2) application/json: Gửi nội dung XML chuỗi SVG trực tiếp trong body JSON (field 'svgContent').\n")
+    p.add_run("• Mục đích: ").bold = True
+    p.add_run("Cho phép người dùng máy cắt tại Đại lý lưu lại các bản vẽ SVG đã chỉnh sửa / xếp part trực tiếp từ phần mềm cắt. Hệ thống tự động khử độc SVG (Sanitize), tính mã băm SHA-256, lưu trữ an toàn và gắn bản lưu với tài khoản người dùng hiện tại.")
+
+    p_save_params = doc.add_paragraph()
+    p_save_params.add_run("Bảng Tham số Lưu File SVG Người Dùng:").bold = True
+    user_file_param_table = [
+        ["file", "Binary", "Bắt buộc*", "File SVG nhị phân đính kèm (dùng cho multipart/form-data)", "MyDesign.svg"],
+        ["svgContent", "String", "Bắt buộc*", "Chuỗi nội dung XML SVG (dùng cho application/json)", "<svg viewBox=...>"],
+        ["fileName", "String", "Tùy chọn", "Tên bản lưu hiển thị trên hệ thống", "BMW_X5_Door_Cut.svg"],
+        ["categoryId", "Long", "Tùy chọn", "ID danh mục (PPF Exterior, Interior, Window Film...)", "1"],
+        ["vehicleNodeId", "Long", "Tùy chọn", "ID node xe / cấu hình xe liên kết", "12"],
+        ["brandName", "String", "Tùy chọn", "Tên hãng xe", "BMW"],
+        ["modelName", "String", "Tùy chọn", "Tên dòng xe", "X5"],
+        ["yearFrom / yearTo", "Integer", "Tùy chọn", "Năm sản xuất từ - đến", "2019 / 2024"],
+        ["generationCode", "String", "Tùy chọn", "Mã đời / Mã khung xe", "G05"],
+        ["productGroup", "String", "Tùy chọn", "Mã nhóm sản phẩm (PPF_EXTERIOR, PPF_INTERIOR, WINDOW_FILM)", "PPF_EXTERIOR"],
+        ["filmWidth", "Double", "Tùy chọn", "Khổ phim chiều rộng Y (mm) thiết lập trên máy cắt", "1520.0"],
+        ["rollLength", "Double", "Tùy chọn", "Chiều dài dọc cuộn X (mm) thiết lập trên máy cắt", "3500.0"],
+        ["axisX / axisY", "Double", "Tùy chọn", "Tọa độ trục cắt X và Y (mm)", "3500.0 / 1520.0"],
+        ["description", "String", "Tùy chọn", "Ghi chú mô tả bản lưu", "Bản cắt cửa sau trái"]
+    ]
+    add_custom_table(doc, ["Trường / Tham số", "Kiểu dữ liệu", "Bắt buộc", "Mô tả", "Ví dụ"], user_file_param_table, [1.3, 0.8, 1.0, 2.2, 1.2])
+
+    p_sample_save_req = doc.add_paragraph()
+    p_sample_save_req.add_run("Ví dụ Payload JSON Lưu File (POST /api/internal/user-files):").bold = True
+    sample_save_json = """{
+  "fileName": "BMW_X5_G05_DOOR_CUT.svg",
+  "svgContent": "<?xml version=\"1.0\" encoding=\"UTF-8\"?><svg viewBox=\"0 0 1520 3500\"><path d=\"M10 10 L100 100\"/></svg>",
+  "categoryId": 1,
+  "vehicleNodeId": 12,
+  "brandName": "BMW",
+  "modelName": "X5",
+  "yearFrom": 2019,
+  "yearTo": 2024,
+  "generationCode": "G05",
+  "productGroup": "PPF_EXTERIOR",
+  "productGroupName": "PPF Exterior",
+  "filmWidth": 1520.0,
+  "filmWidthUnit": "MM",
+  "rollLength": 3500.0,
+  "rollLengthUnit": "MM",
+  "axisX": 3500.0,
+  "axisY": 1520.0,
+  "description": "Bản cắt thử nghiệm cửa trước xe BMW X5"
+}"""
+    add_code_block(doc, sample_save_json)
+
+    p_sample_save_res = doc.add_paragraph()
+    p_sample_save_res.add_run("Ví dụ Phản hồi Thành công (HTTP 201 Created):").bold = True
+    sample_save_res = """{
+  "id": 5001,
+  "fileName": "BMW_X5_G05_DOOR_CUT.svg",
+  "originalFileName": "BMW_X5_G05_DOOR_CUT.svg",
+  "category": {
+    "id": 1,
+    "name": "PPF Exterior"
+  },
+  "vehicleConfiguration": {
+    "id": 12,
+    "productGroup": "PPF_EXTERIOR",
+    "productGroupName": "PPF Exterior",
+    "brandName": "BMW",
+    "modelName": "X5",
+    "yearFrom": 2019,
+    "yearTo": 2024,
+    "generationCode": "G05"
+  },
+  "cutSize": {
+    "filmWidth": 1520.0,
+    "filmWidthUnit": "MM",
+    "rollLength": 3500.0,
+    "rollLengthUnit": "MM",
+    "axisX": 3500.0,
+    "axisY": 1520.0
+  },
+  "description": "Bản cắt thử nghiệm cửa trước xe BMW X5",
+  "createdAt": "2026-10-03T22:00:00+07:00",
+  "createdBy": {
+    "id": 15,
+    "username": "operator1@gmail.com",
+    "displayName": "Kỹ thuật viên Cắt 01"
+  },
+  "dealer": {
+    "id": 2,
+    "name": "Đại lý Hà Nội - AutoCare"
+  },
+  "fileSize": 1258291,
+  "mimeType": "image/svg+xml",
+  "checksum": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "status": "ACTIVE"
+}"""
+    add_code_block(doc, sample_save_res)
+
+    # API 2.8: List & Detail User Saved Files
+    add_header_styled(doc, "2.8. Danh Sách & Chi Tiết Bản Lưu Của Chính Người Dùng (Internal User Files)", level=2)
+    p = doc.add_paragraph()
+    p.add_run("• Endpoint danh sách: ").bold = True
+    p.add_run("GET /api/internal/user-files?keyword=...&categoryId=...&status=...&page=0&size=20\n")
+    p.add_run("• Endpoint chi tiết: ").bold = True
+    p.add_run("GET /api/internal/user-files/{id}\n")
+    p.add_run("• Header: ").bold = True
+    p.add_run("Authorization: Bearer <accessToken> (Bắt buộc)\n")
+    p.add_run("• Nguyên tắc Bảo mật Ownership: ").bold = True
+    p.add_run("Chỉ trả về danh sách và chi tiết các bản lưu do CHÍNH người dùng hiện tại tạo. Người dùng tuyệt đối không thể truy vấn hoặc xem bản lưu của người dùng khác qua nhóm endpoint này.")
+
+    # API 2.9: Download User Saved File
+    add_header_styled(doc, "2.9. Tải Xuống File SVG Bản Lưu Của Người Dùng (Internal Download User File)", level=2)
+    p = doc.add_paragraph()
+    p.add_run("• Endpoint: ").bold = True
+    p.add_run("GET /api/internal/user-files/{id}/download\n")
+    p.add_run("• Header: ").bold = True
+    p.add_run("Authorization: Bearer <accessToken> (Bắt buộc)\n")
+    p.add_run("• Phản hồi: ").bold = True
+    p.add_run("HTTP 200 OK trả về file stream SVG nhị phân kèm Content-Type: image/svg+xml và Content-Disposition: attachment; filename=\"...\".")
+
     doc.add_page_break()
 
     # ==================== CHƯƠNG 3: NHÓM API QUẢN LÝ CẤU HÌNH XE ====================
@@ -640,7 +766,114 @@ def create_document():
     doc.add_page_break()
 
     # ==================== CHƯƠNG 5: NHÓM API QUẢN TRỊ NGƯỜI DÙNG & ĐẠI LÝ ====================
-    add_header_styled(doc, "5. Nhóm API Quản trị Người Dùng & Đại Lý (Users & Dealers)", level=1)
+    # ==================== CHƯƠNG 5: NHÓM API QUẢN TRỊ BẢN ĐÃ LƯU (ADMIN USER SAVED FILES) ====================
+    add_header_styled(doc, "5. Nhóm API Quản trị Bản Đã Lưu Người Dùng (Admin User Saved SVG Files)", level=1)
+
+    p = doc.add_paragraph()
+    p.add_run(
+        "Module 'Bản đã lưu' trên Web Admin phục vụ việc quản lý, giám sát và kiểm tra toàn bộ các file SVG "
+        "do người dùng máy cắt tại các Đại lý lưu thông qua Internal API (POST /api/internal/user-files). "
+        "Dữ liệu được lấy trực tiếp từ bảng cơ sở dữ liệu user_svg_files mà không sử dụng dữ liệu giả lập (mock)."
+    )
+
+    add_header_styled(doc, "5.1. Nguyên tắc Quản trị & Quyền Xem Toàn Bộ của ADMIN", level=2)
+    add_callout(
+        doc,
+        "1. Phân quyền ADMIN độc lập: Khác với người dùng máy cắt thông thường chỉ được xem file của chính mình, "
+        "ADMIN có quyền xem TOÀN BỘ file SVG do mọi User đã lưu trên toàn bộ hệ thống đại lý.\n"
+        "2. Bảo mật đường dẫn vật lý: API Admin TUYỆT ĐỐI KHÔNG để lộ các trường storageKey, physicalPath hoặc "
+        "URL lưu trữ nội bộ máy chủ.\n"
+        "3. Enforce Phân quyền Backend: Quyền hạn được kiểm soát nghiêm ngặt ở tầng backend bằng @PreAuthorize(\"hasRole('ADMIN')\"). "
+        "Tài khoản ROLE_USER hoặc ROLE_AGENT gọi vào nhóm API này sẽ bị từ chối với HTTP 403 Forbidden.",
+        title="NGUYÊN TẮC BẢO MẬT & PHÂN QUYỀN ADMIN"
+    )
+
+    add_header_styled(doc, "5.2. Danh sách các API Admin Bản Đã Lưu", level=2)
+    admin_user_file_api_headers = ["Phương thức", "Endpoint", "Vai trò", "Chức năng"]
+    admin_user_file_api_data = [
+        ["GET", "/api/admin/user-files", "ADMIN", "Lấy danh sách toàn bộ bản lưu SVG (phân trang, tìm kiếm, lọc theo nhiều tiêu chí)"],
+        ["GET", "/api/admin/user-files/{id}", "ADMIN", "Xem chi tiết metadata đầy đủ của một bản lưu SVG (không lộ storageKey/path)"],
+        ["GET", "/api/admin/user-files/{id}/download", "ADMIN", "Tải trực tiếp file SVG nhị phân về máy quản trị viên"],
+        ["GET", "/api/admin/user-files/{id}/preview", "ADMIN", "Stream nội dung SVG inline an toàn để component Web hiển thị xem trước"]
+    ]
+    add_custom_table(doc, admin_user_file_api_headers, admin_user_file_api_data, [1.1, 2.3, 1.1, 2.0])
+
+    p_admin_filter = doc.add_paragraph()
+    p_admin_filter.add_run("Các Tham số Lọc & Tìm kiếm của API GET /api/admin/user-files:").bold = True
+    admin_filter_params = [
+        ["keyword", "String", "Tùy chọn", "Tìm kiếm theo tên file, tên file gốc hoặc mô tả bản lưu", "BMW_X5"],
+        ["categoryId", "Long", "Tùy chọn", "Lọc theo ID danh mục sản phẩm", "1"],
+        ["vehicleNodeId", "Long", "Tùy chọn", "Lọc theo ID node xe / cấu hình xe", "12"],
+        ["brandId", "Long", "Tùy chọn", "Lọc theo ID hãng xe (BMW, Toyota, Mercedes...)", "1"],
+        ["modelId", "Long", "Tùy chọn", "Lọc theo ID dòng xe (X5, Camry, GLC...)", "12"],
+        ["dealerId", "Long", "Tùy chọn", "Lọc theo ID Đại lý", "2"],
+        ["userId", "Long", "Tùy chọn", "Lọc theo ID người dùng tạo bản lưu", "15"],
+        ["createdFrom", "ISO 8601", "Tùy chọn", "Lọc từ ngày tạo (VD: 2026-10-01T00:00:00)", "2026-10-01T00:00:00"],
+        ["createdTo", "ISO 8601", "Tùy chọn", "Lọc đến ngày tạo (VD: 2026-10-03T23:59:59)", "2026-10-03T23:59:59"],
+        ["status", "String", "Tùy chọn", "Lọc theo trạng thái (ACTIVE, DELETED). Mặc định trừ DELETED", "ACTIVE"],
+        ["page / size", "Integer", "Mặc định", "Phân trang: page (từ 0), size (mặc định 20)", "page=0&size=20"],
+        ["sort", "String", "Mặc định", "Sắp xếp: createdAt,desc hoặc fileName,asc", "createdAt,desc"]
+    ]
+    add_custom_table(doc, ["Tham số Query", "Kiểu", "Bắt buộc", "Mô tả", "Ví dụ"], admin_filter_params, [1.3, 0.8, 0.9, 2.3, 1.2])
+
+    p_sample_admin_res = doc.add_paragraph()
+    p_sample_admin_res.add_run("Ví dụ Cấu trúc Response Phân trang (GET /api/admin/user-files):").bold = True
+    sample_admin_list_res = """{
+  "content": [
+    {
+      "id": 5001,
+      "fileName": "BMW_X5_G05_DOOR_CUT.svg",
+      "originalFileName": "BMW_X5_G05_DOOR_CUT.svg",
+      "category": {
+        "id": 1,
+        "name": "PPF Exterior"
+      },
+      "vehicleConfiguration": {
+        "id": 12,
+        "productGroup": "PPF_EXTERIOR",
+        "productGroupName": "PPF Exterior",
+        "brandName": "BMW",
+        "modelName": "X5",
+        "yearFrom": 2019,
+        "yearTo": 2024,
+        "generationCode": "G05"
+      },
+      "cutSize": {
+        "filmWidth": 1520.0,
+        "filmWidthUnit": "MM",
+        "rollLength": 3500.0,
+        "rollLengthUnit": "MM",
+        "axisX": 3500.0,
+        "axisY": 1520.0
+      },
+      "description": "Bản cắt thử nghiệm cửa trước xe BMW X5",
+      "createdAt": "2026-10-03T22:00:00+07:00",
+      "createdBy": {
+        "id": 15,
+        "username": "operator1@gmail.com",
+        "displayName": "Kỹ thuật viên Cắt 01"
+      },
+      "dealer": {
+        "id": 2,
+        "name": "Đại lý Hà Nội - AutoCare"
+      },
+      "fileSize": 1258291,
+      "mimeType": "image/svg+xml",
+      "checksum": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "status": "ACTIVE"
+    }
+  ],
+  "page": 0,
+  "size": 20,
+  "totalElements": 1,
+  "totalPages": 1
+}"""
+    add_code_block(doc, sample_admin_list_res)
+
+    doc.add_page_break()
+
+    # ==================== CHƯƠNG 6: NHÓM API QUẢN TRỊ NGƯỜI DÙNG & ĐẠI LÝ ====================
+    add_header_styled(doc, "6. Nhóm API Quản trị Người Dùng & Đại Lý (Users & Dealers)", level=1)
     
     p = doc.add_paragraph()
     p.add_run(
@@ -648,7 +881,7 @@ def create_document():
         "User được tạo phải liên kết chặt chẽ với Đại lý để thừa hưởng quyền hạn cắt film."
     )
 
-    add_header_styled(doc, "5.1. Quy tắc Tạo Người Dùng Mới (User Creation Rules)", level=2)
+    add_header_styled(doc, "6.1. Quy tắc Tạo Người Dùng Mới (User Creation Rules)", level=2)
     add_callout(
         doc,
         "1. Trường email (Gmail): Là BẮT BUỘC (@NotBlank, @Email).\n"
@@ -658,7 +891,7 @@ def create_document():
         title="QUY TẮC TẠO TÀI KHOẢN NGƯỜI DÙNG"
     )
 
-    add_header_styled(doc, "5.2. Danh sách các API Người Dùng & Đại Lý", level=2)
+    add_header_styled(doc, "6.2. Danh sách các API Người Dùng & Đại Lý", level=2)
     user_api_headers = ["Phương thức", "Endpoint", "Vai trò", "Chức năng"]
     user_api_data = [
         ["GET", "/api/users", "ADMIN, AGENT", "Danh sách người dùng (phân trang, lọc theo email, username, role, trạng thái)"],
@@ -687,9 +920,9 @@ def create_document():
     doc.add_page_break()
 
     # ==================== CHƯƠNG 6: BẢNG MÃ LỖI & BEST PRACTICES ====================
-    add_header_styled(doc, "6. Bảng Mã Lỗi Nghiệp Vụ & Khuyến Nghị Tích Hợp", level=1)
+    add_header_styled(doc, "7. Bảng Mã Lỗi Nghiệp Vụ & Khuyến Nghị Tích Hợp", level=1)
 
-    add_header_styled(doc, "6.1. Bảng Tra Cứu Mã Lỗi Hệ Thống (Business Error Codes)", level=2)
+    add_header_styled(doc, "7.1. Bảng Tra Cứu Mã Lỗi Hệ Thống (Business Error Codes)", level=2)
     err_headers = ["HTTP Status", "Mã Lỗi (Error Code)", "Mô tả nguyên nhân & Cách khắc phục"]
     err_data = [
         ["400 Bad Request", "VALIDATION_FAILED", "Dữ liệu gửi lên thiếu các trường bắt buộc hoặc sai định dạng (VD: email sai định dạng)."],
@@ -705,7 +938,7 @@ def create_document():
     ]
     add_custom_table(doc, err_headers, err_data, [1.4, 2.3, 2.8])
 
-    add_header_styled(doc, "6.2. Khuyến nghị Tích hợp cho Lập trình viên Client Máy Cắt", level=2)
+    add_header_styled(doc, "7.2. Khuyến nghị Tích hợp cho Lập trình viên Client Máy Cắt", level=2)
     p = doc.add_paragraph()
     p.add_run(
         "1. Quản lý Vòng đời Token:\n"
