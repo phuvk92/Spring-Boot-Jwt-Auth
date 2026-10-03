@@ -5,10 +5,12 @@ import com.example.svgmanager.entity.CutOutcome;
 import com.example.svgmanager.entity.Role;
 import com.example.svgmanager.entity.User;
 import com.example.svgmanager.entity.UserDevice;
+import com.example.svgmanager.entity.UserSvgFile;
 import com.example.svgmanager.entity.WorkDesign;
 import com.example.svgmanager.repository.CutJobRepository;
 import com.example.svgmanager.repository.UserDeviceRepository;
 import com.example.svgmanager.repository.UserRepository;
+import com.example.svgmanager.repository.UserSvgFileRepository;
 import com.example.svgmanager.repository.WorkDesignRepository;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -40,7 +42,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * AC kiểm thử trên PostgreSQL thật cho F-38 · NGO-428:
+ * AC kiểm thử trên PostgreSQL thật cho F-38 · NGO-428 · NGO-445:
  * - Flyway migration V14 chạy trên PostgreSQL
  * - Ghi rồi đọc thấy (POST -> GET /api/v1/cuts)
  * - RECUT khi cắt lại cùng designId
@@ -48,6 +50,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * - body có trường hình học (pathData, svg, geometry) không được lưu
  * - cùng Idempotency-Key không ghi đôi
  * - máy bị gỡ → 401
+ * - cutAt nhận ISO-8601 offset (+07:00), Z (UTC) quy về giờ VN, và không múi giờ
+ * - designId nhận id user_svg_files của chính user (ưu tiên), trả lại trên GET /api/v1/cuts
  */
 @SpringBootTest(properties = {
         "spring.flyway.enabled=true",
@@ -106,6 +110,9 @@ class CutHistoryPostgresIntegrationTest {
 
     @Autowired
     private WorkDesignRepository workDesignRepository;
+
+    @Autowired
+    private UserSvgFileRepository userSvgFileRepository;
 
     private User userA;
     private User userB;
@@ -323,5 +330,144 @@ class CutHistoryPostgresIntegrationTest {
                         .content(json))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code", is("SESSION_REVOKED")));
+    }
+
+    @Test
+    @DisplayName("Postgres: cutAt nhận mọi dạng ISO-8601 (+07:00, Z quy về giờ VN, không múi giờ)")
+    void postgres_CutAt_IsoTimeZones() throws Exception {
+        // 1. Có offset +07:00: 2026-10-04T01:10:00+07:00 -> đúng 2026-10-04T01:10:00
+        String jsonOffset = """
+                {
+                    "cutAt": "2026-10-04T01:10:00+07:00",
+                    "partLabel": "Đèn pha",
+                    "vehicleLabel": "VF8",
+                    "filmUsage": "0,8 m"
+                }
+                """;
+
+        mockMvc.perform(post("/api/v1/cuts")
+                        .with(jwtAs("kc-pg-cut-a", "pg_cut_user_a", "sid-pg-A"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(jsonOffset))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.at", is("2026-10-04T01:10:00")));
+
+        // 2. Có Z (UTC): 2026-10-03T18:10:00Z -> quy sang Asia/Ho_Chi_Minh (+7) là 2026-10-04T01:10:00
+        String jsonUtc = """
+                {
+                    "cutAt": "2026-10-03T18:10:00Z",
+                    "partLabel": "Đèn gầm",
+                    "vehicleLabel": "VF8",
+                    "filmUsage": "0,4 m"
+                }
+                """;
+
+        mockMvc.perform(post("/api/v1/cuts")
+                        .with(jwtAs("kc-pg-cut-a", "pg_cut_user_a", "sid-pg-A"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(jsonUtc))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.at", is("2026-10-04T01:10:00")));
+
+        // 3. Không múi giờ: 2026-10-04T02:00:00 -> giữ nguyên 2026-10-04T02:00:00
+        String jsonNoZone = """
+                {
+                    "cutAt": "2026-10-04T02:00:00",
+                    "partLabel": "Nẹp cửa",
+                    "vehicleLabel": "VF8",
+                    "filmUsage": "0,5 m"
+                }
+                """;
+
+        mockMvc.perform(post("/api/v1/cuts")
+                        .with(jwtAs("kc-pg-cut-a", "pg_cut_user_a", "sid-pg-A"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(jsonNoZone))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.at", is("2026-10-04T02:00:00")));
+    }
+
+    @Test
+    @DisplayName("Postgres: designId nhận id user_svg_files của chính user; user khác bị bỏ liên kết; GET trả đúng designId")
+    void postgres_UserSvgFile_DesignId() throws Exception {
+        // Tạo file SVG đã lưu của userA
+        UserSvgFile fileA = UserSvgFile.builder()
+                .fileName("Ban-cat-user-A.svg")
+                .originalFileName("Ban-cat-user-A.svg")
+                .storedFileName("stored-a.svg")
+                .filePath("target/test-storage/stored-a.svg")
+                .fileSize(1024L)
+                .checksum("chk-a")
+                .user(userA)
+                .status("ACTIVE")
+                .build();
+        fileA = userSvgFileRepository.save(fileA);
+        String designIdA = String.valueOf(fileA.getId());
+
+        // Tạo file SVG đã lưu của userB
+        UserSvgFile fileB = UserSvgFile.builder()
+                .fileName("Ban-cat-user-B.svg")
+                .originalFileName("Ban-cat-user-B.svg")
+                .storedFileName("stored-b.svg")
+                .filePath("target/test-storage/stored-b.svg")
+                .fileSize(2048L)
+                .checksum("chk-b")
+                .user(userB)
+                .status("ACTIVE")
+                .build();
+        fileB = userSvgFileRepository.save(fileB);
+        String designIdB = String.valueOf(fileB.getId());
+
+        // 1. Gửi với designId của chính userA -> nhận liên kết và GET /api/v1/cuts trả về đúng designId
+        String jsonA = """
+                {
+                    "cutAt": "2026-10-04T01:30:00+07:00",
+                    "partLabel": "Cản sau",
+                    "vehicleLabel": "Mazda CX-5",
+                    "filmUsage": "1,2 m",
+                    "designId": "%s",
+                    "designVersion": 1
+                }
+                """.formatted(designIdA);
+
+        mockMvc.perform(post("/api/v1/cuts")
+                        .with(jwtAs("kc-pg-cut-a", "pg_cut_user_a", "sid-pg-A"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(jsonA))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.designId", is(designIdA)))
+                .andExpect(jsonPath("$.designVersion", is(1)));
+
+        // Kiểm tra GET /api/v1/cuts thấy designId trả về đúng để client "Mở lại"
+        mockMvc.perform(get("/api/v1/cuts")
+                        .with(jwtAs("kc-pg-cut-a", "pg_cut_user_a", "sid-pg-A"))
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.jobs[0].designId", is(designIdA)))
+                .andExpect(jsonPath("$.jobs[0].designVersion", is(1)));
+
+        // 2. Gửi với designId của userB -> bỏ liên kết (designId = null, designVersion = null)
+        String jsonB = """
+                {
+                    "cutAt": "2026-10-04T01:35:00+07:00",
+                    "partLabel": "Nắp bình xăng",
+                    "vehicleLabel": "Mazda CX-5",
+                    "filmUsage": "0,2 m",
+                    "designId": "%s",
+                    "designVersion": 1
+                }
+                """.formatted(designIdB);
+
+        mockMvc.perform(post("/api/v1/cuts")
+                        .with(jwtAs("kc-pg-cut-a", "pg_cut_user_a", "sid-pg-A"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(jsonB))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.designId").doesNotExist());
+
+        List<CutJob> jobs = cutJobRepository.findByUserDeviceIdOrderByCutAtDesc(deviceA.getId());
+        CutJob latestJob = jobs.get(0); // cutAt 01:35:00 là mới nhất
+        assertThat(latestJob.getDesignId()).isNull();
+        assertThat(latestJob.getDesignVersion()).isNull();
     }
 }

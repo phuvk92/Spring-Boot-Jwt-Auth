@@ -1,5 +1,7 @@
 package com.example.svgmanager.dto.request;
 
+import com.example.svgmanager.util.FlexibleIsoLocalDateTimeDeserializer;
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.PositiveOrZero;
@@ -15,8 +17,9 @@ import java.time.LocalDateTime;
 @Schema(description = "Yêu cầu ghi một lượt cắt đã xong — chỉ chứa số liệu thống kê (F-38)")
 public class RecordCutRequest {
 
-    @Schema(description = "Thời điểm gửi lệnh cắt xuống máy", requiredMode = Schema.RequiredMode.REQUIRED)
+    @Schema(description = "Thời điểm gửi lệnh cắt xuống máy (ISO-8601 có hoặc không có offset/Z)", requiredMode = Schema.RequiredMode.REQUIRED)
     @NotNull(message = "Thời điểm cắt không được để trống")
+    @JsonDeserialize(using = FlexibleIsoLocalDateTimeDeserializer.class)
     private LocalDateTime cutAt;
 
     @Schema(description = "Nhãn nhóm chi tiết đã cắt", example = "Đèn trái + đèn phải")

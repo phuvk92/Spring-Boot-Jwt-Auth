@@ -1,7 +1,9 @@
 package com.example.svgmanager.dto.request;
 
+import com.example.svgmanager.util.FlexibleIsoLocalDateTimeDeserializer;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -30,6 +32,7 @@ public class DesignSaveRequest {
     private String sourceTemplateId;
 
     @Schema(description = "Mốc updatedAt của mẫu gốc lúc sao", nullable = true)
+    @JsonDeserialize(using = FlexibleIsoLocalDateTimeDeserializer.class)
     private LocalDateTime sourceTemplateUpdatedAt;
 
     /**

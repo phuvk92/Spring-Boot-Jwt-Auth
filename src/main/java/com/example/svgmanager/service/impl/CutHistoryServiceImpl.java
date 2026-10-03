@@ -13,6 +13,7 @@ import com.example.svgmanager.exception.ErrorCodes;
 import com.example.svgmanager.exception.UnauthorizedException;
 import com.example.svgmanager.repository.CutJobRepository;
 import com.example.svgmanager.repository.UserDeviceRepository;
+import com.example.svgmanager.repository.UserSvgFileRepository;
 import com.example.svgmanager.repository.WorkDesignRepository;
 import com.example.svgmanager.security.CurrentUserService;
 import com.example.svgmanager.service.CutHistoryService;
@@ -41,6 +42,7 @@ public class CutHistoryServiceImpl implements CutHistoryService {
     private final CutJobRepository cutJobRepository;
     private final UserDeviceRepository userDeviceRepository;
     private final WorkDesignRepository workDesignRepository;
+    private final UserSvgFileRepository userSvgFileRepository;
     private final CurrentUserService currentUserService;
 
     private final Map<String, IdempotentRecord> idempotencyCache = new ConcurrentHashMap<>();
@@ -51,10 +53,12 @@ public class CutHistoryServiceImpl implements CutHistoryService {
     public CutHistoryServiceImpl(CutJobRepository cutJobRepository,
                                  UserDeviceRepository userDeviceRepository,
                                  WorkDesignRepository workDesignRepository,
+                                 UserSvgFileRepository userSvgFileRepository,
                                  CurrentUserService currentUserService) {
         this.cutJobRepository = cutJobRepository;
         this.userDeviceRepository = userDeviceRepository;
         this.workDesignRepository = workDesignRepository;
+        this.userSvgFileRepository = userSvgFileRepository;
         this.currentUserService = currentUserService;
     }
 
@@ -94,6 +98,8 @@ public class CutHistoryServiceImpl implements CutHistoryService {
         dto.setFilmUsage(j.getFilmUsage());
         dto.setDuration(j.getDuration());
         dto.setOutcome(j.getOutcome() != null ? j.getOutcome().contractValue() : null);
+        dto.setDesignId(j.getDesignId());
+        dto.setDesignVersion(j.getDesignVersion());
         return dto;
     }
 
@@ -172,20 +178,41 @@ public class CutHistoryServiceImpl implements CutHistoryService {
         User currentUser = currentUserService.getCurrentUser();
 
         // Xử lý designId:
-        // Có designId thuộc chính user này → đặt work_designs.has_been_cut = true
-        // designId không thuộc user (hoặc không tồn tại) → bỏ liên kết (lưu lượt cắt với design_id = null, design_version = null)
+        // Chấp nhận khi là id user_svg_files thuộc chính user (ưu tiên — board 04/10 hướng phuvk).
+        // Vẫn nhận work_designs của user như cũ.
+        // Không thuộc user (hoặc không tồn tại) → bỏ liên kết (design_id = null, design_version = null).
         String effectiveDesignId = null;
         Integer effectiveDesignVersion = null;
 
         if (StringUtils.hasText(request.getDesignId())) {
             String candidateKey = request.getDesignId().trim();
-            WorkDesign workDesign = workDesignRepository.findByDesignKeyAndOwnerId(candidateKey, currentUser.getId()).orElse(null);
-            if (workDesign != null) {
-                effectiveDesignId = candidateKey;
-                effectiveDesignVersion = request.getDesignVersion();
-                if (!workDesign.isHasBeenCut()) {
-                    workDesign.setHasBeenCut(true);
-                    workDesignRepository.save(workDesign);
+            // 1. Ưu tiên kiểm tra user_svg_files thuộc chính user (ID thường là dạng số)
+            Long userFileId = null;
+            try {
+                userFileId = Long.parseLong(candidateKey);
+            } catch (NumberFormatException ignored) {
+            }
+
+            boolean matched = false;
+            if (userFileId != null) {
+                var userSvgFile = userSvgFileRepository.findByIdAndUserId(userFileId, currentUser.getId()).orElse(null);
+                if (userSvgFile != null) {
+                    effectiveDesignId = candidateKey;
+                    effectiveDesignVersion = request.getDesignVersion();
+                    matched = true;
+                }
+            }
+
+            // 2. Nếu chưa match user_svg_files, kiểm tra work_designs của user như cũ
+            if (!matched) {
+                WorkDesign workDesign = workDesignRepository.findByDesignKeyAndOwnerId(candidateKey, currentUser.getId()).orElse(null);
+                if (workDesign != null) {
+                    effectiveDesignId = candidateKey;
+                    effectiveDesignVersion = request.getDesignVersion();
+                    if (!workDesign.isHasBeenCut()) {
+                        workDesign.setHasBeenCut(true);
+                        workDesignRepository.save(workDesign);
+                    }
                 }
             }
         }
