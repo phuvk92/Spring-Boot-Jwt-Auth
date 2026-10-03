@@ -23,6 +23,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.hasSize;
@@ -54,6 +55,9 @@ class CutHistoryIntegrationTest {
 
     @Autowired
     private CutJobRepository cutJobRepository;
+
+    @Autowired
+    private com.example.svgmanager.repository.WorkDesignRepository workDesignRepository;
 
     private User userA;
     private User userB;
@@ -180,4 +184,219 @@ class CutHistoryIntegrationTest {
                 .andExpect(jsonPath("$.stats.period", is("10/08 – 16/08/2026")))
                 .andExpect(jsonPath("$.stats.vehicleCount", is(2)));
     }
+
+    // ── POST /api/v1/cuts (F-38 · NGO-428) ───────────────────────────────────
+
+    @Test
+    @DisplayName("Ghi một lượt cắt thành công, trả 201 và dòng vừa ghi, GET /api/v1/cuts thấy ngay dòng mới")
+    void recordCut_Success() throws Exception {
+        String json = """
+                {
+                    "cutAt": "2026-10-03T10:15:30",
+                    "partLabel": "Đèn trái + phải",
+                    "vehicleLabel": "Mazda CX-5",
+                    "filmUsage": "0,9 m",
+                    "filmUsageMeters": 0.900,
+                    "duration": "2′ 18″"
+                }
+                """;
+
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/api/v1/cuts")
+                        .with(jwtAs("kc-cut-a", "cut_user_a", "sid-A"))
+                        .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                        .content(json))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.id").isNumber())
+                .andExpect(jsonPath("$.at", is("2026-10-03T10:15:30")))
+                .andExpect(jsonPath("$.deviceName", is("Máy A")))
+                .andExpect(jsonPath("$.partLabel", is("Đèn trái + phải")))
+                .andExpect(jsonPath("$.vehicleLabel", is("Mazda CX-5")))
+                .andExpect(jsonPath("$.filmUsage", is("0,9 m")))
+                .andExpect(jsonPath("$.duration", is("2′ 18″")))
+                .andExpect(jsonPath("$.outcome", is("completed")));
+
+        // GET /api/v1/cuts thấy ngay dòng mới
+        mockMvc.perform(get("/api/v1/cuts").with(jwtAs("kc-cut-a", "cut_user_a", "sid-A")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.jobs", hasSize(1)))
+                .andExpect(jsonPath("$.jobs[0].vehicleLabel", is("Mazda CX-5")))
+                .andExpect(jsonPath("$.stats.jobCount", is(1)))
+                .andExpect(jsonPath("$.stats.filmUsed", is("0,9 m")));
+    }
+
+    @Test
+    @DisplayName("RECUT khi cắt lại cùng designId trên cùng máy; lần đầu là COMPLETED")
+    void recordCut_RecutOutcome() throws Exception {
+        com.example.svgmanager.entity.WorkDesign wd = new com.example.svgmanager.entity.WorkDesign();
+        wd.setDesignKey("wd-101");
+        wd.setOwner(userA);
+        wd.setName("Bản cắt mẫu");
+        wd.setHasBeenCut(false);
+        wd.setCreatedAt(LocalDateTime.now());
+        wd.setUpdatedAt(LocalDateTime.now());
+        workDesignRepository.save(wd);
+
+        String json = """
+                {
+                    "cutAt": "2026-10-03T10:00:00",
+                    "partLabel": "Nắp capo",
+                    "vehicleLabel": "VF8",
+                    "filmUsage": "1,5 m",
+                    "filmUsageMeters": 1.5,
+                    "duration": "3′ 00″",
+                    "designId": "wd-101",
+                    "designVersion": 1
+                }
+                """;
+
+        // Lần cắt đầu tiên -> outcome = completed, work_designs.has_been_cut chuyển thành true
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/api/v1/cuts")
+                        .with(jwtAs("kc-cut-a", "cut_user_a", "sid-A"))
+                        .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                        .content(json))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.outcome", is("completed")));
+
+        com.example.svgmanager.entity.WorkDesign reloaded = workDesignRepository.findByDesignKeyAndOwnerId("wd-101", userA.getId()).orElseThrow();
+        assertThat(reloaded.isHasBeenCut()).isTrue();
+
+        // Lần cắt thứ hai trên cùng máy với cùng designId -> outcome = recut
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/api/v1/cuts")
+                        .with(jwtAs("kc-cut-a", "cut_user_a", "sid-A"))
+                        .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                        .content(json))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.outcome", is("recut")));
+    }
+
+    @Test
+    @DisplayName("designId của user khác hoặc không tồn tại bị bỏ liên kết (design_id = null), không 403")
+    void recordCut_OtherUserDesignId_Unlinked() throws Exception {
+        // userB sở hữu wd-202
+        com.example.svgmanager.entity.WorkDesign wd = new com.example.svgmanager.entity.WorkDesign();
+        wd.setDesignKey("wd-202");
+        wd.setOwner(userB);
+        wd.setName("Bản cắt của B");
+        wd.setHasBeenCut(false);
+        wd.setCreatedAt(LocalDateTime.now());
+        wd.setUpdatedAt(LocalDateTime.now());
+        workDesignRepository.save(wd);
+
+        String json = """
+                {
+                    "cutAt": "2026-10-03T10:00:00",
+                    "partLabel": "Cản trước",
+                    "vehicleLabel": "Civic",
+                    "filmUsage": "1,2 m",
+                    "designId": "wd-202",
+                    "designVersion": 1
+                }
+                """;
+
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/api/v1/cuts")
+                        .with(jwtAs("kc-cut-a", "cut_user_a", "sid-A"))
+                        .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                        .content(json))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.outcome", is("completed")));
+
+        // Kiểm tra trong DB: cutJob được lưu với designId = null
+        List<CutJob> jobs = cutJobRepository.findByUserDeviceIdOrderByCutAtDesc(deviceA.getId());
+        assertThat(jobs).hasSize(1);
+        assertThat(jobs.get(0).getDesignId()).isNull();
+        assertThat(jobs.get(0).getDesignVersion()).isNull();
+
+        // work_design của B không bị ảnh hưởng hasBeenCut
+        com.example.svgmanager.entity.WorkDesign bDesign = workDesignRepository.findByDesignKeyAndOwnerId("wd-202", userB.getId()).orElseThrow();
+        assertThat(bDesign.isHasBeenCut()).isFalse();
+    }
+
+    @Test
+    @DisplayName("Body có trường hình học lạ (pathData, svg, geometry) bị bỏ qua, không được lưu")
+    void recordCut_GeometryFieldsIgnored() throws Exception {
+        String jsonWithGeometry = """
+                {
+                    "cutAt": "2026-10-03T10:00:00",
+                    "partLabel": "Tai xe",
+                    "vehicleLabel": "Mazda 3",
+                    "filmUsage": "0,5 m",
+                    "pathData": "M 0 0 L 100 100 Z",
+                    "svg": "<svg><path d='...'/></svg>",
+                    "geometry": {"type": "polygon"}
+                }
+                """;
+
+        MvcResult res = mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/api/v1/cuts")
+                        .with(jwtAs("kc-cut-a", "cut_user_a", "sid-A"))
+                        .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                        .content(jsonWithGeometry))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.partLabel", is("Tai xe")))
+                .andReturn();
+
+        String body = res.getResponse().getContentAsString();
+        for (String banned : new String[]{"geometry", "pathdata", "polygon", "<svg>"}) {
+            assertThat(body.toLowerCase()).doesNotContain(banned);
+        }
+    }
+
+    @Test
+    @DisplayName("Cùng Idempotency-Key trong 24 giờ không ghi đôi, trả lại đúng bản ghi cũ")
+    void recordCut_IdempotencyKey() throws Exception {
+        String json = """
+                {
+                    "cutAt": "2026-10-03T10:00:00",
+                    "partLabel": "Nẹp cửa",
+                    "vehicleLabel": "CRV",
+                    "filmUsage": "0,8 m",
+                    "filmUsageMeters": 0.8
+                }
+                """;
+
+        String idemKey = "cl-42-key-12345";
+
+        MvcResult first = mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/api/v1/cuts")
+                        .with(jwtAs("kc-cut-a", "cut_user_a", "sid-A"))
+                        .header("Idempotency-Key", idemKey)
+                        .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                        .content(json))
+                .andExpect(status().isCreated())
+                .andReturn();
+
+        MvcResult second = mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/api/v1/cuts")
+                        .with(jwtAs("kc-cut-a", "cut_user_a", "sid-A"))
+                        .header("Idempotency-Key", idemKey)
+                        .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                        .content(json))
+                .andExpect(status().isCreated())
+                .andReturn();
+
+        assertThat(first.getResponse().getContentAsString()).isEqualTo(second.getResponse().getContentAsString());
+
+        // DB chỉ có đúng 1 bản ghi
+        List<CutJob> jobs = cutJobRepository.findByUserDeviceIdOrderByCutAtDesc(deviceA.getId());
+        assertThat(jobs).hasSize(1);
+    }
+
+    @Test
+    @DisplayName("Máy bị gỡ hoặc phiên không còn hiệu lực → 401 SESSION_REVOKED")
+    void recordCut_RevokedSession_Returns401() throws Exception {
+        String json = """
+                {
+                    "cutAt": "2026-10-03T10:00:00",
+                    "partLabel": "Nắp xăng",
+                    "vehicleLabel": "Camry",
+                    "filmUsage": "0,2 m"
+                }
+                """;
+
+        // sid-la không thuộc máy nào
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/api/v1/cuts")
+                        .with(jwtAs("kc-cut-a", "cut_user_a", "sid-la"))
+                        .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                        .content(json))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code", is("SESSION_REVOKED")));
+    }
 }
+

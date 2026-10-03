@@ -13,4 +13,13 @@ public interface CutHistoryService {
      * rỗng thay vì ném — mất dấu vết phiên không phải lỗi của người đọc lịch sử.
      */
     CutHistoryResponse getHistoryForCurrentDevice();
+
+    /**
+     * Ghi một lượt cắt đã xong trên máy của phiên hiện tại (POST /api/v1/cuts).
+     *
+     * @param request        dữ liệu thống kê lượt cắt
+     * @param idempotencyKey khoá chống ghi đôi (tuỳ chọn)
+     * @return dòng CutJobResponse vừa ghi (hoặc dòng cũ nếu trùng idempotency-key trong 24h)
+     */
+    com.example.svgmanager.dto.response.CutJobResponse recordCut(com.example.svgmanager.dto.request.RecordCutRequest request, String idempotencyKey);
 }
