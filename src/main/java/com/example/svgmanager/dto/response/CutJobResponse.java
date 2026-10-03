@@ -42,6 +42,12 @@ public class CutJobResponse {
     @Schema(description = "Kết quả: completed · recut · misaligned", example = "completed")
     private String outcome;
 
+    @Schema(description = "Id user-file của bản đã cắt — điều kiện hiện nút Mở lại (F-38)", example = "42", nullable = true)
+    private String designId;
+
+    @Schema(description = "Phiên bản của bản làm việc", example = "1", nullable = true)
+    private Integer designVersion;
+
     public CutJobResponse() {
     }
 
@@ -61,4 +67,8 @@ public class CutJobResponse {
     public void setDuration(String duration) { this.duration = duration; }
     public String getOutcome() { return outcome; }
     public void setOutcome(String outcome) { this.outcome = outcome; }
+    public String getDesignId() { return designId; }
+    public void setDesignId(String designId) { this.designId = designId; }
+    public Integer getDesignVersion() { return designVersion; }
+    public void setDesignVersion(Integer designVersion) { this.designVersion = designVersion; }
 }

@@ -59,6 +59,9 @@ class CutHistoryIntegrationTest {
     @Autowired
     private com.example.svgmanager.repository.WorkDesignRepository workDesignRepository;
 
+    @Autowired
+    private com.example.svgmanager.repository.UserSvgFileRepository userSvgFileRepository;
+
     private User userA;
     private User userB;
     private UserDevice deviceA;
@@ -137,7 +140,7 @@ class CutHistoryIntegrationTest {
                 .andReturn();
 
         String body = res.getResponse().getContentAsString();
-        for (String banned : new String[]{"geometry", "path", "point", "outline", "svg", "shape", "design"}) {
+        for (String banned : new String[]{"geometry", "path", "point", "outline", "svg", "shape"}) {
             assertThat(body.toLowerCase()).as("response không được chứa '%s'", banned).doesNotContain(banned);
         }
     }
@@ -397,6 +400,101 @@ class CutHistoryIntegrationTest {
                         .content(json))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code", is("SESSION_REVOKED")));
+    }
+
+    @Test
+    @DisplayName("cutAt nhận ISO-8601 offset (+07:00), Z quy về giờ VN, và không múi giờ")
+    void recordCut_CutAt_IsoTimeZones() throws Exception {
+        String jsonOffset = """
+                {
+                    "cutAt": "2026-10-04T01:10:00+07:00",
+                    "partLabel": "Đèn pha",
+                    "vehicleLabel": "VF8",
+                    "filmUsage": "0,8 m"
+                }
+                """;
+
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/api/v1/cuts")
+                        .with(jwtAs("kc-cut-a", "cut_user_a", "sid-A"))
+                        .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                        .content(jsonOffset))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.at", is("2026-10-04T01:10:00")));
+
+        String jsonUtc = """
+                {
+                    "cutAt": "2026-10-03T18:10:00Z",
+                    "partLabel": "Đèn gầm",
+                    "vehicleLabel": "VF8",
+                    "filmUsage": "0,4 m"
+                }
+                """;
+
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/api/v1/cuts")
+                        .with(jwtAs("kc-cut-a", "cut_user_a", "sid-A"))
+                        .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                        .content(jsonUtc))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.at", is("2026-10-04T01:10:00")));
+
+        String jsonNoZone = """
+                {
+                    "cutAt": "2026-10-04T02:00:00",
+                    "partLabel": "Nẹp cửa",
+                    "vehicleLabel": "VF8",
+                    "filmUsage": "0,5 m"
+                }
+                """;
+
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/api/v1/cuts")
+                        .with(jwtAs("kc-cut-a", "cut_user_a", "sid-A"))
+                        .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                        .content(jsonNoZone))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.at", is("2026-10-04T02:00:00")));
+    }
+
+    @Test
+    @DisplayName("designId nhận id user_svg_files của chính user; GET /api/v1/cuts trả đúng designId")
+    void recordCut_UserSvgFile_DesignId() throws Exception {
+        com.example.svgmanager.entity.UserSvgFile fileA = com.example.svgmanager.entity.UserSvgFile.builder()
+                .fileName("Ban-cat-user-A.svg")
+                .originalFileName("Ban-cat-user-A.svg")
+                .storedFileName("stored-a.svg")
+                .filePath("target/test-storage/stored-a.svg")
+                .fileSize(1024L)
+                .checksum("chk-a")
+                .user(userA)
+                .status("ACTIVE")
+                .build();
+        fileA = userSvgFileRepository.save(fileA);
+        String designIdA = String.valueOf(fileA.getId());
+
+        String jsonA = """
+                {
+                    "cutAt": "2026-10-04T01:30:00+07:00",
+                    "partLabel": "Cản sau",
+                    "vehicleLabel": "Mazda CX-5",
+                    "filmUsage": "1,2 m",
+                    "designId": "%s",
+                    "designVersion": 1
+                }
+                """.formatted(designIdA);
+
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/api/v1/cuts")
+                        .with(jwtAs("kc-cut-a", "cut_user_a", "sid-A"))
+                        .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                        .content(jsonA))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.designId", is(designIdA)))
+                .andExpect(jsonPath("$.designVersion", is(1)));
+
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/v1/cuts")
+                        .with(jwtAs("kc-cut-a", "cut_user_a", "sid-A"))
+                        .contentType(org.springframework.http.MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.jobs[0].designId", is(designIdA)))
+                .andExpect(jsonPath("$.jobs[0].designVersion", is(1)));
     }
 }
 
