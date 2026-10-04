@@ -14,6 +14,8 @@ import com.example.svgmanager.exception.BadRequestException;
 import com.example.svgmanager.exception.ErrorCodes;
 import com.example.svgmanager.exception.ResourceNotFoundException;
 import com.example.svgmanager.repository.FileCategoryRepository;
+import com.example.svgmanager.entity.PartLibraryCategory;
+import com.example.svgmanager.repository.PartLibraryCategoryRepository;
 import com.example.svgmanager.repository.SvgFilePartRepository;
 import com.example.svgmanager.repository.SvgFileRepository;
 import com.example.svgmanager.repository.SvgFileVehicleNodeRepository;
@@ -70,6 +72,7 @@ public class AdminFileServiceImpl implements AdminFileService {
     private final SvgFileVehicleNodeRepository linkRepository;
     private final VehicleNodeRepository vehicleNodeRepository;
     private final FileCategoryRepository fileCategoryRepository;
+    private final PartLibraryCategoryRepository partLibraryCategoryRepository;
     private final FileStorageService fileStorageService;
     private final SvgSanitizerService svgSanitizerService;
     private final CurrentUserService currentUserService;
@@ -82,6 +85,7 @@ public class AdminFileServiceImpl implements AdminFileService {
             SvgFileVehicleNodeRepository linkRepository,
             VehicleNodeRepository vehicleNodeRepository,
             FileCategoryRepository fileCategoryRepository,
+            PartLibraryCategoryRepository partLibraryCategoryRepository,
             FileStorageService fileStorageService,
             SvgSanitizerService svgSanitizerService,
             CurrentUserService currentUserService,
@@ -93,6 +97,7 @@ public class AdminFileServiceImpl implements AdminFileService {
         this.linkRepository = linkRepository;
         this.vehicleNodeRepository = vehicleNodeRepository;
         this.fileCategoryRepository = fileCategoryRepository;
+        this.partLibraryCategoryRepository = partLibraryCategoryRepository;
         this.fileStorageService = fileStorageService;
         this.svgSanitizerService = svgSanitizerService;
         this.currentUserService = currentUserService;
@@ -122,7 +127,10 @@ public class AdminFileServiceImpl implements AdminFileService {
                         cb.like(cb.lower(root.get("displayName")), like)));
             }
             if (categoryId != null) {
-                predicates.add(cb.equal(root.get("fileCategory").get("id"), categoryId));
+                predicates.add(cb.or(
+                        cb.equal(root.get("partLibraryCategory").get("id"), categoryId),
+                        cb.equal(root.get("fileCategory").get("id"), categoryId)
+                ));
             }
             if (year != null) {
                 // Q3 — file không ghi năm hiện với mọi năm khi lọc.
@@ -180,7 +188,7 @@ public class AdminFileServiceImpl implements AdminFileService {
         }
 
         requireName(name);
-        FileCategory category = requireCategory(categoryId);
+        ResolvedCategory resCat = resolveCategory(categoryId);
         validateYear(year);
         List<VehicleNode> nodes = resolveVehicleNodes(vehicleNodeIds);
 
@@ -218,7 +226,8 @@ public class AdminFileServiceImpl implements AdminFileService {
                 .build();
         svgFile.setFileKey(uniqueFileKey(name));
         svgFile.setDisplayName(name.trim());
-        svgFile.setFileCategory(category);
+        svgFile.setFileCategory(resCat.fileCategory());
+        svgFile.setPartLibraryCategory(resCat.partLibraryCategory());
         svgFile.setModelYear(year);
         svgFile.setSource("SYSTEM");
         applyCutArea(svgFile, cutAreaLengthMm, cutAreaWidthMm, false);
@@ -420,7 +429,9 @@ public class AdminFileServiceImpl implements AdminFileService {
             svgFile.setDisplayName(name.trim());
         }
         if (categoryId != null) {
-            svgFile.setFileCategory(requireCategory(categoryId));
+            ResolvedCategory resCat = resolveCategory(categoryId);
+            svgFile.setFileCategory(resCat.fileCategory());
+            svgFile.setPartLibraryCategory(resCat.partLibraryCategory());
         }
         if (yearPresent) {
             validateYear(year);
@@ -605,12 +616,45 @@ public class AdminFileServiceImpl implements AdminFileService {
         }
     }
 
-    private FileCategory requireCategory(Long categoryId) {
+    private record ResolvedCategory(FileCategory fileCategory, PartLibraryCategory partLibraryCategory) {}
+
+    private ResolvedCategory resolveCategory(Long categoryId) {
         if (categoryId == null) {
             throw new BadRequestException("Thiếu danh mục file (categoryId)");
         }
-        return fileCategoryRepository.findById(categoryId)
-                .orElseThrow(() -> new BadRequestException("Danh mục file không tồn tại: " + categoryId));
+        PartLibraryCategory partCategory = null;
+        if (partLibraryCategoryRepository != null) {
+            partCategory = partLibraryCategoryRepository.findById(categoryId).orElse(null);
+        }
+        FileCategory fileCat = fileCategoryRepository.findById(categoryId).orElse(null);
+
+        if (fileCat != null && partCategory != null) {
+            final String fcName = fileCat.getName();
+            if (!fcName.equalsIgnoreCase(partCategory.getName())) {
+                PartLibraryCategory match = partLibraryCategoryRepository.findAll().stream()
+                        .filter(pc -> pc.getName().equalsIgnoreCase(fcName))
+                        .findFirst().orElse(null);
+                if (match != null) {
+                    partCategory = match;
+                }
+            }
+        } else if (fileCat == null && partCategory != null) {
+            final String name = partCategory.getName();
+            fileCat = fileCategoryRepository.findAll().stream()
+                    .filter(fc -> fc.getName().equalsIgnoreCase(name))
+                    .findFirst().orElse(null);
+        }
+        if (partCategory == null && fileCat != null && partLibraryCategoryRepository != null) {
+            final String name = fileCat.getName();
+            partCategory = partLibraryCategoryRepository.findAll().stream()
+                    .filter(pc -> pc.getName().equalsIgnoreCase(name))
+                    .findFirst().orElse(null);
+        }
+
+        if (fileCat == null && partCategory == null) {
+            throw new BadRequestException("Danh mục file không tồn tại: " + categoryId);
+        }
+        return new ResolvedCategory(fileCat, partCategory);
     }
 
     /**
@@ -678,7 +722,7 @@ public class AdminFileServiceImpl implements AdminFileService {
                 f.getId(), f.getFileKey(),
                 displayName,
                 origName,
-                f.getFileCategory() != null ? f.getFileCategory().getName() : null,
+                f.getPartLibraryCategory() != null ? f.getPartLibraryCategory().getName() : (f.getFileCategory() != null ? f.getFileCategory().getName() : null),
                 f.getModelYear(), vehicles, f.getSource(), partCount, f.getUpdatedAt(),
                 f.getThumbnailPath() != null ? "/api/svg/" + f.getId() + "/thumbnail" : null,
                 hasNested,

@@ -1,5 +1,9 @@
 package com.example.svgmanager.dto.request;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
+import java.time.LocalDate;
+
+
 import com.example.svgmanager.entity.Role;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.Email;
@@ -43,6 +47,12 @@ public class UpdateUserRequest {
     @Schema(example = "NewPassword123!", description = "Optional new password. Leave null or empty to keep current password.")
     private String password;
 
+    @Schema(example = "2026-12-31", description = "Ngày hết hạn tài khoản (yyyy-MM-dd). Tùy chọn. Truyền null để chuyển thành Không hết hạn.")
+    @JsonFormat(pattern = "yyyy-MM-dd")
+    private LocalDate expirationDate;
+
+
+
     public UpdateUserRequest() {
     }
 
@@ -70,6 +80,7 @@ public class UpdateUserRequest {
         private Long dealerId;
         private Boolean enabled = true;
         private String password;
+        private LocalDate expirationDate;
 
         public Builder email(String email) {
             this.email = email;
@@ -111,8 +122,15 @@ public class UpdateUserRequest {
             return this;
         }
 
+        public Builder expirationDate(LocalDate expirationDate) {
+            this.expirationDate = expirationDate;
+            return this;
+        }
+
         public UpdateUserRequest build() {
-            return new UpdateUserRequest(email, fullName, phone, role, agentId, dealerId, enabled, password);
+            UpdateUserRequest req = new UpdateUserRequest(email, fullName, phone, role, agentId, dealerId, enabled, password);
+            req.setExpirationDate(this.expirationDate);
+            return req;
         }
     }
 
@@ -191,5 +209,13 @@ public class UpdateUserRequest {
 
     public void setMaxDevices(Integer maxDevices) {
         this.maxDevices = maxDevices;
+    }
+
+    public LocalDate getExpirationDate() {
+        return expirationDate;
+    }
+
+    public void setExpirationDate(LocalDate expirationDate) {
+        this.expirationDate = expirationDate;
     }
 }

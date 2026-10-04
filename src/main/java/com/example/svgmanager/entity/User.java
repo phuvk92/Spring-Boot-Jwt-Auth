@@ -5,6 +5,7 @@ import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 @Entity
@@ -52,6 +53,9 @@ public class User {
     /** Số máy tối đa của tài khoản này (F-57). null = mặc định hệ thống ({@code app.device.max-per-user}). */
     @Column(name = "max_devices")
     private Integer maxDevices;
+
+    @Column(name = "expiration_date")
+    private LocalDate expirationDate;
 
     @Column(nullable = false)
     private boolean deleted = false;
@@ -111,6 +115,7 @@ public class User {
         private boolean deleted = false;
         private LocalDateTime createdAt;
         private LocalDateTime updatedAt;
+        private LocalDate expirationDate;
 
         public Builder id(Long id) {
             this.id = id;
@@ -182,8 +187,15 @@ public class User {
             return this;
         }
 
+        public Builder expirationDate(LocalDate expirationDate) {
+            this.expirationDate = expirationDate;
+            return this;
+        }
+
         public User build() {
-            return new User(id, keycloakUserId, username, email, password, fullName, phone, role, agent, dealer, enabled, deleted, createdAt, updatedAt);
+            User user = new User(id, keycloakUserId, username, email, password, fullName, phone, role, agent, dealer, enabled, deleted, createdAt, updatedAt);
+            user.setExpirationDate(this.expirationDate);
+            return user;
         }
     }
 
@@ -305,5 +317,24 @@ public class User {
 
     public void setMaxDevices(Integer maxDevices) {
         this.maxDevices = maxDevices;
+    }
+
+    public LocalDate getExpirationDate() {
+        return expirationDate;
+    }
+
+    public void setExpirationDate(LocalDate expirationDate) {
+        this.expirationDate = expirationDate;
+    }
+
+    public boolean isExpired() {
+        return isExpired(LocalDate.now());
+    }
+
+    public boolean isExpired(LocalDate currentDate) {
+        if (this.role == Role.ADMIN) {
+            return false;
+        }
+        return this.expirationDate != null && currentDate != null && currentDate.isAfter(this.expirationDate);
     }
 }

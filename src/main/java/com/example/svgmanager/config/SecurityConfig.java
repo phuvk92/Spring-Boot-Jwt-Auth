@@ -113,6 +113,9 @@ public class SecurityConfig {
                         ).permitAll()
                         // Actuator health endpoint
                         .requestMatchers("/actuator/health", "/actuator/info").permitAll()
+                        // Danh mục kho mẫu & part (PartLibraryCategory) — hoàn toàn độc lập với Danh mục xe
+                        .requestMatchers(HttpMethod.GET, "/api/part-library-categories/**").hasAnyRole("ADMIN", "AGENT", "USER")
+                        .requestMatchers("/api/part-library-categories/**").hasRole("ADMIN")
                         // Cây xe 4 cấp (Data Center v2) — toàn bộ API quản trị chỉ cho ADMIN
                         .requestMatchers("/api/vehicle-nodes/**").hasRole("ADMIN")
                         // Kho part file (Data Center v2) — toàn bộ chỉ ADMIN

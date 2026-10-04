@@ -8,12 +8,14 @@ import com.example.svgmanager.dto.internal.InternalLogoutRequest;
 import com.example.svgmanager.dto.internal.InternalLogoutResponse;
 import com.example.svgmanager.dto.internal.InternalRefreshTokenRequest;
 import com.example.svgmanager.dto.internal.InternalUserResponse;
+import com.example.svgmanager.entity.Role;
 import com.example.svgmanager.entity.User;
 import com.example.svgmanager.exception.BadRequestException;
 import com.example.svgmanager.exception.ErrorCodes;
 import com.example.svgmanager.exception.ForbiddenException;
 import com.example.svgmanager.exception.ServiceUnavailableException;
 import com.example.svgmanager.exception.UnauthorizedException;
+import com.example.svgmanager.exception.UserAccountExpiredException;
 import com.example.svgmanager.repository.UserRepository;
 import com.example.svgmanager.security.CurrentUserService;
 import com.example.svgmanager.service.AuditLogService;
@@ -146,6 +148,17 @@ public class InternalAuthServiceImpl implements InternalAuthService {
             log.warn("[INTERNAL_LOGIN_REJECTED] Inactive, deleted or unlinked user: id={}, username='{}', email='{}', enabled={}, deleted={}{}",
                     user.getId(), user.getUsername(), user.getEmail(), user.isEnabled(), user.isDeleted(), clientInfo);
             throw new UnauthorizedException("Invalid username or password");
+        }
+
+        // 2b. Check account expiration (role == ADMIN is ignored)
+        String userRoleName = (user.getRole() != null) ? user.getRole().name() : "USER";
+        if (user.getRole() != Role.ADMIN && user.isExpired()) {
+            log.warn("[INTERNAL_LOGIN_REJECTED_EXPIRED] User '{}' account has expired on {}{}",
+                    user.getUsername(), user.getExpirationDate(), clientInfo);
+            String details = String.format("targetUserId=%d, oldExpirationDate=%s, reason=ACCOUNT_EXPIRED%s",
+                    user.getId(), user.getExpirationDate(), clientInfo);
+            auditLogService.log(user.getUsername(), userRoleName, "USER_LOGIN_BLOCKED_EXPIRED", "User", user.getId(), details);
+            throw new UserAccountExpiredException();
         }
 
         // 3. Delegate authentication to Keycloak token endpoint
@@ -530,6 +543,12 @@ public class InternalAuthServiceImpl implements InternalAuthService {
         if (!user.isEnabled() || user.isDeleted()) {
             log.warn("[INTERNAL_REFRESH_TOKEN_REJECTED] User is inactive or deleted: id={}, username='{}'", user.getId(), user.getUsername());
             throw new UnauthorizedException("User account is inactive or disabled");
+        }
+
+        if (user.getRole() != Role.ADMIN && user.isExpired()) {
+            log.warn("[INTERNAL_REFRESH_TOKEN_REJECTED_EXPIRED] User '{}' account has expired on {}",
+                    user.getUsername(), user.getExpirationDate());
+            throw new UserAccountExpiredException();
         }
 
         return user;

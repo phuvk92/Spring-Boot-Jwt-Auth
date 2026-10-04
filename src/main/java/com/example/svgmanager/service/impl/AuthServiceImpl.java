@@ -18,6 +18,8 @@ import com.example.svgmanager.mapper.UserMapper;
 import com.example.svgmanager.repository.UserRepository;
 import com.example.svgmanager.security.CurrentUserService;
 import com.example.svgmanager.service.AuthService;
+import com.example.svgmanager.service.AuditLogService;
+import com.example.svgmanager.exception.UserAccountExpiredException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
@@ -35,6 +37,7 @@ import org.springframework.web.client.RestClient;
 import java.util.Base64;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 @Service
 public class AuthServiceImpl implements AuthService {
@@ -64,19 +67,26 @@ public class AuthServiceImpl implements AuthService {
     private final CurrentUserService currentUserService;
     private final ObjectMapper objectMapper;
     private final RestClient restClient;
+    private final AuditLogService auditLogService;
+
+        public AuthServiceImpl(
+            UserRepository userRepository,
+            UserMapper userMapper,
+            CurrentUserService currentUserService,
+            ObjectMapper objectMapper
+    ) {
+        this(userRepository, userMapper, currentUserService, objectMapper, RestClient.builder().build(), null);
+    }
 
     @Autowired
     public AuthServiceImpl(
             UserRepository userRepository,
             UserMapper userMapper,
             CurrentUserService currentUserService,
-            ObjectMapper objectMapper
+            ObjectMapper objectMapper,
+            @Autowired(required = false) AuditLogService auditLogService
     ) {
-        this.userRepository = userRepository;
-        this.userMapper = userMapper;
-        this.currentUserService = currentUserService;
-        this.objectMapper = objectMapper;
-        this.restClient = RestClient.builder().build();
+        this(userRepository, userMapper, currentUserService, objectMapper, RestClient.builder().build(), auditLogService);
     }
 
     public AuthServiceImpl(
@@ -86,17 +96,48 @@ public class AuthServiceImpl implements AuthService {
             ObjectMapper objectMapper,
             RestClient restClient
     ) {
+        this(userRepository, userMapper, currentUserService, objectMapper, restClient, null);
+    }
+
+    public AuthServiceImpl(
+            UserRepository userRepository,
+            UserMapper userMapper,
+            CurrentUserService currentUserService,
+            ObjectMapper objectMapper,
+            RestClient restClient,
+            AuditLogService auditLogService
+    ) {
         this.userRepository = userRepository;
         this.userMapper = userMapper;
         this.currentUserService = currentUserService;
         this.objectMapper = objectMapper;
         this.restClient = restClient;
+        this.auditLogService = auditLogService;
     }
 
     @Override
     @Transactional
     public AuthResponse login(LoginRequest request) {
         log.info("Attempting login for user: {}", request.getUsername());
+
+        // Pre-check expiration: if user exists in DB and is expired, reject before calling Keycloak (ADMIN is ignored)
+        String loginIdentifier = request.getUsername() != null ? request.getUsername().trim() : "";
+        Optional<User> userOpt = userRepository.findByUsername(loginIdentifier);
+        if (userOpt.isEmpty()) {
+            userOpt = userRepository.findByEmail(loginIdentifier.toLowerCase());
+        }
+        if (userOpt.isPresent()) {
+            User user = userOpt.get();
+            if (user.getRole() != Role.ADMIN && user.isExpired()) {
+                log.warn("[LOGIN_REJECTED_EXPIRED] User '{}' account has expired on {}", user.getUsername(), user.getExpirationDate());
+                if (auditLogService != null) {
+                    String details = String.format("targetUserId=%d, oldExpirationDate=%s, reason=ACCOUNT_EXPIRED",
+                            user.getId(), user.getExpirationDate());
+                    auditLogService.log(user.getUsername(), user.getRole().name(), "USER_LOGIN_BLOCKED_EXPIRED", "User", user.getId(), details);
+                }
+                throw new UserAccountExpiredException();
+            }
+        }
 
         MultiValueMap<String, String> formData = new LinkedMultiValueMap<>();
         formData.add("grant_type", "password");
@@ -141,6 +182,21 @@ public class AuthServiceImpl implements AuthService {
                 Long expiresIn = expiresInNum.longValue();
 
                 UserSummaryResponse summary = extractAndSyncUser(accessToken);
+
+                // Check account expiration after token exchange
+                if (summary != null && summary.getRole() != Role.ADMIN) {
+                    Optional<User> uOpt = userRepository.findById(summary.getId());
+                    if (uOpt.isPresent() && uOpt.get().isExpired()) {
+                        endKeycloakSessionQuietly(refreshToken);
+                        log.warn("[LOGIN_REJECTED_EXPIRED] User '{}' account has expired on {}", summary.getUsername(), uOpt.get().getExpirationDate());
+                        if (auditLogService != null) {
+                            String details = String.format("targetUserId=%d, oldExpirationDate=%s, reason=ACCOUNT_EXPIRED",
+                                    uOpt.get().getId(), uOpt.get().getExpirationDate());
+                            auditLogService.log(summary.getUsername(), summary.getRole().name(), "USER_LOGIN_BLOCKED_EXPIRED", "User", uOpt.get().getId(), details);
+                        }
+                        throw new UserAccountExpiredException();
+                    }
+                }
 
                 // F-57 (Q1 chốt 28/09): thợ chỉ dùng phần mềm cắt — nơi phiên bị giới hạn theo máy.
                 // Cho thợ vào web là mở đường vòng qua giới hạn thiết bị.

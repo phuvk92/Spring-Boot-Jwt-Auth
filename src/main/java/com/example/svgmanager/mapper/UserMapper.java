@@ -41,6 +41,8 @@ public class UserMapper {
                 .createdAt(user.getCreatedAt())
                 .updatedAt(user.getUpdatedAt())
                 .build();
+        response.setExpirationDate(user.getExpirationDate());
+        response.setExpired(user.isExpired());
         response.setMaxDevices(user.getMaxDevices());
         response.setEffectiveMaxDevices(user.getMaxDevices() != null && user.getMaxDevices() > 0
                 ? user.getMaxDevices()

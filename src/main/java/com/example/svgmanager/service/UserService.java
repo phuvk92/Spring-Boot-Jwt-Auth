@@ -10,11 +10,25 @@ import com.example.svgmanager.entity.Role;
 
 public interface UserService {
 
+    default PageResponse<UserResponse> getUsers(
+            String username,
+            String email,
+            Role role,
+            Boolean enabled,
+            int page,
+            int size,
+            String sortBy,
+            String sortDirection
+    ) {
+        return getUsers(username, email, role, enabled, null, page, size, sortBy, sortDirection);
+    }
+
     PageResponse<UserResponse> getUsers(
             String username,
             String email,
             Role role,
             Boolean enabled,
+            String expirationStatus,
             int page,
             int size,
             String sortBy,

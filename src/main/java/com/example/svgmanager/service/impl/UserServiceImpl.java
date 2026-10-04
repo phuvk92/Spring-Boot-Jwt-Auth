@@ -1,5 +1,9 @@
 package com.example.svgmanager.service.impl;
 
+import com.example.svgmanager.service.AuditLogService;
+import java.time.LocalDate;
+
+
 import com.example.svgmanager.dto.request.CreateUserRequest;
 import com.example.svgmanager.dto.request.UpdateUserRequest;
 import com.example.svgmanager.dto.request.UpdateUserRoleRequest;
@@ -30,6 +34,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -49,6 +54,7 @@ public class UserServiceImpl implements UserService {
     private final CurrentUserService currentUserService;
     private final KeycloakUserService keycloakUserService;
     private final UserDeviceService userDeviceService;
+    private final AuditLogService auditLogService;
 
     public UserServiceImpl(
             UserRepository userRepository,
@@ -59,6 +65,20 @@ public class UserServiceImpl implements UserService {
             KeycloakUserService keycloakUserService,
             UserDeviceService userDeviceService
     ) {
+        this(userRepository, dealerRepository, svgFileRepository, userMapper, currentUserService, keycloakUserService, userDeviceService, null);
+    }
+
+    @Autowired
+    public UserServiceImpl(
+            UserRepository userRepository,
+            DealerRepository dealerRepository,
+            SvgFileRepository svgFileRepository,
+            UserMapper userMapper,
+            CurrentUserService currentUserService,
+            KeycloakUserService keycloakUserService,
+            UserDeviceService userDeviceService,
+            @Autowired(required = false) AuditLogService auditLogService
+    ) {
         this.userRepository = userRepository;
         this.dealerRepository = dealerRepository;
         this.svgFileRepository = svgFileRepository;
@@ -66,6 +86,7 @@ public class UserServiceImpl implements UserService {
         this.currentUserService = currentUserService;
         this.keycloakUserService = keycloakUserService;
         this.userDeviceService = userDeviceService;
+        this.auditLogService = auditLogService;
     }
 
     @Override
@@ -75,6 +96,7 @@ public class UserServiceImpl implements UserService {
             String email,
             Role role,
             Boolean enabled,
+            String expirationStatus,
             int page,
             int size,
             String sortBy,
@@ -118,6 +140,23 @@ public class UserServiceImpl implements UserService {
             }
             if (enabled != null) {
                 predicates.add(cb.equal(root.get("enabled"), enabled));
+            }
+            if (StringUtils.hasText(expirationStatus)) {
+                LocalDate today = LocalDate.now();
+                switch (expirationStatus.toUpperCase()) {
+                    case "EXPIRED" -> predicates.add(cb.and(
+                            cb.notEqual(root.get("role"), Role.ADMIN),
+                            cb.isNotNull(root.get("expirationDate")),
+                            cb.lessThan(root.get("expirationDate"), today)
+                    ));
+                    case "VALID", "ACTIVE", "NOT_EXPIRED" -> predicates.add(cb.or(
+                            cb.equal(root.get("role"), Role.ADMIN),
+                            cb.isNull(root.get("expirationDate")),
+                            cb.greaterThanOrEqualTo(root.get("expirationDate"), today)
+                    ));
+                    case "NO_EXPIRATION" -> predicates.add(cb.isNull(root.get("expirationDate")));
+                    default -> {}
+                }
             }
             return cb.and(predicates.toArray(new Predicate[0]));
         };
@@ -230,13 +269,22 @@ public class UserServiceImpl implements UserService {
                     .dealer(assignedDealer)
                     .enabled(enabled)
                     .deleted(false)
+                    .expirationDate(request.getExpirationDate())
                     .build();
 
             User savedUser = userRepository.save(user);
-            log.info("[USER_CREATED] Created user: username='{}', email='{}', id={}, keycloakId='{}', role={}, agentId={}, dealerId={}",
+            log.info("[USER_CREATED] Created user: username='{}', email='{}', id={}, keycloakId='{}', role={}, agentId={}, dealerId={}, expirationDate={}",
                     savedUser.getUsername(), savedUser.getEmail(), savedUser.getId(), keycloakUserId, savedUser.getRole(),
                     assignedAgent != null ? assignedAgent.getId() : null,
-                    assignedDealer != null ? assignedDealer.getId() : null);
+                    assignedDealer != null ? assignedDealer.getId() : null, savedUser.getExpirationDate());
+
+            if (savedUser.getExpirationDate() != null && auditLogService != null) {
+                String actorUsername = currentUser.getUsername();
+                String actorRole = currentUser.getRole() != null ? currentUser.getRole().name() : "ADMIN";
+                String details = String.format("targetUserId=%d, operatorUserId=%d, oldExpirationDate=null, newExpirationDate=%s",
+                        savedUser.getId(), currentUser.getId(), savedUser.getExpirationDate());
+                auditLogService.log(actorUsername, actorRole, "USER_EXPIRATION_DATE_CREATED", "User", savedUser.getId(), details);
+            }
 
             return userMapper.toUserResponse(savedUser);
         } catch (Exception ex) {
@@ -257,6 +305,7 @@ public class UserServiceImpl implements UserService {
     @Override
     @Transactional
     public UserResponse updateUser(Long id, UpdateUserRequest request) {
+        User currentUser = currentUserService.getCurrentUser();
         User user = findScopedUserById(id);
 
         if (userRepository.existsByEmailAndIdNot(request.getEmail(), id)) {
@@ -270,6 +319,26 @@ public class UserServiceImpl implements UserService {
 
         if (request.getEnabled() != null) {
             user.setEnabled(request.getEnabled());
+        }
+
+        LocalDate oldExpirationDate = user.getExpirationDate();
+        LocalDate newExpirationDate = request.getExpirationDate();
+        user.setExpirationDate(newExpirationDate);
+
+        if (!java.util.Objects.equals(oldExpirationDate, newExpirationDate) && auditLogService != null) {
+            String auditAction;
+            if (oldExpirationDate == null && newExpirationDate != null) {
+                auditAction = "USER_EXPIRATION_DATE_CREATED";
+            } else if (oldExpirationDate != null && newExpirationDate == null) {
+                auditAction = "USER_EXPIRATION_DATE_REMOVED";
+            } else {
+                auditAction = "USER_EXPIRATION_DATE_UPDATED";
+            }
+            String actorUsername = currentUser.getUsername();
+            String actorRole = currentUser.getRole() != null ? currentUser.getRole().name() : "ADMIN";
+            String details = String.format("targetUserId=%d, operatorUserId=%d, oldExpirationDate=%s, newExpirationDate=%s",
+                    user.getId(), currentUser.getId(), oldExpirationDate, newExpirationDate);
+            auditLogService.log(actorUsername, actorRole, auditAction, "User", user.getId(), details);
         }
 
         if (currentUserService.isAdmin()) {

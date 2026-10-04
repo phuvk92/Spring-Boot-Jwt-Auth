@@ -38,6 +38,10 @@ public interface SvgFileRepository extends JpaRepository<SvgFile, Long>, JpaSpec
 
     long countByStatusAndSource(String status, String source);
 
+    long countByPartLibraryCategory_Id(Long categoryId);
+
+    boolean existsByPartLibraryCategory_Id(Long categoryId);
+
     /**
      * File cho app thợ (SA-DanhMucXe-v2 §3.3): ACTIVE + đúng danh mục + gắn vào một trong
      * các node cho sẵn (model kèm các phiên bản, hoặc subtype kèm model cha — service tính).

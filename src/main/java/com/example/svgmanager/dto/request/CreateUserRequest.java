@@ -1,5 +1,9 @@
 package com.example.svgmanager.dto.request;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
+import java.time.LocalDate;
+
+
 import com.example.svgmanager.entity.Role;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.Email;
@@ -47,6 +51,10 @@ public class CreateUserRequest {
     @Schema(example = "1", description = "ID của đại lý / chi nhánh trực thuộc")
     private Long dealerId;
 
+    @Schema(example = "2026-12-31", description = "Ngày hết hạn tài khoản (yyyy-MM-dd). Không bắt buộc. Riêng ADMIN không áp dụng điều kiện hết hạn.")
+    @JsonFormat(pattern = "yyyy-MM-dd")
+    private LocalDate expirationDate;
+
     @Schema(example = "true", description = "Account status")
     private Boolean enabled = true;
 
@@ -79,6 +87,7 @@ public class CreateUserRequest {
         private Long agentId;
         private Long dealerId;
         private Boolean enabled = true;
+        private LocalDate expirationDate;
 
         public Builder username(String username) {
             this.username = username;
@@ -125,8 +134,15 @@ public class CreateUserRequest {
             return this;
         }
 
+        public Builder expirationDate(LocalDate expirationDate) {
+            this.expirationDate = expirationDate;
+            return this;
+        }
+
         public CreateUserRequest build() {
-            return new CreateUserRequest(username, email, fullName, phone, password, role, agentId, dealerId, enabled);
+            CreateUserRequest req = new CreateUserRequest(username, email, fullName, phone, password, role, agentId, dealerId, enabled);
+            req.setExpirationDate(this.expirationDate);
+            return req;
         }
     }
 
@@ -200,5 +216,13 @@ public class CreateUserRequest {
 
     public void setEnabled(Boolean enabled) {
         this.enabled = enabled;
+    }
+
+    public LocalDate getExpirationDate() {
+        return expirationDate;
+    }
+
+    public void setExpirationDate(LocalDate expirationDate) {
+        this.expirationDate = expirationDate;
     }
 }

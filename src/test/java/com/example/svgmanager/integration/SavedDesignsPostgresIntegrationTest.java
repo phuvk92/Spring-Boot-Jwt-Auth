@@ -47,7 +47,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         "spring.jpa.properties.hibernate.dialect=org.hibernate.dialect.PostgreSQLDialect",
         "spring.security.oauth2.resourceserver.jwt.jwk-set-uri=https://mock-keycloak/realms/cutting/protocol/openid-connect/certs",
         "app.keycloak.sync-enabled=false",
-        "app.device.enforce=false"
+        "app.device.enforce=false",
+        "app.file.storage-path=target/test-svg-storage-saved-designs"
 })
 @AutoConfigureMockMvc
 @Transactional

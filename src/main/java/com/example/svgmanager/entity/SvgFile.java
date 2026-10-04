@@ -67,6 +67,11 @@ public class SvgFile {
     @JoinColumn(name = "file_category_id")
     private FileCategory fileCategory;
 
+    /** Danh mục kho mẫu & part (PartLibraryCategory) */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "part_library_category_id")
+    private PartLibraryCategory partLibraryCategory;
+
     /** Năm xe áp dụng; NULL = hiện với mọi năm khi thợ lọc (Q3). Cột SMALLINT trong DB. */
     @JdbcTypeCode(SqlTypes.SMALLINT)
     @Column(name = "model_year")
@@ -300,6 +305,14 @@ public class SvgFile {
 
     public void setFileCategory(FileCategory fileCategory) {
         this.fileCategory = fileCategory;
+    }
+
+    public PartLibraryCategory getPartLibraryCategory() {
+        return partLibraryCategory;
+    }
+
+    public void setPartLibraryCategory(PartLibraryCategory partLibraryCategory) {
+        this.partLibraryCategory = partLibraryCategory;
     }
 
     public Integer getModelYear() {

@@ -1,5 +1,9 @@
 package com.example.svgmanager.dto.response;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
+import java.time.LocalDate;
+
+
 import com.example.svgmanager.entity.Role;
 import io.swagger.v3.oas.annotations.media.Schema;
 
@@ -53,6 +57,15 @@ public class UserResponse {
     @Schema(description = "Account last update timestamp", example = "2026-03-30T10:00:00")
     private LocalDateTime updatedAt;
 
+    @Schema(description = "Ngày hết hạn tài khoản (yyyy-MM-dd). null = không hết hạn. Riêng ADMIN không áp dụng điều kiện hết hạn.", example = "2026-12-31")
+    @JsonFormat(pattern = "yyyy-MM-dd")
+    private LocalDate expirationDate;
+
+    @Schema(description = "Tài khoản đã hết hạn hay chưa", example = "false")
+    private boolean expired;
+
+
+
     public UserResponse() {
     }
 
@@ -96,6 +109,8 @@ public class UserResponse {
         private boolean enabled;
         private LocalDateTime createdAt;
         private LocalDateTime updatedAt;
+        private LocalDate expirationDate;
+        private boolean expired;
 
         public Builder id(Long id) {
             this.id = id;
@@ -172,9 +187,22 @@ public class UserResponse {
             return this;
         }
 
+        public Builder expirationDate(LocalDate expirationDate) {
+            this.expirationDate = expirationDate;
+            return this;
+        }
+
+        public Builder expired(boolean expired) {
+            this.expired = expired;
+            return this;
+        }
+
         public UserResponse build() {
-            return new UserResponse(id, keycloakUserId, username, email, fullName, phone, role, agentId, agentUsername,
+            UserResponse res = new UserResponse(id, keycloakUserId, username, email, fullName, phone, role, agentId, agentUsername,
                     dealerId, dealerName, dealerCode, enabled, createdAt, updatedAt);
+            res.setExpirationDate(this.expirationDate);
+            res.setExpired(this.expired);
+            return res;
         }
     }
 
@@ -318,5 +346,21 @@ public class UserResponse {
 
     public void setEffectiveMaxDevices(int effectiveMaxDevices) {
         this.effectiveMaxDevices = effectiveMaxDevices;
+    }
+
+    public LocalDate getExpirationDate() {
+        return expirationDate;
+    }
+
+    public void setExpirationDate(LocalDate expirationDate) {
+        this.expirationDate = expirationDate;
+    }
+
+    public boolean isExpired() {
+        return expired;
+    }
+
+    public void setExpired(boolean expired) {
+        this.expired = expired;
     }
 }
