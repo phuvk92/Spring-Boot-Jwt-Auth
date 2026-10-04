@@ -89,9 +89,12 @@ public final class UserSvgFileSpecification {
                 predicates.add(cb.lessThanOrEqualTo(root.get("createdAt"), createdTo));
             }
 
-            // 10. Status
+            // 10. Status: mặc định ẩn DELETED; nếu status=ALL thì không lọc status; các giá trị khác (ACTIVE, DELETED) thì lọc chính xác
             if (StringUtils.hasText(status)) {
-                predicates.add(cb.equal(root.get("status"), status.trim().toUpperCase()));
+                String trimmedStatus = status.trim();
+                if (!"ALL".equalsIgnoreCase(trimmedStatus)) {
+                    predicates.add(cb.equal(root.get("status"), trimmedStatus.toUpperCase()));
+                }
             } else {
                 // Default: exclude DELETED
                 predicates.add(cb.notEqual(root.get("status"), "DELETED"));

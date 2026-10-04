@@ -95,6 +95,9 @@ public class UserSvgFile {
     @Column(name = "axis_y")
     private Double axisY;
 
+    @Column(name = "source_file_key", length = 255)
+    private String sourceFileKey;
+
     @Column(columnDefinition = "TEXT")
     private String description;
 
@@ -148,6 +151,7 @@ public class UserSvgFile {
         private String rollLengthUnit = "MM";
         private Double axisX;
         private Double axisY;
+        private String sourceFileKey;
         private String description;
         private String status = "ACTIVE";
         private User user;
@@ -178,6 +182,7 @@ public class UserSvgFile {
         public Builder rollLengthUnit(String rollLengthUnit) { this.rollLengthUnit = rollLengthUnit; return this; }
         public Builder axisX(Double axisX) { this.axisX = axisX; return this; }
         public Builder axisY(Double axisY) { this.axisY = axisY; return this; }
+        public Builder sourceFileKey(String sourceFileKey) { this.sourceFileKey = sourceFileKey; return this; }
         public Builder description(String description) { this.description = description; return this; }
         public Builder status(String status) { this.status = status; return this; }
         public Builder user(User user) { this.user = user; return this; }
@@ -210,6 +215,7 @@ public class UserSvgFile {
             f.setRollLengthUnit(this.rollLengthUnit);
             f.setAxisX(this.axisX);
             f.setAxisY(this.axisY);
+            f.setSourceFileKey(this.sourceFileKey);
             f.setDescription(this.description);
             f.setStatus(this.status);
             f.setUser(this.user);
@@ -266,6 +272,8 @@ public class UserSvgFile {
     public void setAxisX(Double axisX) { this.axisX = axisX; }
     public Double getAxisY() { return axisY; }
     public void setAxisY(Double axisY) { this.axisY = axisY; }
+    public String getSourceFileKey() { return sourceFileKey; }
+    public void setSourceFileKey(String sourceFileKey) { this.sourceFileKey = sourceFileKey; }
     public String getDescription() { return description; }
     public void setDescription(String description) { this.description = description; }
     public String getStatus() { return status; }

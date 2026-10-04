@@ -54,6 +54,12 @@ public class UserSavedFileResponse {
     @Schema(description = "Trạng thái bản lưu", example = "ACTIVE")
     private String status;
 
+    @Schema(description = "file_key của part file trong kho mà bản này được tạo từ", example = "audi-q6-2024-full")
+    private String sourceFileKey;
+
+    @Schema(description = "Tên part file nguồn trong kho nếu còn", example = "Audi Q6 2024.svg")
+    private String sourceFileName;
+
     public UserSavedFileResponse() {
     }
 
@@ -208,4 +214,8 @@ public class UserSavedFileResponse {
     public void setChecksum(String checksum) { this.checksum = checksum; }
     public String getStatus() { return status; }
     public void setStatus(String status) { this.status = status; }
+    public String getSourceFileKey() { return sourceFileKey; }
+    public void setSourceFileKey(String sourceFileKey) { this.sourceFileKey = sourceFileKey; }
+    public String getSourceFileName() { return sourceFileName; }
+    public void setSourceFileName(String sourceFileName) { this.sourceFileName = sourceFileName; }
 }

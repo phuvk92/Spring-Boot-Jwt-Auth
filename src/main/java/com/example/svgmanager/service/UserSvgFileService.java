@@ -30,6 +30,32 @@ public interface UserSvgFileService {
             String rollLengthUnit,
             Double axisX,
             Double axisY,
+            String sourceFileKey,
+            String description
+    );
+
+    UserSavedFileResponse updateUserFile(
+            User currentUser,
+            Long id,
+            byte[] fileBytes,
+            String originalFilename,
+            String customFileName,
+            Long categoryId,
+            Long vehicleNodeId,
+            String brandName,
+            String modelName,
+            Integer yearFrom,
+            Integer yearTo,
+            String generationCode,
+            String productGroup,
+            String productGroupName,
+            Double filmWidth,
+            String filmWidthUnit,
+            Double rollLength,
+            String rollLengthUnit,
+            Double axisX,
+            Double axisY,
+            String sourceFileKey,
             String description
     );
 
@@ -62,6 +88,8 @@ public interface UserSvgFileService {
     Resource downloadAdminFile(Long id);
 
     Resource downloadUserFile(User currentUser, Long id);
+
+    void deleteUserFile(User currentUser, Long id);
 
     String getOriginalFilename(Long id);
 

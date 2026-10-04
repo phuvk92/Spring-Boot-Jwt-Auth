@@ -74,6 +74,7 @@ public class InternalUserSvgFileController {
             @RequestParam(value = "rollLengthUnit", required = false, defaultValue = "MM") String rollLengthUnit,
             @RequestParam(value = "axisX", required = false) Double axisX,
             @RequestParam(value = "axisY", required = false) Double axisY,
+            @RequestParam(value = "sourceFileKey", required = false) String sourceFileKey,
             @RequestParam(value = "description", required = false) String description
     ) throws IOException {
         User currentUser = currentUserService.getCurrentUser();
@@ -99,6 +100,7 @@ public class InternalUserSvgFileController {
                 rollLengthUnit,
                 axisX,
                 axisY,
+                sourceFileKey,
                 description
         );
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
@@ -135,9 +137,111 @@ public class InternalUserSvgFileController {
                 body.getRollLengthUnit(),
                 body.getAxisX(),
                 body.getAxisY(),
+                body.getSourceFileKey(),
                 body.getDescription()
         );
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
+    }
+
+    @PutMapping(value = "/{id}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @Operation(summary = "Lưu đè file SVG của chính người dùng (Multipart)",
+            description = "Người dùng máy cắt ghi đè nội dung SVG và cập nhật thông tin của bản lưu cùng ID.")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Cập nhật bản lưu thành công"),
+            @ApiResponse(responseCode = "400", description = "Dữ liệu không hợp lệ", content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+            @ApiResponse(responseCode = "401", description = "Chưa xác thực", content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+            @ApiResponse(responseCode = "404", description = "Không tìm thấy bản lưu hoặc không thuộc người dùng", content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    })
+    public ResponseEntity<UserSavedFileResponse> updateUserFileMultipart(
+            @PathVariable Long id,
+            @RequestParam("file") MultipartFile file,
+            @RequestParam(value = "fileName", required = false) String fileName,
+            @RequestParam(value = "categoryId", required = false) Long categoryId,
+            @RequestParam(value = "vehicleNodeId", required = false) Long vehicleNodeId,
+            @RequestParam(value = "vehicleConfigurationId", required = false) Long vehicleConfigurationId,
+            @RequestParam(value = "brandName", required = false) String brandName,
+            @RequestParam(value = "modelName", required = false) String modelName,
+            @RequestParam(value = "yearFrom", required = false) Integer yearFrom,
+            @RequestParam(value = "yearTo", required = false) Integer yearTo,
+            @RequestParam(value = "generationCode", required = false) String generationCode,
+            @RequestParam(value = "productGroup", required = false) String productGroup,
+            @RequestParam(value = "productGroupName", required = false) String productGroupName,
+            @RequestParam(value = "filmWidth", required = false) Double filmWidth,
+            @RequestParam(value = "filmWidthUnit", required = false) String filmWidthUnit,
+            @RequestParam(value = "rollLength", required = false) Double rollLength,
+            @RequestParam(value = "rollLengthUnit", required = false) String rollLengthUnit,
+            @RequestParam(value = "axisX", required = false) Double axisX,
+            @RequestParam(value = "axisY", required = false) Double axisY,
+            @RequestParam(value = "sourceFileKey", required = false) String sourceFileKey,
+            @RequestParam(value = "description", required = false) String description
+    ) throws IOException {
+        User currentUser = currentUserService.getCurrentUser();
+        Long effectiveNodeId = vehicleNodeId != null ? vehicleNodeId : vehicleConfigurationId;
+
+        UserSavedFileResponse response = userSvgFileService.updateUserFile(
+                currentUser,
+                id,
+                file.getBytes(),
+                file.getOriginalFilename(),
+                fileName,
+                categoryId,
+                effectiveNodeId,
+                brandName,
+                modelName,
+                yearFrom,
+                yearTo,
+                generationCode,
+                productGroup,
+                productGroupName,
+                filmWidth,
+                filmWidthUnit,
+                rollLength,
+                rollLengthUnit,
+                axisX,
+                axisY,
+                sourceFileKey,
+                description
+        );
+        return ResponseEntity.ok(response);
+    }
+
+    @PutMapping(value = "/{id}", consumes = MediaType.APPLICATION_JSON_VALUE)
+    @Operation(summary = "Lưu đè file SVG của chính người dùng (JSON)",
+            description = "Người dùng máy cắt ghi đè nội dung SVG và cập nhật thông tin của bản lưu cùng ID qua JSON.")
+    public ResponseEntity<UserSavedFileResponse> updateUserFileJson(
+            @PathVariable Long id,
+            @RequestBody UserSavedFileCreateRequest body
+    ) {
+        User currentUser = currentUserService.getCurrentUser();
+        byte[] bytes = body.getSvgContent() != null
+                ? body.getSvgContent().getBytes(StandardCharsets.UTF_8)
+                : new byte[0];
+
+        UserSavedFileResponse response = userSvgFileService.updateUserFile(
+                currentUser,
+                id,
+                bytes,
+                body.getFileName(),
+                body.getFileName(),
+                body.getCategoryId(),
+                body.getVehicleNodeId(),
+                body.getBrandName(),
+                body.getModelName(),
+                body.getYearFrom(),
+                body.getYearTo(),
+                body.getGenerationCode(),
+                body.getProductGroup(),
+                body.getProductGroupName(),
+                body.getFilmWidth(),
+                body.getFilmWidthUnit(),
+                body.getRollLength(),
+                body.getRollLengthUnit(),
+                body.getAxisX(),
+                body.getAxisY(),
+                body.getSourceFileKey(),
+                body.getDescription()
+        );
+        return ResponseEntity.ok(response);
     }
 
     @GetMapping
@@ -177,5 +281,19 @@ public class InternalUserSvgFileController {
         headers.setContentDisposition(ContentDisposition.attachment().filename(filename, StandardCharsets.UTF_8).build());
 
         return ResponseEntity.ok().headers(headers).body(resource);
+    }
+
+    @DeleteMapping("/{id}")
+    @Operation(summary = "Xoá mềm một bản lưu SVG của chính người dùng",
+            description = "Chỉ xoá bản thuộc chính user. Đặt status = DELETED, file SVG trên đĩa giữ nguyên. Trả 204.")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "204", description = "Xoá bản lưu thành công"),
+            @ApiResponse(responseCode = "401", description = "Chưa xác thực", content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+            @ApiResponse(responseCode = "404", description = "Không tìm thấy bản lưu hoặc không thuộc người dùng", content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    })
+    public ResponseEntity<Void> deleteMyFile(@PathVariable Long id) {
+        User currentUser = currentUserService.getCurrentUser();
+        userSvgFileService.deleteUserFile(currentUser, id);
+        return ResponseEntity.noContent().build();
     }
 }
