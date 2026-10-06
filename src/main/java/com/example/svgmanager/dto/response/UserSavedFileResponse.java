@@ -60,6 +60,9 @@ public class UserSavedFileResponse {
     @Schema(description = "Tên part file nguồn trong kho nếu còn", example = "Audi Q6 2024.svg")
     private String sourceFileName;
 
+    @Schema(description = "Loại quyền truy cập của người dùng đối với file: OWNER hoặc SHARED", example = "OWNER")
+    private String accessType;
+
     public UserSavedFileResponse() {
     }
 
@@ -218,4 +221,6 @@ public class UserSavedFileResponse {
     public void setSourceFileKey(String sourceFileKey) { this.sourceFileKey = sourceFileKey; }
     public String getSourceFileName() { return sourceFileName; }
     public void setSourceFileName(String sourceFileName) { this.sourceFileName = sourceFileName; }
+    public String getAccessType() { return accessType; }
+    public void setAccessType(String accessType) { this.accessType = accessType; }
 }

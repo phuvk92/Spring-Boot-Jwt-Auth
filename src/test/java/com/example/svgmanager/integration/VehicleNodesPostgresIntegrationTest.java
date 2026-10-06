@@ -248,6 +248,7 @@ class VehicleNodesPostgresIntegrationTest {
                 .status("ACTIVE")
                 .uploadedBy(uploader)
                 .build());
+        linkRepository.deleteAll();
         linkRepository.save(new SvgFileVehicleNode(file, subtype));
 
         // impact trước khi xoá: 2 MODEL + 2 SUBTYPE con, 1 file mất liên kết

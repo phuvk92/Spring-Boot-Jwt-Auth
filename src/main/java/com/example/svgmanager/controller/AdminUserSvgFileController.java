@@ -1,9 +1,15 @@
 package com.example.svgmanager.controller;
 
+import com.example.svgmanager.dto.request.ShareFileRequest;
 import com.example.svgmanager.dto.response.ErrorResponse;
+import com.example.svgmanager.dto.response.FileSharesResponse;
 import com.example.svgmanager.dto.response.PageResponse;
 import com.example.svgmanager.dto.response.UserSavedFileResponse;
+import com.example.svgmanager.dto.response.UserSvgFileShareResponse;
+import com.example.svgmanager.entity.User;
+import com.example.svgmanager.security.CurrentUserService;
 import com.example.svgmanager.service.UserSvgFileService;
+import com.example.svgmanager.service.UserSvgFileShareService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -12,6 +18,7 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import org.springframework.core.io.Resource;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -19,6 +26,7 @@ import org.springframework.data.domain.Sort;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ContentDisposition;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -36,9 +44,15 @@ import java.time.LocalDateTime;
 public class AdminUserSvgFileController {
 
     private final UserSvgFileService userSvgFileService;
+    private final UserSvgFileShareService userSvgFileShareService;
+    private final CurrentUserService currentUserService;
 
-    public AdminUserSvgFileController(UserSvgFileService userSvgFileService) {
+    public AdminUserSvgFileController(UserSvgFileService userSvgFileService,
+                                     UserSvgFileShareService userSvgFileShareService,
+                                     CurrentUserService currentUserService) {
         this.userSvgFileService = userSvgFileService;
+        this.userSvgFileShareService = userSvgFileShareService;
+        this.currentUserService = currentUserService;
     }
 
     @GetMapping
@@ -121,6 +135,45 @@ public class AdminUserSvgFileController {
         headers.add("Cache-Control", "no-cache, no-store, must-revalidate");
 
         return ResponseEntity.ok().headers(headers).body(bytes);
+    }
+
+    @PostMapping("/{id}/shares")
+    @Operation(summary = "Chia sẻ file SVG cho người dùng (ADMIN)",
+            description = "ADMIN chia sẻ quyền xem/tải file SVG của bất kỳ user nào cho một USER khác.")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "201", description = "Chia sẻ file thành công"),
+            @ApiResponse(responseCode = "400", description = "Dữ liệu không hợp lệ hoặc người nhận không hợp lệ", content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+            @ApiResponse(responseCode = "401", description = "Chưa xác thực", content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+            @ApiResponse(responseCode = "403", description = "Không có quyền ADMIN", content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+            @ApiResponse(responseCode = "404", description = "Không tìm thấy file hoặc người nhận", content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    })
+    public ResponseEntity<UserSvgFileShareResponse> shareFile(
+            @PathVariable Long id,
+            @Valid @RequestBody ShareFileRequest request
+    ) {
+        User currentUser = currentUserService.getCurrentUser();
+        UserSvgFileShareResponse response = userSvgFileShareService.shareFile(currentUser, id, request.getUserId());
+        return ResponseEntity.status(HttpStatus.CREATED).body(response);
+    }
+
+    @GetMapping("/{id}/shares")
+    @Operation(summary = "Xem danh sách người dùng được chia sẻ file SVG (ADMIN)",
+            description = "ADMIN xem danh sách người dùng đang được chia sẻ file.")
+    public ResponseEntity<FileSharesResponse> getFileShares(@PathVariable Long id) {
+        User currentUser = currentUserService.getCurrentUser();
+        return ResponseEntity.ok(userSvgFileShareService.getShares(currentUser, id));
+    }
+
+    @DeleteMapping("/{id}/shares/{targetUserId}")
+    @Operation(summary = "Thu hồi quyền chia sẻ file SVG (ADMIN)",
+            description = "ADMIN thu hồi quyền chia sẻ file từ một USER.")
+    public ResponseEntity<Void> revokeFileShare(
+            @PathVariable Long id,
+            @PathVariable Long targetUserId
+    ) {
+        User currentUser = currentUserService.getCurrentUser();
+        userSvgFileShareService.revokeShare(currentUser, id, targetUserId);
+        return ResponseEntity.noContent().build();
     }
 
     private Sort parseSort(String sort) {

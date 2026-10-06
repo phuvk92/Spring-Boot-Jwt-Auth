@@ -1,7 +1,11 @@
 package com.example.svgmanager.repository;
 
+import com.example.svgmanager.entity.User;
 import com.example.svgmanager.entity.UserSvgFile;
+import com.example.svgmanager.entity.UserSvgFileShare;
 import jakarta.persistence.criteria.Predicate;
+import jakarta.persistence.criteria.Root;
+import jakarta.persistence.criteria.Subquery;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.util.StringUtils;
 
@@ -97,6 +101,66 @@ public final class UserSvgFileSpecification {
                 }
             } else {
                 // Default: exclude DELETED
+                predicates.add(cb.notEqual(root.get("status"), "DELETED"));
+            }
+
+            return cb.and(predicates.toArray(new Predicate[0]));
+        };
+    }
+
+    /**
+     * Lọc danh sách file mà một User có quyền truy cập:
+     * - File do User đó sở hữu (user_id = currentUser.getId())
+     * - HOẶC File được chia sẻ cho User đó (status = ACTIVE)
+     */
+    public static Specification<UserSvgFile> filterAccessibleByUser(
+            User currentUser,
+            String keyword,
+            Long categoryId,
+            String status
+    ) {
+        return (root, query, cb) -> {
+            List<Predicate> predicates = new ArrayList<>();
+
+            // 1. Phân quyền: Owner HOẶC ACTIVE share
+            Subquery<Long> shareSubquery = query.subquery(Long.class);
+            Root<UserSvgFileShare> shareRoot = shareSubquery.from(UserSvgFileShare.class);
+            shareSubquery.select(shareRoot.get("userSvgFile").get("id"))
+                    .where(
+                            cb.equal(shareRoot.get("sharedToUser").get("id"), currentUser.getId()),
+                            cb.equal(shareRoot.get("status"), "ACTIVE")
+                    );
+
+            Predicate isOwner = cb.equal(root.get("user").get("id"), currentUser.getId());
+            Predicate isShared = root.get("id").in(shareSubquery);
+            predicates.add(cb.or(isOwner, isShared));
+
+            // 2. Keyword search
+            if (StringUtils.hasText(keyword)) {
+                String pattern = "%" + keyword.trim().toLowerCase() + "%";
+                Predicate fileNamePred = cb.like(cb.lower(root.get("fileName")), pattern);
+                Predicate originalNamePred = cb.like(cb.lower(root.get("originalFileName")), pattern);
+                Predicate descPred = cb.like(cb.lower(root.get("description")), pattern);
+                Predicate brandPred = cb.like(cb.lower(root.get("brandName")), pattern);
+                Predicate modelPred = cb.like(cb.lower(root.get("modelName")), pattern);
+                Predicate userPred = cb.like(cb.lower(root.get("user").get("username")), pattern);
+                Predicate fullNamePred = cb.like(cb.lower(root.get("user").get("fullName")), pattern);
+
+                predicates.add(cb.or(fileNamePred, originalNamePred, descPred, brandPred, modelPred, userPred, fullNamePred));
+            }
+
+            // 3. Category
+            if (categoryId != null) {
+                predicates.add(cb.equal(root.get("category").get("id"), categoryId));
+            }
+
+            // 4. Status
+            if (StringUtils.hasText(status)) {
+                String trimmedStatus = status.trim();
+                if (!"ALL".equalsIgnoreCase(trimmedStatus)) {
+                    predicates.add(cb.equal(root.get("status"), trimmedStatus.toUpperCase()));
+                }
+            } else {
                 predicates.add(cb.notEqual(root.get("status"), "DELETED"));
             }
 

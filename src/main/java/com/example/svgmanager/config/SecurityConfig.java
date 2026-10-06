@@ -122,6 +122,8 @@ public class SecurityConfig {
                         .requestMatchers("/api/admin/files/**").hasRole("ADMIN")
                         // Bản đã lưu của User — toàn bộ chỉ ADMIN
                         .requestMatchers("/api/admin/user-files/**").hasRole("ADMIN")
+                        // Audit Logs (ADMIN only)
+                        .requestMatchers("/api/audit-logs/**").hasRole("ADMIN")
                         // Thương hiệu đại lý (NGO-165)
                         .requestMatchers("/api/v1/branding").hasAnyRole("ADMIN", "AGENT", "USER")
                         .requestMatchers("/api/v1/profile").hasAnyRole("ADMIN", "AGENT", "USER")

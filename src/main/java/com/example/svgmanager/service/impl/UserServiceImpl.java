@@ -130,7 +130,11 @@ public class UserServiceImpl implements UserService {
             }
 
             if (StringUtils.hasText(username)) {
-                predicates.add(cb.like(cb.lower(root.get("username")), "%" + username.toLowerCase() + "%"));
+                String pattern = "%" + username.trim().toLowerCase() + "%";
+                predicates.add(cb.or(
+                        cb.like(cb.lower(root.get("username")), pattern),
+                        cb.like(cb.lower(root.get("fullName")), pattern)
+                ));
             }
             if (StringUtils.hasText(email)) {
                 predicates.add(cb.like(cb.lower(root.get("email")), "%" + email.toLowerCase() + "%"));

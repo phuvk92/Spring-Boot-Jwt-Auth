@@ -433,10 +433,10 @@ class UserSavedFilesIntegrationTest {
     }
 
     @Test
-    @DisplayName("USER cannot download another user file via internal API -> 404")
-    void user_cannotDownloadOtherUserFile_returns404() throws Exception {
+    @DisplayName("USER cannot download another user file via internal API -> 403 Forbidden")
+    void user_cannotDownloadOtherUserFile_returns403() throws Exception {
         mockMvc.perform(get("/api/internal/user-files/" + fileUser2.getId() + "/download").with(asUser1()))
-                .andExpect(status().isNotFound());
+                .andExpect(status().isForbidden());
     }
 
     @Autowired

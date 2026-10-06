@@ -294,6 +294,7 @@ public class GlobalExceptionHandler {
                 .error(HttpStatus.PAYLOAD_TOO_LARGE.getReasonPhrase())
                 .message("Uploaded file exceeds the maximum allowed size limit")
                 .path(request.getRequestURI())
+                .code(ErrorCodes.SVG_SIZE_LIMIT_EXCEEDED)
                 .build();
         return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE).body(errorResponse);
     }
@@ -343,6 +344,40 @@ public class GlobalExceptionHandler {
                 .code(ex.getCode())
                 .build();
         return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE).body(errorResponse);
+    }
+
+    @ExceptionHandler(SvgSecurityException.class)
+    public ResponseEntity<ErrorResponse> handleSvgSecurityException(
+            SvgSecurityException ex,
+            HttpServletRequest request
+    ) {
+        log.warn("[SVG_SECURITY_REJECTED] {}: {}", request.getRequestURI(), ex.getMessage());
+        ErrorResponse errorResponse = ErrorResponse.builder()
+                .timestamp(LocalDateTime.now())
+                .status(HttpStatus.BAD_REQUEST.value())
+                .error(HttpStatus.BAD_REQUEST.getReasonPhrase())
+                .message(ex.getMessage())
+                .path(request.getRequestURI())
+                .code(ex.getCode())
+                .build();
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(errorResponse);
+    }
+
+    @ExceptionHandler(RateLimitExceededException.class)
+    public ResponseEntity<ErrorResponse> handleRateLimitException(
+            RateLimitExceededException ex,
+            HttpServletRequest request
+    ) {
+        log.warn("[RATE_LIMIT_EXCEEDED] {}: {}", request.getRequestURI(), ex.getMessage());
+        ErrorResponse errorResponse = ErrorResponse.builder()
+                .timestamp(LocalDateTime.now())
+                .status(HttpStatus.TOO_MANY_REQUESTS.value())
+                .error(HttpStatus.TOO_MANY_REQUESTS.getReasonPhrase())
+                .message(ex.getMessage())
+                .path(request.getRequestURI())
+                .code(ex.getCode())
+                .build();
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).body(errorResponse);
     }
 
     @ExceptionHandler(Exception.class)

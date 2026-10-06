@@ -45,6 +45,7 @@ public class UserController {
     })
     public ResponseEntity<PageResponse<UserResponse>> getUsers(
             @Parameter(description = "Filter by username (partial match)") @RequestParam(required = false) String username,
+            @Parameter(description = "Filter by search query (username/displayName)") @RequestParam(required = false) String search,
             @Parameter(description = "Filter by email (partial match)") @RequestParam(required = false) String email,
             @Parameter(description = "Filter by exact role (ADMIN, AGENT, USER)") @RequestParam(required = false) Role role,
             @Parameter(description = "Filter by enabled status") @RequestParam(required = false) Boolean enabled,
@@ -54,7 +55,8 @@ public class UserController {
             @Parameter(description = "Sort field") @RequestParam(defaultValue = "createdAt") String sortBy,
             @Parameter(description = "Sort direction (ASC, DESC)") @RequestParam(defaultValue = "DESC") String sortDirection
     ) {
-        PageResponse<UserResponse> response = userService.getUsers(username, email, role, enabled, expirationStatus, page, size, sortBy, sortDirection);
+        String querySearch = org.springframework.util.StringUtils.hasText(search) ? search : username;
+        PageResponse<UserResponse> response = userService.getUsers(querySearch, email, role, enabled, expirationStatus, page, size, sortBy, sortDirection);
         return ResponseEntity.ok(response);
     }
 

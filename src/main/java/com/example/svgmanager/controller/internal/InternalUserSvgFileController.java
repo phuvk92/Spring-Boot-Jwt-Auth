@@ -1,12 +1,16 @@
 package com.example.svgmanager.controller.internal;
 
+import com.example.svgmanager.dto.request.ShareFileRequest;
 import com.example.svgmanager.dto.request.UserSavedFileCreateRequest;
 import com.example.svgmanager.dto.response.ErrorResponse;
+import com.example.svgmanager.dto.response.FileSharesResponse;
 import com.example.svgmanager.dto.response.PageResponse;
 import com.example.svgmanager.dto.response.UserSavedFileResponse;
+import com.example.svgmanager.dto.response.UserSvgFileShareResponse;
 import com.example.svgmanager.entity.User;
 import com.example.svgmanager.security.CurrentUserService;
 import com.example.svgmanager.service.UserSvgFileService;
+import com.example.svgmanager.service.UserSvgFileShareService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -15,6 +19,7 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import org.springframework.core.io.Resource;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -39,11 +44,14 @@ import java.nio.charset.StandardCharsets;
 public class InternalUserSvgFileController {
 
     private final UserSvgFileService userSvgFileService;
+    private final UserSvgFileShareService userSvgFileShareService;
     private final CurrentUserService currentUserService;
 
     public InternalUserSvgFileController(UserSvgFileService userSvgFileService,
+                                         UserSvgFileShareService userSvgFileShareService,
                                          CurrentUserService currentUserService) {
         this.userSvgFileService = userSvgFileService;
+        this.userSvgFileShareService = userSvgFileShareService;
         this.currentUserService = currentUserService;
     }
 
@@ -245,8 +253,8 @@ public class InternalUserSvgFileController {
     }
 
     @GetMapping
-    @Operation(summary = "Xem danh sách bản lưu SVG của chính người dùng",
-            description = "Chỉ trả về các file SVG do chính user hiện tại lưu.")
+    @Operation(summary = "Xem danh sách bản lưu SVG của chính người dùng và các bản được chia sẻ",
+            description = "Trả về các file SVG do chính user lưu (accessType=OWNER) hoặc được người khác chia sẻ (accessType=SHARED).")
     public ResponseEntity<PageResponse<UserSavedFileResponse>> listMyFiles(
             @Parameter(description = "Từ khoá tìm kiếm") @RequestParam(required = false) String keyword,
             @Parameter(description = "Danh mục") @RequestParam(required = false) Long categoryId,
@@ -263,14 +271,14 @@ public class InternalUserSvgFileController {
     }
 
     @GetMapping("/{id}")
-    @Operation(summary = "Xem chi tiết một bản lưu SVG của chính người dùng")
+    @Operation(summary = "Xem chi tiết một bản lưu SVG của người dùng hoặc bản được chia sẻ")
     public ResponseEntity<UserSavedFileResponse> getMyFileDetail(@PathVariable Long id) {
         User currentUser = currentUserService.getCurrentUser();
         return ResponseEntity.ok(userSvgFileService.getUserFile(currentUser, id));
     }
 
     @GetMapping("/{id}/download")
-    @Operation(summary = "Tải file SVG đã lưu của chính người dùng")
+    @Operation(summary = "Tải file SVG đã lưu của người dùng hoặc bản được chia sẻ")
     public ResponseEntity<Resource> downloadMyFile(@PathVariable Long id) {
         User currentUser = currentUserService.getCurrentUser();
         Resource resource = userSvgFileService.downloadUserFile(currentUser, id);
@@ -281,6 +289,20 @@ public class InternalUserSvgFileController {
         headers.setContentDisposition(ContentDisposition.attachment().filename(filename, StandardCharsets.UTF_8).build());
 
         return ResponseEntity.ok().headers(headers).body(resource);
+    }
+
+    @GetMapping("/{id}/preview")
+    @Operation(summary = "Xem trước file SVG (inline stream)")
+    public ResponseEntity<byte[]> previewMyFile(@PathVariable Long id) {
+        User currentUser = currentUserService.getCurrentUser();
+        byte[] bytes = userSvgFileService.getUserFileBytes(currentUser, id);
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.parseMediaType("image/svg+xml;charset=UTF-8"));
+        headers.add("X-Content-Type-Options", "nosniff");
+        headers.add("Cache-Control", "no-cache, no-store, must-revalidate");
+
+        return ResponseEntity.ok().headers(headers).body(bytes);
     }
 
     @DeleteMapping("/{id}")
@@ -294,6 +316,45 @@ public class InternalUserSvgFileController {
     public ResponseEntity<Void> deleteMyFile(@PathVariable Long id) {
         User currentUser = currentUserService.getCurrentUser();
         userSvgFileService.deleteUserFile(currentUser, id);
+        return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping("/{id}/shares")
+    @Operation(summary = "Chia sẻ file SVG cho người dùng khác",
+            description = "Owner của file chia sẻ quyền xem/tải file SVG cho một USER khác.")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "201", description = "Chia sẻ file thành công"),
+            @ApiResponse(responseCode = "400", description = "Dữ liệu không hợp lệ hoặc tự chia sẻ cho chính mình", content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+            @ApiResponse(responseCode = "401", description = "Chưa xác thực", content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+            @ApiResponse(responseCode = "403", description = "Không có quyền chia sẻ file này", content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+            @ApiResponse(responseCode = "404", description = "Không tìm thấy file hoặc người nhận", content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    })
+    public ResponseEntity<UserSvgFileShareResponse> shareFile(
+            @PathVariable Long id,
+            @Valid @RequestBody ShareFileRequest request
+    ) {
+        User currentUser = currentUserService.getCurrentUser();
+        UserSvgFileShareResponse response = userSvgFileShareService.shareFile(currentUser, id, request.getUserId());
+        return ResponseEntity.status(HttpStatus.CREATED).body(response);
+    }
+
+    @GetMapping("/{id}/shares")
+    @Operation(summary = "Lấy danh sách người dùng được chia sẻ file SVG",
+            description = "Chỉ owner hoặc ADMIN được phép xem danh sách người được chia sẻ file.")
+    public ResponseEntity<FileSharesResponse> getFileShares(@PathVariable Long id) {
+        User currentUser = currentUserService.getCurrentUser();
+        return ResponseEntity.ok(userSvgFileShareService.getShares(currentUser, id));
+    }
+
+    @DeleteMapping("/{id}/shares/{targetUserId}")
+    @Operation(summary = "Thu hồi quyền chia sẻ file SVG",
+            description = "Chỉ owner hoặc ADMIN được phép thu hồi quyền chia sẻ.")
+    public ResponseEntity<Void> revokeFileShare(
+            @PathVariable Long id,
+            @PathVariable Long targetUserId
+    ) {
+        User currentUser = currentUserService.getCurrentUser();
+        userSvgFileShareService.revokeShare(currentUser, id, targetUserId);
         return ResponseEntity.noContent().build();
     }
 }

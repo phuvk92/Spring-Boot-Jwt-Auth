@@ -94,4 +94,6 @@ public interface UserSvgFileService {
     String getOriginalFilename(Long id);
 
     byte[] getAdminFileBytes(Long id);
+
+    byte[] getUserFileBytes(User currentUser, Long id);
 }

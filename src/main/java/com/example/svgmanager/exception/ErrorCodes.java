@@ -43,6 +43,28 @@ public final class ErrorCodes {
     /** Payload bản làm việc rỗng hoặc không hợp lệ — F-36. */
     public static final String DESIGN_INVALID = "DESIGN_INVALID";
 
+    /** Không tìm thấy bản lưu file SVG của người dùng. */
+    public static final String USER_FILE_NOT_FOUND = "USER_FILE_NOT_FOUND";
+    /** Không tìm thấy quyền chia sẻ file SVG. */
+    public static final String USER_FILE_SHARE_NOT_FOUND = "USER_FILE_SHARE_NOT_FOUND";
+    /** Quyền chia sẻ file SVG cho người dùng đã tồn tại. */
+    public static final String USER_FILE_SHARE_ALREADY_EXISTS = "USER_FILE_SHARE_ALREADY_EXISTS";
+    /** Không có quyền thực hiện thao tác chia sẻ hoặc truy cập file chia sẻ. */
+    public static final String USER_FILE_SHARE_FORBIDDEN = "USER_FILE_SHARE_FORBIDDEN";
+    /** Người dùng nhận quyền chia sẻ không hợp lệ hoặc không tồn tại. */
+    public static final String INVALID_SHARE_TARGET = "INVALID_SHARE_TARGET";
+    /** Không thể chia sẻ file cho chính mình. */
+    public static final String CANNOT_SHARE_TO_SELF = "CANNOT_SHARE_TO_SELF";
+
+    /** File SVG vi phạm chính sách bảo mật (XSS, XXE, SSRF, Active Content, etc.). */
+    public static final String SVG_SECURITY_VALIDATION_FAILED = "SVG_SECURITY_VALIDATION_FAILED";
+    /** File SVG vượt quá giới hạn kích thước, độ sâu XML hoặc số phần tử cho phép. */
+    public static final String SVG_SIZE_LIMIT_EXCEEDED = "SVG_SIZE_LIMIT_EXCEEDED";
+    /** Phát hiện chữ ký malware hoặc cấu trúc nén độc hại trong file. */
+    public static final String SVG_MALWARE_DETECTED = "SVG_MALWARE_DETECTED";
+    /** Vượt quá tần suất gọi API cho phép (Rate Limit). */
+    public static final String RATE_LIMIT_EXCEEDED = "RATE_LIMIT_EXCEEDED";
+
     private ErrorCodes() {
     }
 }
