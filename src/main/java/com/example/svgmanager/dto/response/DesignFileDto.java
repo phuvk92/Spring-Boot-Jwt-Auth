@@ -43,6 +43,12 @@ public class DesignFileDto {
     @Schema(description = "Khổ cắt file khai (NGO-399); null → client dùng mặc định 15000 × 700", nullable = true)
     private CutAreaDto cutArea;
 
+    @Schema(description = "Có bản đã xếp — app tải GET /api/v1/files/{id}/svg?layout=nested (board 08/10)")
+    private boolean hasNested;
+
+    @Schema(description = "Có bản chưa xếp — app tải GET /api/v1/files/{id}/svg?layout=raw")
+    private boolean hasRaw;
+
     public DesignFileDto() {
     }
 
@@ -142,5 +148,21 @@ public class DesignFileDto {
 
     public void setCutArea(CutAreaDto cutArea) {
         this.cutArea = cutArea;
+    }
+
+    public boolean isHasNested() {
+        return hasNested;
+    }
+
+    public void setHasNested(boolean hasNested) {
+        this.hasNested = hasNested;
+    }
+
+    public boolean isHasRaw() {
+        return hasRaw;
+    }
+
+    public void setHasRaw(boolean hasRaw) {
+        this.hasRaw = hasRaw;
     }
 }

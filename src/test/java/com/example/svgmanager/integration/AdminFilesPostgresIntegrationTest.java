@@ -1,7 +1,6 @@
 package com.example.svgmanager.integration;
 
 import com.example.svgmanager.entity.SvgFile;
-import com.example.svgmanager.repository.SvgFilePartRepository;
 import com.example.svgmanager.repository.SvgFileRepository;
 import com.example.svgmanager.repository.VehicleNodeRepository;
 import org.junit.jupiter.api.AfterAll;
@@ -85,13 +84,7 @@ class AdminFilesPostgresIntegrationTest {
     private SvgFileRepository svgFileRepository;
 
     @Autowired
-    private SvgFilePartRepository partRepository;
-
-    @Autowired
     private VehicleNodeRepository vehicleNodeRepository;
-
-    @Autowired
-    private com.example.svgmanager.service.SvgPartRingResplitRunner resplitRunner;
 
     /** Seed V15: Toyota›Camry›Camry 2.5Q (MODEL id=3), VinFast›VF 8›VF 8 Plus (MODEL id=11). */
     private static final long MODEL_CAMRY_25Q = 3;
@@ -124,41 +117,7 @@ class AdminFilesPostgresIntegrationTest {
     // ── AC: upload + tách part ──────────────────────────────────────────
 
     @Test
-    @DisplayName("SA-Nesting §8: file tách kiểu cũ trong kho → runner tách lại đúng 139 part; chạy lại không đổi gì")
-    void resplitRunner_fixesOldSplitAndIsIdempotent() throws Exception {
-        MvcResult res = mockMvc.perform(multipart("/api/admin/files")
-                        .file(new MockMultipartFile("file", "Audi Q6 2024.svg", "image/svg+xml",
-                                audiSvg().getBytes(java.nio.charset.StandardCharsets.UTF_8)))
-                        .param("name", "Audi Q6 2024 — tách lại")
-                        .param("categoryId", String.valueOf(CATEGORY_NGOAI_THAT))
-                        .param("vehicleNodeIds", String.valueOf(MODEL_CAMRY_25Q))
-                        .with(asAdmin()))
-                .andExpect(status().isCreated())
-                .andReturn();
-        long id = ((Integer) com.jayway.jsonpath.JsonPath.read(res.getResponse().getContentAsString(), "$.id")).longValue();
-
-        // Giả dữ liệu cũ: số part trong DB lệch với cách tách hiện tại
-        SvgFile file = svgFileRepository.findById(id).orElseThrow();
-        java.util.Iterator<com.example.svgmanager.entity.SvgFilePart> it = file.getParts().iterator();
-        for (int i = 0; i < 5 && it.hasNext(); i++) {
-            it.next();
-            it.remove();
-        }
-        svgFileRepository.saveAndFlush(file);
-        assertEquals(134, partRepository.countBySvgFileId(id));
-
-        assertTrue(resplitRunner.resplitAll() >= 1);
-        assertEquals(139, partRepository.countBySvgFileId(id));
-        assertTrue(partRepository.findBySvgFileIdOrderByDisplayOrderAscIdAsc(id).stream()
-                .anyMatch(p -> p.getHoleCount() > 0), "lỗ khoét đã gộp vào part chứa");
-
-        assertEquals(0, resplitRunner.resplitAll(), "chạy lại không đổi gì");
-        assertEquals(139, partRepository.countBySvgFileId(id));
-    }
-
-
-    @Test
-    @DisplayName("POST upload Audi Q6 2024.svg → 139 part (ring chẵn/lẻ — SA-Nesting §8) + hình học V13, file_key duy nhất")
+    @DisplayName("POST upload Audi Q6 2024.svg → lưu SVG, partCount 139 (ring chẵn/lẻ — SA-Nesting §8), không lưu part")
     void upload_audi_splitsParts() throws Exception {
         MvcResult res = mockMvc.perform(multipart("/api/admin/files")
                         .file(new MockMultipartFile("file", "Audi Q6 2024.svg", "image/svg+xml",
@@ -178,13 +137,13 @@ class AdminFilesPostgresIntegrationTest {
 
         long id = ((Integer) com.jayway.jsonpath.JsonPath.read(res.getResponse().getContentAsString(), "$.id")).longValue();
         SvgFile saved = svgFileRepository.findById(id).orElseThrow();
-        assertEquals(139, partRepository.countBySvgFileId(id));
-        // Part đầu tiên có đủ cột hình học V13 và màu tô V21 (NGO-415)
-        var part0 = partRepository.findBySvgFileIdOrderByDisplayOrderAscIdAsc(id).get(0);
-        assertNotNull(part0.getPathData());
-        assertTrue(part0.getWidthMm() > 0 && part0.getHeightMm() > 0);
-        assertEquals("#F7ADAF", part0.getColor());
+        // Board 08/10: server chỉ lưu SVG + số liệu hiển thị; app tự tách part khi mở file
+        assertEquals(139, saved.getNestedPartCount());
+        assertNull(saved.getRawPartCount());
         assertNotNull(saved.getFilmUsage());
+        mockMvc.perform(get("/api/v1/files/{id}/svg", saved.getFileKey()).with(asUser()))
+                .andExpect(status().isOk())
+                .andExpect(content().string(startsWith("<svg")));
     }
 
     @Test
@@ -246,7 +205,7 @@ class AdminFilesPostgresIntegrationTest {
     }
 
     @Test
-    @DisplayName("PUT có file mới → tách lại, thay toàn bộ parts")
+    @DisplayName("PUT có file mới → thay file SVG, cập nhật partCount")
     void put_newFile_replacesParts() throws Exception {
         String svg1 = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"10mm\" height=\"10mm\" viewBox=\"0 0 10 10\">"
                 + "<rect width=\"10\" height=\"10\"/></svg>";
@@ -258,7 +217,7 @@ class AdminFilesPostgresIntegrationTest {
                 .andExpect(status().isCreated())
                 .andReturn();
         long id = ((Integer) com.jayway.jsonpath.JsonPath.read(res.getResponse().getContentAsString(), "$.id")).longValue();
-        assertEquals(1, partRepository.countBySvgFileId(id));
+        assertEquals(1, svgFileRepository.findById(id).orElseThrow().getNestedPartCount());
 
         String svg2 = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"10mm\" height=\"10mm\" viewBox=\"0 0 10 10\">"
                 + "<rect width=\"5\" height=\"5\"/><circle cx=\"8\" cy=\"8\" r=\"1\"/></svg>";
@@ -271,9 +230,7 @@ class AdminFilesPostgresIntegrationTest {
                 .andExpect(jsonPath("$.name", is("v2")))
                 .andExpect(jsonPath("$.partCount", is(2)));
 
-        var parts = partRepository.findBySvgFileIdOrderByDisplayOrderAscIdAsc(id);
-        assertEquals(2, parts.size());
-        assertTrue(parts.stream().allMatch(p -> p.getPathData() != null));
+        assertEquals(2, svgFileRepository.findById(id).orElseThrow().getNestedPartCount());
     }
 
     @Test
@@ -349,11 +306,14 @@ class AdminFilesPostgresIntegrationTest {
         // Gọi content raw
         mockMvc.perform(get("/api/svg/{id}/content", rawId).param("layout", "raw").with(asAdmin()))
                 .andExpect(status().isOk());
-        // Geometry trả layout = "raw"
-        mockMvc.perform(get("/api/v1/files/{id}/geometry", rawFileKey).with(asUser()))
+        // App tải bản chưa xếp; bỏ trống layout → bản duy nhất đang có
+        mockMvc.perform(get("/api/v1/files/{id}/svg", rawFileKey).param("layout", "raw").with(asUser()))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.parts[0].layout", is("raw")))
-                .andExpect(jsonPath("$.parts[0].partId", containsString("--raw--")));
+                .andExpect(content().string(startsWith("<svg")));
+        mockMvc.perform(get("/api/v1/files/{id}/svg", rawFileKey).with(asUser()))
+                .andExpect(status().isOk());
+        mockMvc.perform(get("/api/v1/files/{id}/svg", rawFileKey).param("layout", "nested").with(asUser()))
+                .andExpect(status().isNotFound());
 
         // 3. Thiếu cả hai → 400 FILE_REQUIRED
         mockMvc.perform(multipart("/api/admin/files")
@@ -366,22 +326,20 @@ class AdminFilesPostgresIntegrationTest {
     }
 
     @Test
-    @DisplayName("NGO-378: Upload cả hai bản nhưng số part khác nhau → 400 LAYOUT_PART_MISMATCH (kèm 2 số)")
-    void upload_partMismatch_rejected() throws Exception {
+    @DisplayName("Board 08/10: hai bản khác số part vẫn nhận — server không còn so part (app tự tách)")
+    void upload_partCountDiffers_accepted() throws Exception {
         String svg1Part = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"10mm\" height=\"10mm\" viewBox=\"0 0 10 10\"><rect width=\"10\" height=\"10\"/></svg>";
         String svg2Parts = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"10mm\" height=\"10mm\" viewBox=\"0 0 10 10\"><rect width=\"5\" height=\"5\"/><circle cx=\"8\" cy=\"8\" r=\"1\"/></svg>";
 
         mockMvc.perform(multipart("/api/admin/files")
                         .file(nestedSvg(svg1Part))
                         .file(rawSvg(svg2Parts))
-                        .param("name", "Mismatch")
+                        .param("name", "Khac so part")
                         .param("categoryId", "1")
                         .param("vehicleNodeIds", String.valueOf(MODEL_CAMRY_25Q))
                         .with(asAdmin()))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code", is("LAYOUT_PART_MISMATCH")))
-                .andExpect(jsonPath("$.message", containsString("1")))
-                .andExpect(jsonPath("$.message", containsString("2")));
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.partCount", is(1)));
     }
 
     @Test
@@ -422,8 +380,8 @@ class AdminFilesPostgresIntegrationTest {
     }
 
     @Test
-    @DisplayName("NGO-378 AC: Upload Audi Q6 cả hai bản → geometry 2 x 139 part, layout đúng, partId không trùng, parts chỉ trả 139")
-    void upload_audiQ6_bothLayouts_geometryAndParts() throws Exception {
+    @DisplayName("NGO-378 AC: Upload Audi Q6 cả hai bản → lưu hai SVG, partCount 139, app tải được từng bản")
+    void upload_audiQ6_bothLayouts_svgPerLayout() throws Exception {
         String svgContent = audiSvg();
 
         MvcResult res = mockMvc.perform(multipart("/api/admin/files")
@@ -445,32 +403,17 @@ class AdminFilesPostgresIntegrationTest {
         long id = ((Integer) com.jayway.jsonpath.JsonPath.read(res.getResponse().getContentAsString(), "$.id")).longValue();
         String fileKey = com.jayway.jsonpath.JsonPath.read(res.getResponse().getContentAsString(), "$.fileKey");
 
-        assertEquals(278, partRepository.countBySvgFileId(id));
-        assertEquals(139, partRepository.countBySvgFileIdAndLayout(id, "NESTED"));
-        assertEquals(139, partRepository.countBySvgFileIdAndLayout(id, "RAW"));
+        SvgFile saved = svgFileRepository.findById(id).orElseThrow();
+        assertEquals(139, saved.getNestedPartCount());
+        assertEquals(139, saved.getRawPartCount());
 
-        // GET /api/v1/files/{id}/parts chỉ trả 1 bản (139 part)
-        mockMvc.perform(get("/api/v1/files/{id}/parts", fileKey).with(asUser()))
+        // App tải từng bản về tự tách (board 08/10)
+        mockMvc.perform(get("/api/v1/files/{id}/svg", fileKey).param("layout", "nested").with(asUser()))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$", hasSize(139)));
-
-        // GET /api/v1/files/{id}/geometry trả 2 x 139 = 278 part
-        MvcResult geoRes = mockMvc.perform(get("/api/v1/files/{id}/geometry", fileKey).with(asUser()))
+                .andExpect(content().string(startsWith("<svg")));
+        mockMvc.perform(get("/api/v1/files/{id}/svg", fileKey).param("layout", "raw").with(asUser()))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.parts", hasSize(278)))
-                .andReturn();
-
-        String geoJson = geoRes.getResponse().getContentAsString();
-        java.util.List<String> partIds = com.jayway.jsonpath.JsonPath.read(geoJson, "$.parts[*].partId");
-        java.util.List<String> layouts = com.jayway.jsonpath.JsonPath.read(geoJson, "$.parts[*].layout");
-
-        assertEquals(278, partIds.size());
-        assertEquals(278, new java.util.HashSet<>(partIds).size(), "Mọi partId trong geometry phải duy nhất!");
-
-        long nestedCount = layouts.stream().filter("nested"::equals).count();
-        long rawCount = layouts.stream().filter("raw"::equals).count();
-        assertEquals(139, nestedCount);
-        assertEquals(139, rawCount);
+                .andExpect(content().string(startsWith("<svg")));
 
         // GET content mặc định (nested) và layout=raw
         mockMvc.perform(get("/api/svg/{id}/content", id).with(asAdmin()))
@@ -486,7 +429,7 @@ class AdminFilesPostgresIntegrationTest {
                     + "<rect width=\"10\" height=\"10\"/></svg>";
 
     @Test
-    @DisplayName("NGO-400: upload kèm khổ cắt → response, geometry và danh sách trả đúng cutArea")
+    @DisplayName("NGO-400: upload kèm khổ cắt → response và danh sách trả đúng cutArea")
     void upload_withCutArea() throws Exception {
         MvcResult res = mockMvc.perform(multipart("/api/admin/files")
                         .file(svgPart(SVG_1PART))
@@ -500,11 +443,6 @@ class AdminFilesPostgresIntegrationTest {
                 .andExpect(jsonPath("$.cutAreaWidthMm", is(700)))
                 .andReturn();
         String fileKey = com.jayway.jsonpath.JsonPath.read(res.getResponse().getContentAsString(), "$.fileKey");
-
-        mockMvc.perform(get("/api/v1/files/{id}/geometry", fileKey).with(asUser()))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.cutArea.lengthMm", is(15000)))
-                .andExpect(jsonPath("$.cutArea.widthMm", is(700)));
 
         mockMvc.perform(get("/api/v1/files").param("q", "Co Kho Cat").with(asUser()))
                 .andExpect(status().isOk())
@@ -526,9 +464,10 @@ class AdminFilesPostgresIntegrationTest {
                 .andReturn();
         String fileKey = com.jayway.jsonpath.JsonPath.read(res.getResponse().getContentAsString(), "$.fileKey");
 
-        mockMvc.perform(get("/api/v1/files/{id}/geometry", fileKey).with(asUser()))
+        mockMvc.perform(get("/api/v1/files").param("q", "Khong Kho Cat").with(asUser()))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.cutArea").value(org.hamcrest.Matchers.nullValue()));
+                .andExpect(jsonPath("$.content[0].id", is(fileKey)))
+                .andExpect(jsonPath("$.content[0].cutArea").value(org.hamcrest.Matchers.nullValue()));
     }
 
     @Test

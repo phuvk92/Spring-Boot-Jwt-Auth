@@ -120,9 +120,15 @@ public class SvgFile {
     @Column(name = "cut_area_width_mm")
     private Integer cutAreaWidthMm;
 
-    @OneToMany(mappedBy = "svgFile", cascade = CascadeType.ALL, orphanRemoval = true)
-    @OrderBy("displayOrder ASC, id ASC")
-    private List<SvgFilePart> parts = new ArrayList<>();
+    /**
+     * Số part của từng bản, tính một lần lúc upload để danh sách file hiện số (V29). Server
+     * không lưu part nữa — app tự tách SVG khi mở file (board 08/10, SA-Nesting §8).
+     */
+    @Column(name = "nested_part_count")
+    private Integer nestedPartCount;
+
+    @Column(name = "raw_part_count")
+    private Integer rawPartCount;
 
     @CreatedDate
     @Column(name = "created_at", nullable = false, updatable = false)
@@ -427,12 +433,26 @@ public class SvgFile {
         this.cutAreaWidthMm = cutAreaWidthMm;
     }
 
-    public List<SvgFilePart> getParts() {
-        return parts;
+    public Integer getNestedPartCount() {
+        return nestedPartCount;
     }
 
-    public void setParts(List<SvgFilePart> parts) {
-        this.parts = parts != null ? parts : new ArrayList<>();
+    public void setNestedPartCount(Integer nestedPartCount) {
+        this.nestedPartCount = nestedPartCount;
+    }
+
+    public Integer getRawPartCount() {
+        return rawPartCount;
+    }
+
+    public void setRawPartCount(Integer rawPartCount) {
+        this.rawPartCount = rawPartCount;
+    }
+
+    /** Số part hiển thị: bản đã xếp nếu có, không thì bản chưa xếp. */
+    public int partCount() {
+        Integer n = hasNested() ? nestedPartCount : rawPartCount;
+        return n != null ? n : 0;
     }
 
     public boolean hasNested() {
