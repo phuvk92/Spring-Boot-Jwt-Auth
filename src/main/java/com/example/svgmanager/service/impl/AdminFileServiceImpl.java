@@ -526,8 +526,12 @@ public class AdminFileServiceImpl implements AdminFileService {
         return nodes;
     }
 
-    /** Thêm parts của file cho một layout cụ thể (NESTED hoặc RAW) — SA §4/§8. */
-    private void addParts(SvgFile svgFile, List<ImportedPart> parts, String layout) {
+    /**
+     * Thêm parts của file cho một layout cụ thể (NESTED hoặc RAW) — SA §4/§8. Dùng chung với
+     * {@link com.example.svgmanager.service.SvgPartRingResplitRunner} để tách lại cho ra đúng
+     * part như lúc upload.
+     */
+    public static void addParts(SvgFile svgFile, List<ImportedPart> parts, String layout) {
         Set<String> usedKeys = new HashSet<>();
         int order = 1;
         for (ImportedPart p : parts) {
@@ -551,7 +555,7 @@ public class AdminFileServiceImpl implements AdminFileService {
         }
     }
 
-    private String uniquePartKey(String name, Set<String> used) {
+    private static String uniquePartKey(String name, Set<String> used) {
         String base = SlugUtils.slugify(name);
         if (base.isEmpty()) {
             base = "part";

@@ -13,7 +13,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Tách part từ SVG — SA v2 §4, port của SvgImport.cs.
- * Ca chốt: audi-q6-2024.svg so với kết quả client (fixtures/…client-parts.txt,
+ * Ca chốt: audi-q6-2024.svg so với kết quả client (fixtures/…client-parts.txt — 139 part theo ring chẵn/lẻ,
  * sinh bằng SvgImport.Read + ToParts trên chính file đó — sai số ≤ 0,05 mm).
  */
 class SvgImportTest {
@@ -126,11 +126,12 @@ class SvgImportTest {
             assertEquals(Integer.parseInt(c[6]), p.holeCount(), "holeCount part " + (i + 1));
         }
 
-        // Kiểm đủ 5 màu tô khác nhau trên 177 part của Audi Q6
+        // 4 màu miếng phim của Audi Q6 — hình trắng #FEFEFE đều là lỗ khoét, đã gộp vào part
+        // chứa nó (SA-Nesting §8), nên không còn part nào mang màu trắng
         java.util.Set<String> colors = parts.stream()
                 .map(ImportedPart::color)
                 .collect(java.util.stream.Collectors.toSet());
-        assertEquals(java.util.Set.of("#5CC6D0", "#F7ADAF", "#718FC8", "#F58634", "#FEFEFE"), colors);
+        assertEquals(java.util.Set.of("#5CC6D0", "#F7ADAF", "#718FC8", "#F58634"), colors);
     }
 
     @Test
