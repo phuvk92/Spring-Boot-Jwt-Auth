@@ -166,6 +166,14 @@ public class DesignFileServiceImpl implements DesignFileService {
 
     @Override
     @Transactional(readOnly = true)
+    public DesignFileDto getFile(String fileKey) {
+        return toDesignFileDto(svgFileRepository.findByFileKey(fileKey)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Không tìm thấy file thiết kế.", ErrorCodes.FILE_NOT_FOUND)));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public String getFileSvg(String fileKey, String layout) {
         SvgFile file = svgFileRepository.findByFileKey(fileKey)
                 .orElseThrow(() -> new ResourceNotFoundException(

@@ -63,6 +63,21 @@ public class DesignFileController {
                 brandId, seriesId, modelId, subtypeId, page, size));
     }
 
+    @GetMapping("/api/v1/files/{id}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'AGENT', 'USER')")
+    @Operation(summary = "Một file thiết kế theo fileKey — hasNested/hasRaw, khổ cắt (board 08/10)")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "File thiết kế",
+                    content = @Content(schema = @Schema(implementation = DesignFileDto.class))),
+            @ApiResponse(responseCode = "401", description = "Không có phiên còn hiệu lực",
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+            @ApiResponse(responseCode = "404", description = "Không có file này (FILE_NOT_FOUND)",
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    })
+    public ResponseEntity<DesignFileDto> getFile(@PathVariable("id") String fileKey) {
+        return ResponseEntity.ok(designFileService.getFile(fileKey));
+    }
+
     @GetMapping(value = "/api/v1/files/{id}/svg", produces = "image/svg+xml")
     @PreAuthorize("hasAnyRole('ADMIN', 'AGENT', 'USER')")
     @Operation(summary = "Nội dung SVG của part file — app tự tách part (board 08/10)",

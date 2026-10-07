@@ -168,4 +168,25 @@ class DesignFilesIntegrationTest {
                 .andExpect(jsonPath("$.content[0].hasRaw", is(true)))
                 .andExpect(jsonPath("$.content[0].partCount", is(1)));
     }
+
+    @Test
+    @DisplayName("GET /api/v1/files/{id} → một file kèm hasNested/hasRaw + khổ cắt; không có → 404")
+    void getFile_byKey() throws Exception {
+        SvgFile f = saveFile(null, RAW_SVG);
+        f.setCutAreaLengthMm(15000);
+        f.setCutAreaWidthMm(1520);
+        svgFileRepository.save(f);
+
+        mockMvc.perform(get("/api/v1/files/{id}", FILE_KEY).with(asUser()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id", is(FILE_KEY)))
+                .andExpect(jsonPath("$.name", is("Ngoại thất — full body")))
+                .andExpect(jsonPath("$.hasNested", is(false)))
+                .andExpect(jsonPath("$.hasRaw", is(true)))
+                .andExpect(jsonPath("$.cutArea.lengthMm", is(15000)))
+                .andExpect(jsonPath("$.cutArea.widthMm", is(1520)));
+        mockMvc.perform(get("/api/v1/files/{id}", "khong-co").with(asUser()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code", is("FILE_NOT_FOUND")));
+    }
 }

@@ -24,6 +24,12 @@ public interface DesignFileService {
                                          int page, int size);
 
     /**
+     * Một file theo fileKey — app cần hasNested/hasRaw + khổ cắt để tải SVG và mở file
+     * (board 08/10). Không tồn tại → 404 FILE_NOT_FOUND.
+     */
+    DesignFileDto getFile(String fileKey);
+
+    /**
      * Nội dung SVG của một bản (đã khử độc lúc upload) — app tự tách part (board 08/10,
      * SA-Nesting §8). {@code layout} = "nested" | "raw"; bỏ trống → bản đã xếp nếu có.
      * File không tồn tại hoặc không có bản được hỏi → 404 FILE_NOT_FOUND.
