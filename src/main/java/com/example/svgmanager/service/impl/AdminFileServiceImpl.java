@@ -5,7 +5,6 @@ import com.example.svgmanager.dto.response.AdminFileStatsResponse;
 import com.example.svgmanager.dto.response.PageResponse;
 import com.example.svgmanager.entity.FileCategory;
 import com.example.svgmanager.entity.SvgFile;
-import com.example.svgmanager.entity.SvgFilePart;
 import com.example.svgmanager.entity.SvgFileVehicleNode;
 import com.example.svgmanager.entity.User;
 import com.example.svgmanager.entity.VehicleNode;
@@ -16,7 +15,6 @@ import com.example.svgmanager.exception.ResourceNotFoundException;
 import com.example.svgmanager.repository.FileCategoryRepository;
 import com.example.svgmanager.entity.PartLibraryCategory;
 import com.example.svgmanager.repository.PartLibraryCategoryRepository;
-import com.example.svgmanager.repository.SvgFilePartRepository;
 import com.example.svgmanager.repository.SvgFileRepository;
 import com.example.svgmanager.repository.SvgFileVehicleNodeRepository;
 import com.example.svgmanager.repository.VehicleNodeRepository;
@@ -59,8 +57,9 @@ import java.util.UUID;
 /**
  * Kho part file — SA-DanhMucXe-v2 §3.2/§4.
  *
- * Tách part bằng {@link SvgImport} — port 1:1 của SvgImport.cs bên client nên kết quả
- * khớp đường "thợ tự nạp file" (ca kiểm chốt của issue).
+ * Board 08/10: admin CHỈ lưu file SVG — app tự tách part khi mở file (SA-Nesting §8).
+ * {@link SvgImport} ở đây chỉ còn để kiểm file (đơn vị, có hình kín) và tính số liệu hiển thị
+ * (số part, phim dùng); không còn lưu part.
  */
 @Service
 public class AdminFileServiceImpl implements AdminFileService {
@@ -68,7 +67,6 @@ public class AdminFileServiceImpl implements AdminFileService {
     private static final Logger log = LoggerFactory.getLogger(AdminFileServiceImpl.class);
 
     private final SvgFileRepository svgFileRepository;
-    private final SvgFilePartRepository partRepository;
     private final SvgFileVehicleNodeRepository linkRepository;
     private final VehicleNodeRepository vehicleNodeRepository;
     private final FileCategoryRepository fileCategoryRepository;
@@ -81,7 +79,6 @@ public class AdminFileServiceImpl implements AdminFileService {
 
     public AdminFileServiceImpl(
             SvgFileRepository svgFileRepository,
-            SvgFilePartRepository partRepository,
             SvgFileVehicleNodeRepository linkRepository,
             VehicleNodeRepository vehicleNodeRepository,
             FileCategoryRepository fileCategoryRepository,
@@ -93,7 +90,6 @@ public class AdminFileServiceImpl implements AdminFileService {
             @Value("${app.file.max-file-size-bytes:10485760}") long maxFileSizeBytes
     ) {
         this.svgFileRepository = svgFileRepository;
-        this.partRepository = partRepository;
         this.linkRepository = linkRepository;
         this.vehicleNodeRepository = vehicleNodeRepository;
         this.fileCategoryRepository = fileCategoryRepository;
@@ -214,12 +210,6 @@ public class AdminFileServiceImpl implements AdminFileService {
             }
         }
 
-        if (hasNested && hasRaw && nestedParts.size() != rawParts.size()) {
-            throw new BadRequestException("Số lượng part không khớp: bản đã xếp có " + nestedParts.size()
-                    + " part, bản chưa xếp có " + rawParts.size() + " part",
-                    ErrorCodes.LAYOUT_PART_MISMATCH);
-        }
-
         SvgFile svgFile = SvgFile.builder()
                 .status("ACTIVE")
                 .uploadedBy(currentUserService.getCurrentUser())
@@ -242,7 +232,7 @@ public class AdminFileServiceImpl implements AdminFileService {
             svgFile.setContentType("image/svg+xml");
             svgFile.setChecksum(ChecksumUtils.calculateSha256(nestedBytes));
             svgFile.setFilmUsage(totalFilmUsage(nestedParts));
-            addParts(svgFile, nestedParts, "NESTED");
+            svgFile.setNestedPartCount(nestedParts.size());
         }
 
         if (hasRaw) {
@@ -256,7 +246,7 @@ public class AdminFileServiceImpl implements AdminFileService {
             if (!hasNested) {
                 svgFile.setFilmUsage(totalFilmUsage(rawParts));
             }
-            addParts(svgFile, rawParts, "RAW");
+            svgFile.setRawPartCount(rawParts.size());
         }
 
         for (VehicleNode node : nodes) {
@@ -317,18 +307,6 @@ public class AdminFileServiceImpl implements AdminFileService {
             }
         }
 
-        if (willHaveNested && willHaveRaw) {
-            int nestedCount = newNestedProvided ? newNestedParts.size()
-                    : (int) partRepository.countBySvgFileIdAndLayout(id, "NESTED");
-            int rawCount = newRawProvided ? newRawParts.size()
-                    : (int) partRepository.countBySvgFileIdAndLayout(id, "RAW");
-            if (nestedCount != rawCount) {
-                throw new BadRequestException("Số lượng part không khớp: bản đã xếp có " + nestedCount
-                        + " part, bản chưa xếp có " + rawCount + " part",
-                        ErrorCodes.LAYOUT_PART_MISMATCH);
-            }
-        }
-
         // Xử lý bản NESTED
         if (removeNested) {
             String oldPath = svgFile.getFilePath();
@@ -337,8 +315,7 @@ public class AdminFileServiceImpl implements AdminFileService {
             svgFile.setFilePath(null);
             svgFile.setFileSize(null);
             svgFile.setChecksum(null);
-            svgFile.getParts().removeIf(p -> "NESTED".equalsIgnoreCase(p.getLayout()));
-            svgFileRepository.flush();
+            svgFile.setNestedPartCount(null);
             if (oldPath != null) {
                 try {
                     fileStorageService.deleteFile(oldPath);
@@ -356,9 +333,7 @@ public class AdminFileServiceImpl implements AdminFileService {
             svgFile.setFileSize((long) newNestedBytes.length);
             svgFile.setContentType("image/svg+xml");
             svgFile.setChecksum(ChecksumUtils.calculateSha256(newNestedBytes));
-            svgFile.getParts().removeIf(p -> "NESTED".equalsIgnoreCase(p.getLayout()));
-            svgFileRepository.flush();
-            addParts(svgFile, newNestedParts, "NESTED");
+            svgFile.setNestedPartCount(newNestedParts.size());
             if (oldPath != null) {
                 try {
                     fileStorageService.deleteFile(oldPath);
@@ -376,8 +351,7 @@ public class AdminFileServiceImpl implements AdminFileService {
             svgFile.setRawFilePath(null);
             svgFile.setRawFileSize(null);
             svgFile.setRawChecksum(null);
-            svgFile.getParts().removeIf(p -> "RAW".equalsIgnoreCase(p.getLayout()));
-            svgFileRepository.flush();
+            svgFile.setRawPartCount(null);
             if (oldRawPath != null) {
                 try {
                     fileStorageService.deleteFile(oldRawPath);
@@ -394,9 +368,7 @@ public class AdminFileServiceImpl implements AdminFileService {
             svgFile.setRawFilePath(newRawPath);
             svgFile.setRawFileSize((long) newRawBytes.length);
             svgFile.setRawChecksum(ChecksumUtils.calculateSha256(newRawBytes));
-            svgFile.getParts().removeIf(p -> "RAW".equalsIgnoreCase(p.getLayout()));
-            svgFileRepository.flush();
-            addParts(svgFile, newRawParts, "RAW");
+            svgFile.setRawPartCount(newRawParts.size());
             if (oldRawPath != null) {
                 try {
                     fileStorageService.deleteFile(oldRawPath);
@@ -415,12 +387,8 @@ public class AdminFileServiceImpl implements AdminFileService {
             if (newRawProvided) {
                 svgFile.setFilmUsage(totalFilmUsage(newRawParts));
             } else if (removeNested) {
-                List<SvgFilePart> rawCurrent = svgFile.getParts().stream()
-                        .filter(p -> "RAW".equalsIgnoreCase(p.getLayout())).toList();
-                double mm = rawCurrent.stream()
-                        .mapToDouble(p -> Math.max(p.getWidthMm() != null ? p.getWidthMm() : 0.0,
-                                p.getHeightMm() != null ? p.getHeightMm() : 0.0)).sum();
-                svgFile.setFilmUsage(formatFilmUsage(mm));
+                // Không còn bảng part (board 08/10) — đọc lại bản chưa xếp đang lưu để tính phim.
+                svgFile.setFilmUsage(totalFilmUsage(partsOfStored(svgFile.getRawFilePath())));
             }
         }
 
@@ -527,45 +495,20 @@ public class AdminFileServiceImpl implements AdminFileService {
     }
 
     /**
-     * Thêm parts của file cho một layout cụ thể (NESTED hoặc RAW) — SA §4/§8. Dùng chung với
-     * {@link com.example.svgmanager.service.SvgPartRingResplitRunner} để tách lại cho ra đúng
-     * part như lúc upload.
+     * Đọc lại SVG đang lưu để tính số liệu (phim dùng). File trong kho đã qua bộ khử độc lúc
+     * upload nên luôn là UTF-8; đọc lỗi → danh sách rỗng, phim dùng thành "0,00 m".
      */
-    public static void addParts(SvgFile svgFile, List<ImportedPart> parts, String layout) {
-        Set<String> usedKeys = new HashSet<>();
-        int order = 1;
-        for (ImportedPart p : parts) {
-            SvgFilePart part = new SvgFilePart();
-            part.setSvgFile(svgFile);
-            part.setLayout(layout);
-            part.setPartKey(uniquePartKey(p.name(), usedKeys));
-            part.setName(p.name());
-            part.setDisplayOrder(order++);
-            part.setPathData(p.pathData());
-            part.setWidthMm(p.widthMm());
-            part.setHeightMm(p.heightMm());
-            part.setXMm(p.xMm());
-            part.setYMm(p.yMm());
-            part.setNodeCount(p.nodeCount());
-            part.setHoleCount(p.holeCount());
-            part.setColor(p.color());
-            // film_usage tính từ hộp bao (§4): chiều dài phim ≈ cạnh dài hơn của part.
-            part.setFilmUsage(formatFilmUsage(Math.max(p.widthMm(), p.heightMm())));
-            svgFile.getParts().add(part);
+    private List<ImportedPart> partsOfStored(String relativePath) {
+        if (relativePath == null || relativePath.isBlank()) {
+            return List.of();
         }
-    }
-
-    private static String uniquePartKey(String name, Set<String> used) {
-        String base = SlugUtils.slugify(name);
-        if (base.isEmpty()) {
-            base = "part";
+        try {
+            return SvgImport.parseParts(new String(fileStorageService.loadFileAsBytes(relativePath),
+                    java.nio.charset.StandardCharsets.UTF_8));
+        } catch (Exception e) {
+            log.warn("Không đọc lại được '{}' để tính phim dùng: {}", relativePath, e.getMessage());
+            return List.of();
         }
-        String key = base;
-        int n = 2;
-        while (!used.add(key)) {
-            key = base + "-" + n++;
-        }
-        return key;
     }
 
     /** file_key: slug tên + hậu tố ngắn ngẫu nhiên — duy nhất, ổn định qua các lần PUT. */
@@ -704,20 +647,7 @@ public class AdminFileServiceImpl implements AdminFileService {
         boolean hasNested = f.hasNested();
         boolean hasRaw = f.hasRaw();
 
-        int partCount = 0;
-        if (f.getId() == null) {
-            if (hasNested) {
-                partCount = (int) f.getParts().stream().filter(p -> "NESTED".equalsIgnoreCase(p.getLayout())).count();
-            } else if (hasRaw) {
-                partCount = (int) f.getParts().stream().filter(p -> "RAW".equalsIgnoreCase(p.getLayout())).count();
-            }
-        } else {
-            if (hasNested) {
-                partCount = (int) partRepository.countBySvgFileIdAndLayout(f.getId(), "NESTED");
-            } else if (hasRaw) {
-                partCount = (int) partRepository.countBySvgFileIdAndLayout(f.getId(), "RAW");
-            }
-        }
+        int partCount = f.partCount();
 
         String origName = f.getOriginalFilename() != null ? f.getOriginalFilename() : f.getRawOriginalFilename();
         String displayName = f.getDisplayName() != null ? f.getDisplayName() : origName;

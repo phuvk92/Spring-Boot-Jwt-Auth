@@ -1,13 +1,10 @@
 package com.example.svgmanager.controller;
 
 import com.example.svgmanager.dto.response.DesignFileDto;
-import com.example.svgmanager.dto.response.DesignFileGeometryDto;
 import com.example.svgmanager.dto.response.ErrorResponse;
 import com.example.svgmanager.dto.response.PageResponse;
-import com.example.svgmanager.dto.response.PartDto;
 import com.example.svgmanager.service.DesignFileService;
 import io.swagger.v3.oas.annotations.Operation;
-import io.swagger.v3.oas.annotations.media.ArraySchema;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -21,7 +18,6 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.util.List;
 
 /**
  * Kho file thiết kế cho app cắt — KX-32 · F-56. Đầu danh sách file (GET /api/v1/files)
@@ -67,35 +63,26 @@ public class DesignFileController {
                 brandId, seriesId, modelId, subtypeId, page, size));
     }
 
-    @GetMapping("/api/v1/files/{id}/parts")
+    @GetMapping(value = "/api/v1/files/{id}/svg", produces = "image/svg+xml")
     @PreAuthorize("hasAnyRole('ADMIN', 'AGENT', 'USER')")
-    @Operation(summary = "Các part bên trong một file thiết kế (KX-32)",
-            description = "Id không tồn tại → 404 FILE_NOT_FOUND, không trả mảng rỗng — 'file không có part' và 'không có file' là hai câu khác nhau.")
+    @Operation(summary = "Nội dung SVG của part file — app tự tách part (board 08/10)",
+            description = "layout = nested | raw; bỏ trống → bản đã xếp nếu có. SVG đã qua bộ khử độc lúc upload. "
+                    + "Trả inline, KHÔNG Content-Disposition (RB-01: app giữ trong RAM, không ghi đĩa).")
     @ApiResponses(value = {
-            @ApiResponse(responseCode = "200", description = "Part trong file, theo thứ tự đội nội dung dựng",
-                    content = @Content(array = @ArraySchema(schema = @Schema(implementation = PartDto.class)))),
+            @ApiResponse(responseCode = "200", description = "Nội dung SVG (UTF-8)",
+                    content = @Content(mediaType = "image/svg+xml", schema = @Schema(type = "string"))),
+            @ApiResponse(responseCode = "400", description = "layout không hợp lệ",
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
             @ApiResponse(responseCode = "401", description = "Không có phiên còn hiệu lực",
                     content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
-            @ApiResponse(responseCode = "404", description = "Không có file này (FILE_NOT_FOUND)",
+            @ApiResponse(responseCode = "404", description = "Không có file / không có bản được hỏi (FILE_NOT_FOUND)",
                     content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
     })
-    public ResponseEntity<List<PartDto>> getFileParts(@PathVariable("id") String fileKey) {
-        return ResponseEntity.ok(designFileService.getFileParts(fileKey));
-    }
-
-    @GetMapping("/api/v1/files/{id}/geometry")
-    @PreAuthorize("hasAnyRole('ADMIN', 'AGENT', 'USER')")
-    @Operation(summary = "Hình học của cả file — thứ 'Mở trong Design Center' tải về (F-56)",
-            description = "MỘT lượt tải cho MỘT tab (KX-43 · DS-08c). Hình học hiển thị — lệnh cắt KHÔNG sinh từ chuỗi này (RB-07). JSON thường, không Content-Disposition (RB-01).")
-    @ApiResponses(value = {
-            @ApiResponse(responseCode = "200", description = "Biên dạng của mọi part trong file",
-                    content = @Content(schema = @Schema(implementation = DesignFileGeometryDto.class))),
-            @ApiResponse(responseCode = "401", description = "Không có phiên còn hiệu lực",
-                    content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
-            @ApiResponse(responseCode = "404", description = "Không có file này (FILE_NOT_FOUND)",
-                    content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
-    })
-    public ResponseEntity<DesignFileGeometryDto> getFileGeometry(@PathVariable("id") String fileKey) {
-        return ResponseEntity.ok(designFileService.getFileGeometry(fileKey));
+    public ResponseEntity<String> getFileSvg(@PathVariable("id") String fileKey,
+                                             @RequestParam(required = false) String layout) {
+        return ResponseEntity.ok()
+                .contentType(org.springframework.http.MediaType.valueOf("image/svg+xml;charset=UTF-8"))
+                .header("Cache-Control", "no-store")
+                .body(designFileService.getFileSvg(fileKey, layout));
     }
 }

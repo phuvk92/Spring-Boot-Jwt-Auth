@@ -3,22 +3,18 @@ package com.example.svgmanager.service.impl;
 import com.example.svgmanager.dto.response.CatalogOptionDto;
 import com.example.svgmanager.dto.response.CutAreaDto;
 import com.example.svgmanager.dto.response.DesignFileDto;
-import com.example.svgmanager.dto.response.DesignFileGeometryDto;
 import com.example.svgmanager.dto.response.PageResponse;
-import com.example.svgmanager.dto.response.PartDto;
-import com.example.svgmanager.dto.response.PartOutlineDto;
 import com.example.svgmanager.entity.FileCategory;
 import com.example.svgmanager.entity.SvgFile;
-import com.example.svgmanager.entity.SvgFilePart;
 import com.example.svgmanager.entity.SvgFileVehicleNode;
 import com.example.svgmanager.entity.VehicleNode;
 import com.example.svgmanager.exception.BadRequestException;
 import com.example.svgmanager.exception.ErrorCodes;
 import com.example.svgmanager.exception.ResourceNotFoundException;
-import com.example.svgmanager.repository.SvgFilePartRepository;
 import com.example.svgmanager.repository.SvgFileRepository;
 import com.example.svgmanager.repository.VehicleNodeRepository;
 import com.example.svgmanager.service.DesignFileService;
+import com.example.svgmanager.service.FileStorageService;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.persistence.criteria.Root;
 import jakarta.persistence.criteria.Subquery;
@@ -41,23 +37,16 @@ public class DesignFileServiceImpl implements DesignFileService {
 
     private static final Logger log = LoggerFactory.getLogger(DesignFileServiceImpl.class);
 
-    /**
-     * Ngưỡng cảnh báo payload geometry (AC F-56 — mục streaming): hợp đồng ghi "cân nhắc
-     * streaming", quyết định đợt này là JSON thường + log khi vượt ngưỡng; hoãn streaming
-     * tới khi có file thật vượt ngưỡng, không tối ưu trước khi có số đo.
-     */
-    private static final long GEOMETRY_WARN_BYTES = 2L * 1024 * 1024;
-
     private final SvgFileRepository svgFileRepository;
-    private final SvgFilePartRepository svgFilePartRepository;
     private final VehicleNodeRepository vehicleNodeRepository;
+    private final FileStorageService fileStorageService;
 
     public DesignFileServiceImpl(SvgFileRepository svgFileRepository,
-                                 SvgFilePartRepository svgFilePartRepository,
-                                 VehicleNodeRepository vehicleNodeRepository) {
+                                 VehicleNodeRepository vehicleNodeRepository,
+                                 FileStorageService fileStorageService) {
         this.svgFileRepository = svgFileRepository;
-        this.svgFilePartRepository = svgFilePartRepository;
         this.vehicleNodeRepository = vehicleNodeRepository;
+        this.fileStorageService = fileStorageService;
     }
 
     @Override
@@ -145,18 +134,8 @@ public class DesignFileServiceImpl implements DesignFileService {
             }
         }
 
-        // Số part theo cách xếp mà client sẽ mở (NGO-378): có bản đã xếp thì đếm NESTED, không thì RAW.
-        // Đếm bằng truy vấn chứ không nạp cả danh sách part — danh sách file đã phân trang (NGO-354).
-        String layout = file.hasNested() ? "NESTED" : file.hasRaw() ? "RAW" : null;
-        int partCount;
-        if (layout == null) {
-            partCount = 0;
-        } else if (file.getId() == null) {
-            partCount = file.getParts() == null ? 0
-                    : (int) file.getParts().stream().filter(p -> layout.equalsIgnoreCase(p.getLayout())).count();
-        } else {
-            partCount = (int) svgFilePartRepository.countBySvgFileIdAndLayout(file.getId(), layout);
-        }
+        // Số part tính một lần lúc upload (V29) — server không lưu part nữa (board 08/10).
+        int partCount = file.partCount();
 
         String displayName = file.getDisplayName() != null ? file.getDisplayName()
                 : (file.getOriginalFilename() != null ? file.getOriginalFilename() : file.getRawOriginalFilename());
@@ -171,6 +150,8 @@ public class DesignFileServiceImpl implements DesignFileService {
                 file.getUpdatedAt() != null ? file.getUpdatedAt() : file.getCreatedAt(),
                 path);
         dto.setCutArea(CutAreaDto.of(file.getCutAreaLengthMm(), file.getCutAreaWidthMm()));
+        dto.setHasNested(file.hasNested());
+        dto.setHasRaw(file.hasRaw());
         return dto;
     }
 
@@ -185,66 +166,27 @@ public class DesignFileServiceImpl implements DesignFileService {
 
     @Override
     @Transactional(readOnly = true)
-    public List<PartDto> getFileParts(String fileKey) {
+    public String getFileSvg(String fileKey, String layout) {
         SvgFile file = svgFileRepository.findByFileKey(fileKey)
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "Không tìm thấy file thiết kế.", ErrorCodes.FILE_NOT_FOUND));
-        String layout = file.hasNested() ? "NESTED" : "RAW";
-        return svgFilePartRepository.findBySvgFileIdAndLayoutOrderByDisplayOrderAscIdAsc(file.getId(), layout)
-                .stream()
-                .map(this::toDto)
-                .toList();
-    }
-
-    @Override
-    @Transactional(readOnly = true)
-    public DesignFileGeometryDto getFileGeometry(String fileKey) {
-        SvgFile file = svgFileRepository.findByFileKey(fileKey)
-                .orElseThrow(() -> new ResourceNotFoundException(
-                        "Không tìm thấy file thiết kế.", ErrorCodes.FILE_NOT_FOUND));
-        List<PartOutlineDto> parts = svgFilePartRepository
-                .findBySvgFileIdOrderByLayoutAscDisplayOrderAscIdAsc(file.getId())
-                .stream()
-                .map(part -> toOutlineDto(file.getFileKey(), part))
-                .toList();
-        long estimatedBytes = parts.stream()
-                .mapToLong(p -> p.getPathData() != null ? p.getPathData().length() : 0)
-                .sum();
-        if (estimatedBytes > GEOMETRY_WARN_BYTES) {
-            log.warn("Geometry của file '{}' ước tính {} byte, vượt ngưỡng {} — cân nhắc streaming khi có file thật",
-                    fileKey, estimatedBytes, GEOMETRY_WARN_BYTES);
+        boolean raw;
+        if (layout == null || layout.isBlank()) {
+            raw = !file.hasNested();
+        } else if ("raw".equalsIgnoreCase(layout)) {
+            raw = true;
+        } else if ("nested".equalsIgnoreCase(layout)) {
+            raw = false;
+        } else {
+            throw new BadRequestException("layout phải là 'nested' hoặc 'raw'");
         }
-        String displayName = file.getDisplayName() != null ? file.getDisplayName()
-                : (file.getOriginalFilename() != null ? file.getOriginalFilename() : file.getRawOriginalFilename());
-        DesignFileGeometryDto geometry = new DesignFileGeometryDto(
-                file.getFileKey(),
-                displayName,
-                parts);
-        geometry.setCutArea(CutAreaDto.of(file.getCutAreaLengthMm(), file.getCutAreaWidthMm()));
-        return geometry;
-    }
-
-    /** partId của hợp đồng là ghép {@code <fileId>--<layout>--<partKey>} — SA-DanhMucXe-v2 §8.1. */
-    private PartOutlineDto toOutlineDto(String fileKey, SvgFilePart part) {
-        String layoutStr = part.getLayout() != null ? part.getLayout().toLowerCase(java.util.Locale.ROOT) : "nested";
-        return new PartOutlineDto(
-                fileKey + "--" + layoutStr + "--" + part.getPartKey(),
-                part.getName(),
-                layoutStr,
-                // Thiếu hình học (chưa nạp) → giá trị an toàn, không ném
-                part.getPathData() != null ? part.getPathData() : "",
-                part.getWidthMm() != null ? part.getWidthMm() : 0.0,
-                part.getHeightMm() != null ? part.getHeightMm() : 0.0,
-                part.getXMm() != null ? part.getXMm() : 0.0,
-                part.getYMm() != null ? part.getYMm() : 0.0,
-                part.getNodeCount() != null ? part.getNodeCount() : 0,
-                part.getHoleCount() != null ? part.getHoleCount() : 0,
-                part.getColor());
-    }
-
-    private PartDto toDto(SvgFilePart part) {
-        return new PartDto(part.getPartKey(), part.getName(), part.getZone(),
-                part.getFilmUsage(), part.getNote(), part.getColor());
+        String path = raw ? file.getRawFilePath() : file.getFilePath();
+        if (path == null || path.isBlank()) {
+            throw new ResourceNotFoundException("File không có bản " + (raw ? "chưa xếp" : "đã xếp") + ".",
+                    ErrorCodes.FILE_NOT_FOUND);
+        }
+        // File trong kho đã qua bộ khử độc lúc upload — luôn là UTF-8.
+        return new String(fileStorageService.loadFileAsBytes(path), java.nio.charset.StandardCharsets.UTF_8);
     }
 
 }

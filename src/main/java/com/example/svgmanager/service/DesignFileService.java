@@ -1,8 +1,6 @@
 package com.example.svgmanager.service;
 
 import com.example.svgmanager.dto.response.DesignFileDto;
-import com.example.svgmanager.dto.response.DesignFileGeometryDto;
-import com.example.svgmanager.dto.response.PartDto;
 
 import com.example.svgmanager.dto.response.PageResponse;
 
@@ -26,15 +24,9 @@ public interface DesignFileService {
                                          int page, int size);
 
     /**
-     * Part bên trong một file, theo thứ tự đội nội dung dựng.
-     * File không tồn tại → 404 FILE_NOT_FOUND, KHÔNG trả mảng rỗng.
+     * Nội dung SVG của một bản (đã khử độc lúc upload) — app tự tách part (board 08/10,
+     * SA-Nesting §8). {@code layout} = "nested" | "raw"; bỏ trống → bản đã xếp nếu có.
+     * File không tồn tại hoặc không có bản được hỏi → 404 FILE_NOT_FOUND.
      */
-    List<PartDto> getFileParts(String fileKey);
-
-    /**
-     * Hình học hiển thị của cả file — MỘT lượt tải cho MỘT tab Design Center
-     * (F-56 · KX-43 · DS-08c). Lệnh cắt không sinh từ dữ liệu này (RB-07).
-     * File không tồn tại → 404 FILE_NOT_FOUND.
-     */
-    DesignFileGeometryDto getFileGeometry(String fileKey);
+    String getFileSvg(String fileKey, String layout);
 }
