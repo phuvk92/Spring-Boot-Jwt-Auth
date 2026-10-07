@@ -5,6 +5,8 @@ import com.example.svgmanager.svg.PathShape.Seg;
 import com.example.svgmanager.svg.SvgGeom.Affine;
 import com.example.svgmanager.svg.SvgGeom.Box;
 import com.example.svgmanager.svg.SvgGeom.Pt;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 import org.w3c.dom.Node;
@@ -12,11 +14,16 @@ import org.w3c.dom.NodeList;
 import org.xml.sax.InputSource;
 
 import javax.xml.XMLConstants;
+import java.awt.geom.Area;
+import java.awt.geom.Path2D;
+import java.awt.geom.PathIterator;
 import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
 import java.io.StringReader;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Locale;
@@ -32,12 +39,26 @@ import java.util.regex.Pattern;
  *
  * - Quy đơn vị ra mm từ width/height + viewBox. File không khai đơn vị được thì
  *   ném {@link SvgImportException} (server không hỏi lại được thợ → 400).
- * - Mỗi hình kín (kèm lỗ trong cùng path) = một part; pathData trong hệ toạ độ
- *   riêng, gốc ở góc trên-trái hộp bao; vị trí vào xMm/yMm.
+ * - Mỗi ring kín độ sâu chẵn = một part; ring độ sâu lẻ là lỗ của part bao nó
+ *   (SA-Nesting §8.4, NGO-490). pathData trong hệ toạ độ riêng, gốc ở góc
+ *   trên-trái hộp bao; vị trí vào xMm/yMm.
  * - Tên part lấy từ thuộc tính {@code id} (giải mã {@code _xHHHH_} như
  *   {@code _x0020_} → khoảng trắng); thiếu id thì {@code Part {n}}.
  */
 public final class SvgImport {
+
+    private static final Logger log = LoggerFactory.getLogger(SvgImport.class);
+
+    /** Làm phẳng bezier khi tính diện tích (mm) — chỉ cho phép chứa, bản cắt giữ nguyên đường cong. */
+    private static final double FLATNESS_MM = 0.005;
+
+    /**
+     * Dung sai "chứa trọn" — SA-Nesting §8.4: {@code Area(A − B) ≈ 0}. Trị tuyệt đối
+     * hấp thụ nhiễu làm phẳng trên ring rất nhỏ; trị tương đối hấp thụ mép chạm nhau
+     * trên ring lớn. Với file vẽ sạch, đáp án chứa/không-chứa chêch xa ngưỡng này.
+     */
+    private static final double CONTAIN_ABS_TOL = 0.02;   // mm²
+    private static final double CONTAIN_REL_TOL = 0.01;   // 1% diện tích ring trong
 
     private SvgImport() {
     }
@@ -124,26 +145,289 @@ public final class SvgImport {
         walk(root, Affine.translate(-units.origin.x(), -units.origin.y()), rootFill, collected, classFills);
 
         Affine toMm = Affine.scale(units.mmPerUnit, units.mmPerUnit);
-        List<ImportedPart> parts = new ArrayList<>();
+        List<PartAcc> accs = groupClosedRings(collected, toMm);
 
-        for (Pending p : collected) {
-            PathShape mm = p.shape.transform(toMm);
-            Box box = mm.bounds();
+        List<ImportedPart> parts = new ArrayList<>();
+        for (PartAcc acc : accs) {
+            Box box = acc.shape().bounds();
 
             // Hình thu về một điểm thì không có gì để cắt — đường nằm ngang (H=0, W>0) vẫn vào.
             if (box.width() <= 0 && box.height() <= 0) {
                 continue;
             }
 
-            PathShape local = mm.transform(Affine.translate(-box.x(), -box.y()));
-            String name = p.rawId != null ? decodeXmlName(p.rawId) : "Part " + (parts.size() + 1);
+            PathShape local = acc.shape().transform(Affine.translate(-box.x(), -box.y()));
+            String name = acc.rawId() != null ? decodeXmlName(acc.rawId()) : "Part " + (parts.size() + 1);
 
             parts.add(new ImportedPart(name, SvgPath.write(local),
                     Math.max(box.width(), 0.001), Math.max(box.height(), 0.001),
-                    box.x(), box.y(), local.nodeCount(), local.holeCount(), p.color()));
+                    box.x(), box.y(), local.nodeCount(), acc.holeCount(), acc.color()));
         }
 
         return parts;
+    }
+
+    // ── Gom part theo ring kín — SA-Nesting §8.4 (NGO-490) ───────────────
+
+    /**
+     * Một part sau khi gom: biên dạng đã trộn lỗ (EvenOdd), tên/màu lấy từ phần
+     * tử của ring ngoài, {@code holeCount} = số ring lẻ ghép vào.
+     */
+    private record PartAcc(PathShape shape, String rawId, String color, int holeCount, int order) {
+    }
+
+    /**
+     * Một ring kín — một figure {@code closed} của một phần tử. {@code area} là
+     * hình đã làm phẳng phục vụ phép chứa; bản cắt vẫn xuất từ {@code fig} nguyên
+     * vẹn nên đường cong không bị phẳng đi.
+     */
+    private static final class Ring {
+        final Fig fig;
+        final Pending src;
+        final int order;
+        final int index;
+        Area area;
+        double areaSize;
+        Box box;
+        int parent = -1;
+        int depth = -1;
+
+        Ring(Fig fig, Pending src, int order, int index) {
+            this.fig = fig;
+            this.src = src;
+            this.order = order;
+            this.index = index;
+        }
+    }
+
+    /**
+     * Quy tắc chẵn/lẻ trên từng ring kín của mọi phần tử (SA-Nesting §8.4):
+     *
+     * 1. Mỗi figure kín là một ring — path đã Combine nhiều subpath cho cùng kết
+     *    quả với các path rời.
+     * 2. Cha của ring A = ring nhỏ nhất chứa trọn A, kiểm theo diện tích
+     *    ({@code Area(A − B) ≈ 0}, có dung sai mép chạm) chứ không theo một điểm.
+     * 3. Ring độ sâu CHẴN (0, 2, 4…) = miếng phim → một part; ring độ sâu LẺ =
+     *    lỗ của miếng phim gần nhất bao nó → ghép chung pathData, tăng holeCount.
+     *    Vì vậy miếng phim nằm trong lỗ (độ sâu 2) vẫn là part riêng — trường hợp
+     *    admin đã xếp part nhỏ vào lỗ khung lớn.
+     * 4. Hai hình cắt nhau (không bên nào chứa trọn) → hai part riêng + cảnh báo.
+     *    Đường hở không tham gia cây — giữ nguyên một part cho mỗi phần tử chỉ có
+     *    đường hở như trước.
+     * 5. Tên/màu part lấy từ phần tử của ring ngoài; lỗ mang màu khác trắng chỉ
+     *    ghi cảnh báo (§8.3 — màu và nhóm <g> không đáng tin để quyết định).
+     */
+    private static List<PartAcc> groupClosedRings(List<Pending> collected, Affine toMm) {
+        List<Ring> rings = new ArrayList<>();
+        List<PartAcc> accs = new ArrayList<>();
+
+        int order = 0;
+        for (Pending p : collected) {
+            PathShape mm = p.shape.transform(toMm);
+            List<Fig> open = new ArrayList<>();
+            for (Fig f : mm.figures()) {
+                if (f.closed()) {
+                    rings.add(new Ring(f, p, order, rings.size()));
+                } else {
+                    open.add(f);
+                }
+            }
+            if (!open.isEmpty()) {
+                PathShape openShape = new PathShape(open);
+                accs.add(new PartAcc(openShape, p.rawId(), p.color(), openShape.holeCount(), order));
+            }
+            order++;
+        }
+
+        if (rings.isEmpty()) {
+            accs.sort(Comparator.comparingInt(PartAcc::order));
+            return accs;
+        }
+
+        // Dựng Area một lần cho mỗi ring — phép trừ/giao diện tích đáng giá hơn
+        // đoán chứa bằng một điểm (mép chạm, ring lõm).
+        for (Ring r : rings) {
+            r.area = toArea(r.fig);
+            r.areaSize = areaOf(r.area);
+            r.box = Box.around(r.fig.anchors());
+        }
+
+        // Cha = ring nhỏ nhất chứa trọn. Hai ring trùng nhau (chứa lẫn nhau) thì
+        // chỉ ring đứng trước trong file được làm cha — tránh vòng phụ thuộc.
+        for (Ring a : rings) {
+            Ring best = null;
+            for (Ring b : rings) {
+                if (a == b || !contains(b, a)) {
+                    continue;
+                }
+                if (contains(a, b) && b.index > a.index) {
+                    continue; // trùng hình — b đứng sau a nên b là "lỗ" của a
+                }
+                if (best == null || b.areaSize < best.areaSize
+                        || (b.areaSize == best.areaSize && b.index < best.index)) {
+                    best = b;
+                }
+            }
+            a.parent = best != null ? best.index : -1;
+        }
+
+        for (Ring r : rings) {
+            r.depth = depthOf(rings, r);
+        }
+
+        // Cảnh báo cặp ring cắt nhau — vẫn tách part riêng, chỉ để lại dấu log.
+        warnCrossingPairs(rings);
+
+        // Ring chẵn hút các con lẻ trực tiếp làm lỗ; con của lỗ (chẵn) là part riêng.
+        List<Ring>[] children = new List[rings.size()];
+        for (Ring r : rings) {
+            if (r.parent >= 0) {
+                if (children[r.parent] == null) {
+                    children[r.parent] = new ArrayList<>();
+                }
+                children[r.parent].add(r);
+            }
+        }
+
+        for (Ring r : rings) {
+            if (r.depth % 2 != 0) {
+                warnIfOddRingColored(r);
+                continue;
+            }
+            List<Fig> figs = new ArrayList<>();
+            figs.add(r.fig);
+            List<Ring> holes = children[r.index];
+            if (holes != null) {
+                for (Ring h : holes) {
+                    figs.add(h.fig);
+                }
+            }
+            accs.add(new PartAcc(new PathShape(figs), r.src.rawId(), r.src.color(),
+                    holes != null ? holes.size() : 0, r.order));
+        }
+
+        accs.sort(Comparator.comparingInt(PartAcc::order));
+        return accs;
+    }
+
+    private static int depthOf(List<Ring> rings, Ring r) {
+        // Đường đi lên cha không thể quay lại theo cách dựng ở trên; chuỗi seen
+        // phòng dữ liệu xấu tạo vòng bất thường — coi như ring gốc.
+        Set<Integer> seen = new HashSet<>();
+        int d = 0;
+        Ring cur = r;
+        while (cur.parent >= 0 && seen.add(cur.index)) {
+            d++;
+            cur = rings.get(cur.parent);
+        }
+        return d;
+    }
+
+    /**
+     * "B chứa trọn A" = {@code Area(A − B) ≈ 0}. Lọc nhanh bằng hộp bao trước —
+     * hộp B không bao hộp A thì không thể chứa trọn (kể cả mép chạm, sai số EPS).
+     */
+    private static boolean contains(Ring b, Ring a) {
+        Box ob = b.box;
+        Box ib = a.box;
+        double eps = 0.1; // mm — mép chạm nhau có thể lố ra vài chục micron
+        if (ob.x() > ib.x() + eps || ob.y() > ib.y() + eps
+                || ob.right() < ib.right() - eps || ob.bottom() < ib.bottom() - eps) {
+            return false;
+        }
+        Area diff = new Area(a.area);
+        diff.subtract(b.area);
+        double tol = Math.max(CONTAIN_ABS_TOL, a.areaSize * CONTAIN_REL_TOL);
+        return areaOf(diff) <= tol;
+    }
+
+    private static void warnCrossingPairs(List<Ring> rings) {
+        for (Ring a : rings) {
+            for (Ring b : rings) {
+                if (b.index <= a.index) {
+                    continue;
+                }
+                Box ab = a.box, bb = b.box;
+                if (ab.x() >= bb.right() || bb.x() >= ab.right()
+                        || ab.y() >= bb.bottom() || bb.y() >= ab.bottom()) {
+                    continue; // hộp bao rời nhau
+                }
+                if (contains(a, b) || contains(b, a)) {
+                    continue; // quan hệ chứa hợp lệ — lồng nhau, không cắt
+                }
+                Area inter = new Area(a.area);
+                inter.intersect(b.area);
+                double tol = Math.max(CONTAIN_ABS_TOL,
+                        Math.min(a.areaSize, b.areaSize) * CONTAIN_REL_TOL);
+                if (areaOf(inter) > tol) {
+                    log.warn("SVG: hai ring kín cắt nhau (phần tử '{}' và '{}') — tách thành hai part riêng",
+                            a.src.rawId(), b.src.rawId());
+                }
+            }
+        }
+    }
+
+    /** Lỗ mang màu khác trắng (CorelDRAW tô lỗ #FEFEFE) — chỉ log, không đổi quyết định. */
+    private static void warnIfOddRingColored(Ring r) {
+        String c = r.src.color();
+        if (c != null && !"#FFFFFF".equals(c) && !"#FEFEFE".equals(c)) {
+            log.warn("SVG: lỗ khoét trong '{}' mang màu {} khác trắng — vẫn gộp làm lỗ theo độ sâu lẻ",
+                    r.src.rawId(), c);
+        }
+    }
+
+    // ── Diện tích qua java.awt.geom.Area (đã làm phẳng) ─────────────────
+
+    private static Area toArea(Fig f) {
+        Path2D.Double path = new Path2D.Double();
+        path.moveTo(f.start().x(), f.start().y());
+        for (Seg s : f.segments()) {
+            if (s.line()) {
+                path.lineTo(s.end().x(), s.end().y());
+            } else {
+                path.curveTo(s.c1().x(), s.c1().y(), s.c2().x(), s.c2().y(),
+                        s.end().x(), s.end().y());
+            }
+        }
+        path.closePath();
+        Path2D.Double flat = new Path2D.Double();
+        flat.append(path.getPathIterator(null, FLATNESS_MM), false);
+        return new Area(flat);
+    }
+
+    /** Diện tích tuyệt đối của một Area — cộng đại số theo contour rồi trị tuyệt đối. */
+    private static double areaOf(Area a) {
+        double sum = 0;
+        double contour = 0;
+        double sx = 0, sy = 0, px = 0, py = 0;
+        double[] c = new double[6];
+        PathIterator it = a.getPathIterator(null, FLATNESS_MM);
+        while (!it.isDone()) {
+            switch (it.currentSegment(c)) {
+                case PathIterator.SEG_MOVETO -> {
+                    sx = c[0];
+                    sy = c[1];
+                    px = sx;
+                    py = sy;
+                }
+                case PathIterator.SEG_LINETO -> {
+                    contour += px * c[1] - c[0] * py;
+                    px = c[0];
+                    py = c[1];
+                }
+                case PathIterator.SEG_CLOSE -> {
+                    contour += px * sy - sx * py;
+                    sum += contour / 2;
+                    contour = 0;
+                    px = sx;
+                    py = sy;
+                }
+                default -> {
+                }
+            }
+            it.next();
+        }
+        return Math.abs(sum);
     }
 
     // ── Đơn vị — DS-108 ─────────────────────────────────────────────────
