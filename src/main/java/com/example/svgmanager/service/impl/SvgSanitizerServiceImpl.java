@@ -52,7 +52,7 @@ public class SvgSanitizerServiceImpl implements SvgSanitizerService {
             throw new InvalidSvgException("SVG file content is empty");
         }
 
-        String svgContent = new String(rawSvgBytes, StandardCharsets.UTF_8);
+        String svgContent = decodeSvgText(rawSvgBytes);
 
         validateAgainstXxe(svgContent);
 
@@ -81,6 +81,30 @@ public class SvgSanitizerServiceImpl implements SvgSanitizerService {
         }
 
         return sanitizedXml.getBytes(StandardCharsets.UTF_8);
+    }
+
+    /**
+     * Nhận dạng mã hoá theo các byte đầu file. CorelDRAW xuất SVG dạng UTF-16LE (BOM FF FE,
+     * encoding="UTF-16"); đọc cứng UTF-8 thì không thấy gốc &lt;svg&gt;. Kết quả trả ra vẫn là UTF-8.
+     */
+    private static String decodeSvgText(byte[] b) {
+        if (b.length >= 2 && (b[0] & 0xFF) == 0xFF && (b[1] & 0xFF) == 0xFE) {
+            return new String(b, 2, b.length - 2, StandardCharsets.UTF_16LE);
+        }
+        if (b.length >= 2 && (b[0] & 0xFF) == 0xFE && (b[1] & 0xFF) == 0xFF) {
+            return new String(b, 2, b.length - 2, StandardCharsets.UTF_16BE);
+        }
+        if (b.length >= 3 && (b[0] & 0xFF) == 0xEF && (b[1] & 0xFF) == 0xBB && (b[2] & 0xFF) == 0xBF) {
+            return new String(b, 3, b.length - 3, StandardCharsets.UTF_8);
+        }
+        // UTF-16 không BOM: '<' đi kèm byte 0
+        if (b.length >= 2 && b[0] == '<' && b[1] == 0) {
+            return new String(b, StandardCharsets.UTF_16LE);
+        }
+        if (b.length >= 2 && b[0] == 0 && b[1] == '<') {
+            return new String(b, StandardCharsets.UTF_16BE);
+        }
+        return new String(b, StandardCharsets.UTF_8);
     }
 
     private void validateAgainstXxe(String content) {

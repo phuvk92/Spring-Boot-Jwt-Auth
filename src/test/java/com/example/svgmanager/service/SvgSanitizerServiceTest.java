@@ -159,4 +159,50 @@ class SvgSanitizerServiceTest {
         assertThatThrownBy(() -> sanitizerService.sanitizeAndValidateSvg("<html><body>Not SVG</body></html>".getBytes(StandardCharsets.UTF_8)))
                 .isInstanceOf(InvalidSvgException.class);
     }
+
+    // Đầu file kiểu CorelDRAW 2021: khai báo UTF-16 + DOCTYPE + comment, nội dung có tiếng Việt
+    private static final String COREL_SVG = "<?xml version=\"1.0\" encoding=\"UTF-16\"?>\r\n" +
+            "<!DOCTYPE svg PUBLIC \"-//W3C//DTD SVG 1.1//EN\" \"http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd\">\r\n" +
+            "<!-- Creator: CorelDRAW 2021.5 -->\r\n" +
+            "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"1700mm\" height=\"1200mm\">" +
+            "<path id=\"Nội thất\" d=\"M10 10 H 90 V 90 H 10 Z\"/></svg>";
+
+    private static byte[] withBom(byte[] bom, byte[] body) {
+        byte[] out = new byte[bom.length + body.length];
+        System.arraycopy(bom, 0, out, 0, bom.length);
+        System.arraycopy(body, 0, out, bom.length, body.length);
+        return out;
+    }
+
+    private void assertDecodedCorelSvg(byte[] input) {
+        String resultStr = new String(sanitizerService.sanitizeAndValidateSvg(input), StandardCharsets.UTF_8);
+        assertThat(resultStr).startsWith("<svg");
+        assertThat(resultStr).contains("<path");
+        assertThat(resultStr).contains("id=\"Nội thất\"");
+    }
+
+    @Test
+    @DisplayName("Should accept UTF-16LE SVG with BOM (CorelDRAW export) and return UTF-8")
+    void sanitize_Utf16LeWithBom() {
+        assertDecodedCorelSvg(withBom(new byte[]{(byte) 0xFF, (byte) 0xFE}, COREL_SVG.getBytes(StandardCharsets.UTF_16LE)));
+    }
+
+    @Test
+    @DisplayName("Should accept UTF-16BE SVG with BOM")
+    void sanitize_Utf16BeWithBom() {
+        assertDecodedCorelSvg(withBom(new byte[]{(byte) 0xFE, (byte) 0xFF}, COREL_SVG.getBytes(StandardCharsets.UTF_16BE)));
+    }
+
+    @Test
+    @DisplayName("Should accept UTF-16LE SVG without BOM")
+    void sanitize_Utf16LeWithoutBom() {
+        assertDecodedCorelSvg(COREL_SVG.getBytes(StandardCharsets.UTF_16LE));
+    }
+
+    @Test
+    @DisplayName("Should accept UTF-8 SVG with BOM")
+    void sanitize_Utf8WithBom() {
+        assertDecodedCorelSvg(withBom(new byte[]{(byte) 0xEF, (byte) 0xBB, (byte) 0xBF},
+                COREL_SVG.replace("UTF-16", "UTF-8").getBytes(StandardCharsets.UTF_8)));
+    }
 }
