@@ -24,7 +24,7 @@ import java.util.List;
 
 /**
  * Kho part file — SA-DanhMucXe-v2 §3.2 (màn "Kho mẫu & part file" trên web admin).
- * Chỉ ADMIN. Upload chỉ nhận .svg; vehicleNodeIds đúng 1 node (MODEL/SUBTYPE) — board 30/09.
+ * Chỉ ADMIN. Upload chỉ nhận .svg; vehicleNodeIds tối đa 1 node — board 30/09.
  */
 @RestController
 @RequestMapping("/api/admin/files")
@@ -66,7 +66,7 @@ public class AdminFileController {
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @PreAuthorize("hasRole('ADMIN')")
     @Operation(summary = "Upload file thiết kế mới",
-            description = "Nhận nestedFile? + rawFile? (>= 1 file). Chỉ .svg (kiểm cả đuôi lẫn nội dung — khác → 400 UNSUPPORTED_FORMAT). "
+            description = "Nhận nestedFile? + rawFile? (tuỳ chọn). Chỉ .svg (kiểm cả đuôi lẫn nội dung — khác → 400 UNSUPPORTED_FORMAT). "
                     + "File không khai đơn vị → 400 SVG_UNITS_MISSING. Server tách part + hình học (SA §4/§8). "
                     + "Khổ cắt tuỳ chọn: cutAreaLengthMm (100–50000) + cutAreaWidthMm (100–2000), phải đủ cả hai "
                     + "(NGO-399 — thiếu một → 400 CUT_AREA_INCOMPLETE, ngoài giới hạn → 400 CUT_AREA_OUT_OF_RANGE).")
@@ -83,7 +83,7 @@ public class AdminFileController {
             @RequestParam("name") String name,
             @RequestParam("categoryId") Long categoryId,
             @RequestParam(value = "year", required = false) Integer year,
-            @RequestParam("vehicleNodeIds") List<Long> vehicleNodeIds,
+            @RequestParam(value = "vehicleNodeIds", required = false) List<Long> vehicleNodeIds,
             @RequestPart(value = "thumbnail", required = false) MultipartFile thumbnail,
             @RequestParam(value = "cutAreaLengthMm", required = false) Integer cutAreaLengthMm,
             @RequestParam(value = "cutAreaWidthMm", required = false) Integer cutAreaWidthMm) {
@@ -109,6 +109,7 @@ public class AdminFileController {
             @RequestParam(value = "categoryId", required = false) Long categoryId,
             @RequestParam(value = "year", required = false) Integer year,
             @RequestParam(value = "vehicleNodeIds", required = false) List<Long> vehicleNodeIds,
+            @RequestParam(value = "clearVehicleNodes", required = false, defaultValue = "false") boolean clearVehicleNodes,
             @RequestPart(value = "thumbnail", required = false) MultipartFile thumbnail,
             @RequestParam(value = "cutAreaLengthMm", required = false) Integer cutAreaLengthMm,
             @RequestParam(value = "cutAreaWidthMm", required = false) Integer cutAreaWidthMm,
@@ -120,7 +121,7 @@ public class AdminFileController {
         MultipartFile effectiveNested = nestedFile != null ? nestedFile : legacyFile;
         return ResponseEntity.ok(adminFileService.updateFile(id, effectiveNested, rawFile,
                 removeNested, removeRaw, name, categoryId,
-                year, yearPresent, vehicleNodeIds, thumbnail,
+                year, yearPresent, vehicleNodeIds, clearVehicleNodes, thumbnail,
                 cutAreaLengthMm, cutAreaWidthMm, clearCutArea));
     }
 

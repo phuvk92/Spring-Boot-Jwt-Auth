@@ -121,7 +121,7 @@ public class SecurityConfig {
                         // Kho part file (Data Center v2) — toàn bộ chỉ ADMIN
                         .requestMatchers("/api/admin/files/**").hasRole("ADMIN")
                         // Bản đã lưu của User — toàn bộ chỉ ADMIN
-                        .requestMatchers("/api/admin/user-files/**").hasRole("ADMIN")
+                        .requestMatchers("/api/admin/user-files/**", "/api/admin/v2/user-files/**").hasRole("ADMIN")
                         // Audit Logs (ADMIN only)
                         .requestMatchers("/api/audit-logs/**").hasRole("ADMIN")
                         // Thương hiệu đại lý (NGO-165)

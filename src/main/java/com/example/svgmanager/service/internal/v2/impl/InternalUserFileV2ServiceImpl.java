@@ -586,6 +586,123 @@ public class InternalUserFileV2ServiceImpl implements InternalUserFileV2Service 
 
     @Override
     @Transactional(readOnly = true)
+    public PageResponse<UserSvgFileV2Response> listAdminFiles(
+            String keyword,
+            Long categoryId,
+            Long vehicleNodeId,
+            Long brandId,
+            Long modelId,
+            Long dealerId,
+            Long userId,
+            LocalDateTime createdFrom,
+            LocalDateTime createdTo,
+            String status,
+            Pageable pageable
+    ) {
+        Specification<UserSvgFileV2> spec = UserSvgFileV2Specification.filterForAdmin(
+                keyword, categoryId, vehicleNodeId, brandId, modelId, dealerId, userId,
+                createdFrom, createdTo, status
+        );
+
+        Page<UserSvgFileV2> page = userSvgFileV2Repository.findAll(spec, pageable);
+        return PageResponse.<UserSvgFileV2Response>builder()
+                .content(page.getContent().stream().map(f -> toResponse(f, f.getUser())).toList())
+                .page(page.getNumber())
+                .size(page.getSize())
+                .totalElements(page.getTotalElements())
+                .totalPages(page.getTotalPages())
+                .first(page.isFirst())
+                .last(page.isLast())
+                .build();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public UserSvgFileV2Response getAdminFile(Long id) {
+        UserSvgFileV2 file = userSvgFileV2Repository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("File bản lưu V2 không tồn tại", ErrorCodes.FILE_NOT_FOUND));
+
+        if ("DELETED".equalsIgnoreCase(file.getStatus())) {
+            throw new ResourceNotFoundException("File bản lưu V2 không tồn tại", ErrorCodes.FILE_NOT_FOUND);
+        }
+
+        return toResponse(file, file.getUser());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Resource downloadAdminFile(Long id) {
+        byte[] decryptedBytes = getAdminFileBytes(id);
+        auditLogService.log(
+                "admin",
+                "ADMIN",
+                "V2_SVG_ADMIN_DOWNLOAD",
+                "UserSvgFileV2",
+                id,
+                "ADMIN tải file SVG V2 giải mã: id=" + id
+        );
+        return new ByteArrayResource(decryptedBytes);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public byte[] getAdminFileBytes(Long id) {
+        UserSvgFileV2 file = userSvgFileV2Repository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("File bản lưu V2 không tồn tại", ErrorCodes.FILE_NOT_FOUND));
+
+        if ("DELETED".equalsIgnoreCase(file.getStatus())) {
+            throw new ResourceNotFoundException("File bản lưu V2 không tồn tại", ErrorCodes.FILE_NOT_FOUND);
+        }
+
+        byte[] ciphertext = fileStorageV2Service.loadEncryptedFile(file.getStorageKey());
+        byte[] decrypted = fileEncryptionV2Service.decrypt(
+                ciphertext,
+                file.getEncryptedDek(),
+                file.getEncryptionIv(),
+                file.getEncryptionAlgorithm(),
+                file.getEncryptionKeyVersion()
+        );
+
+        auditLogService.log(
+                "admin",
+                "ADMIN",
+                "V2_SVG_ADMIN_PREVIEW",
+                "UserSvgFileV2",
+                id,
+                "ADMIN xem trước file SVG V2 giải mã on-the-fly: id=" + id
+        );
+
+        return decrypted;
+    }
+
+    @Override
+    @Transactional
+    public void deleteAdminFile(Long id) {
+        UserSvgFileV2 file = userSvgFileV2Repository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("File bản lưu V2 không tồn tại", ErrorCodes.FILE_NOT_FOUND));
+
+        if ("DELETED".equalsIgnoreCase(file.getStatus())) {
+            throw new ResourceNotFoundException("File bản lưu V2 không tồn tại", ErrorCodes.FILE_NOT_FOUND);
+        }
+
+        file.setStatus("DELETED");
+        file.setUpdatedAt(LocalDateTime.now());
+        userSvgFileV2Repository.save(file);
+
+        log.info("[V2_SVG_ADMIN_DELETE] id={}, fileName='{}'", file.getId(), file.getFileName());
+
+        auditLogService.log(
+                "admin",
+                "ADMIN",
+                "V2_SVG_ADMIN_DELETE",
+                "UserSvgFileV2",
+                file.getId(),
+                "ADMIN xoá mềm bản lưu SVG V2: " + file.getFileName()
+        );
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public String getOriginalFilename(Long id) {
         return userSvgFileV2Repository.findById(id)
                 .map(UserSvgFileV2::getFileName)

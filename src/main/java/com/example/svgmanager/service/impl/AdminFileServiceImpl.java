@@ -48,6 +48,7 @@ import java.io.IOException;
 import java.text.DecimalFormat;
 import java.text.DecimalFormatSymbols;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
@@ -178,10 +179,6 @@ public class AdminFileServiceImpl implements AdminFileService {
                                         Integer cutAreaLengthMm, Integer cutAreaWidthMm) {
         boolean hasNested = nestedFile != null && !nestedFile.isEmpty();
         boolean hasRaw = rawFile != null && !rawFile.isEmpty();
-        if (!hasNested && !hasRaw) {
-            throw new BadRequestException("Cần tải lên ít nhất một file (nestedFile hoặc rawFile)",
-                    ErrorCodes.FILE_REQUIRED);
-        }
 
         requireName(name);
         ResolvedCategory resCat = resolveCategory(categoryId);
@@ -255,7 +252,8 @@ public class AdminFileServiceImpl implements AdminFileService {
 
         storeThumbnailIfAny(thumbnail, svgFile);
         SvgFile saved = svgFileRepository.save(svgFile);
-        String savedOrigName = saved.getOriginalFilename() != null ? saved.getOriginalFilename() : saved.getRawOriginalFilename();
+        String savedOrigName = saved.getOriginalFilename() != null ? saved.getOriginalFilename()
+                : (saved.getRawOriginalFilename() != null ? saved.getRawOriginalFilename() : saved.getDisplayName());
         audit("UPLOAD_PART_FILE", saved, "Upload file thiết kế: " + savedOrigName);
         return toResponse(saved);
     }
@@ -266,24 +264,14 @@ public class AdminFileServiceImpl implements AdminFileService {
                                         boolean removeNested, boolean removeRaw,
                                         String name, Long categoryId,
                                         Integer year, boolean yearPresent,
-                                        List<Long> vehicleNodeIds, MultipartFile thumbnail,
+                                        List<Long> vehicleNodeIds, boolean clearVehicleNodes, MultipartFile thumbnail,
                                         Integer cutAreaLengthMm, Integer cutAreaWidthMm, boolean clearCutArea) {
         SvgFile svgFile = svgFileRepository.findById(id)
                 .filter(f -> !"DELETED".equalsIgnoreCase(f.getStatus()))
                 .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy file với ID: " + id));
 
-        boolean currentHasNested = svgFile.hasNested();
-        boolean currentHasRaw = svgFile.hasRaw();
-
         boolean newNestedProvided = nestedFile != null && !nestedFile.isEmpty();
         boolean newRawProvided = rawFile != null && !rawFile.isEmpty();
-
-        boolean willHaveNested = (newNestedProvided || currentHasNested) && !removeNested;
-        boolean willHaveRaw = (newRawProvided || currentHasRaw) && !removeRaw;
-
-        if (!willHaveNested && !willHaveRaw) {
-            throw new BadRequestException("Không thể bỏ cả hai bản file", ErrorCodes.FILE_REQUIRED);
-        }
 
         byte[] newNestedBytes = null;
         List<ImportedPart> newNestedParts = null;
@@ -390,6 +378,8 @@ public class AdminFileServiceImpl implements AdminFileService {
                 // Không còn bảng part (board 08/10) — đọc lại bản chưa xếp đang lưu để tính phim.
                 svgFile.setFilmUsage(totalFilmUsage(partsOfStored(svgFile.getRawFilePath())));
             }
+        } else {
+            svgFile.setFilmUsage(null);
         }
 
         if (name != null) {
@@ -405,7 +395,10 @@ public class AdminFileServiceImpl implements AdminFileService {
             validateYear(year);
             svgFile.setModelYear(year);
         }
-        if (vehicleNodeIds != null) {
+        if (clearVehicleNodes) {
+            svgFile.getVehicleNodes().clear();
+            svgFileRepository.flush();
+        } else if (vehicleNodeIds != null) {
             List<VehicleNode> nodes = resolveVehicleNodes(vehicleNodeIds);
             svgFile.getVehicleNodes().clear();
             svgFileRepository.flush();
@@ -469,15 +462,15 @@ public class AdminFileServiceImpl implements AdminFileService {
         return svgSanitizerService.sanitizeAndValidateSvg(raw);
     }
 
-    /** Mỗi node gắn phải là MODEL hoặc SUBTYPE (§2 — file treo ở hai cấp lá xe). */
+    /** Mỗi node gắn: BRAND, SERIES, MODEL hoặc SUBTYPE (tối đa 1 node theo board 30/09). */
     private List<VehicleNode> resolveVehicleNodes(List<Long> nodeIds) {
         if (nodeIds == null || nodeIds.isEmpty()) {
-            throw new BadRequestException("Cần chọn một mẫu xe (vehicleNodeIds)");
+            return Collections.emptyList();
         }
         List<Long> distinct = nodeIds.stream().distinct().toList();
-        // Board 30/09 bỏ Q5: mỗi file gắn ĐÚNG một mẫu xe (Model hoặc Phiên bản).
+        // Board 30/09 bỏ Q5: mỗi file gắn ĐÚNG một mẫu xe (tối đa 1).
         // V18 khoá thêm ở DB (UNIQUE svg_file_id) để không đường nào lách được.
-        if (distinct.size() != 1) {
+        if (distinct.size() > 1) {
             throw new BadRequestException("Mỗi file chỉ gắn một mẫu xe — đang gửi " + distinct.size(),
                     ErrorCodes.ONE_VEHICLE_PER_FILE);
         }
@@ -485,10 +478,6 @@ public class AdminFileServiceImpl implements AdminFileService {
         for (Long nodeId : distinct) {
             VehicleNode node = vehicleNodeRepository.findById(nodeId)
                     .orElseThrow(() -> new BadRequestException("Mẫu xe không tồn tại: " + nodeId));
-            if (node.getLevel() != VehicleNodeLevel.MODEL && node.getLevel() != VehicleNodeLevel.SUBTYPE) {
-                throw new BadRequestException("Chỉ gắn file vào MODEL hoặc SUBTYPE — node "
-                        + nodeId + " là " + node.getLevel());
-            }
             nodes.add(node);
         }
         return nodes;

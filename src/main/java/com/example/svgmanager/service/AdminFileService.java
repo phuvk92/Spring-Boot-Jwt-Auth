@@ -18,20 +18,20 @@ public interface AdminFileService {
 
     AdminFileStatsResponse getStats();
 
-    /** Upload file mới: nestedFile? + rawFile? (>= 1) — tách part + hình học theo SA §4/§8, sinh file_key, gắn mẫu xe. */
+    /** Upload file mới: nestedFile? + rawFile? (tuỳ chọn) — tách part + hình học theo SA §4/§8, sinh file_key, gắn mẫu xe. */
     AdminFileResponse createFile(MultipartFile nestedFile, MultipartFile rawFile,
                                  String name, Long categoryId, Integer year,
                                  List<Long> vehicleNodeIds, MultipartFile thumbnail,
                                  Integer cutAreaLengthMm, Integer cutAreaWidthMm);
 
     /**
-     * Sửa file: thay riêng từng file hoặc xoá một bản (removeNested/removeRaw). Không được bỏ cả hai.
+     * Sửa file: thay riêng từng file hoặc xoá một bản (removeNested/removeRaw).
      */
     AdminFileResponse updateFile(Long id, MultipartFile nestedFile, MultipartFile rawFile,
                                  boolean removeNested, boolean removeRaw,
                                  String name, Long categoryId,
                                  Integer year, boolean yearPresent,
-                                 List<Long> vehicleNodeIds, MultipartFile thumbnail,
+                                 List<Long> vehicleNodeIds, boolean clearVehicleNodes, MultipartFile thumbnail,
                                  Integer cutAreaLengthMm, Integer cutAreaWidthMm, boolean clearCutArea);
 
     /** Xoá mềm — status = DELETED, bản ghi và file vật lý còn để audit. */

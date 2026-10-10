@@ -8,6 +8,8 @@ import com.example.svgmanager.entity.User;
 import org.springframework.core.io.Resource;
 import org.springframework.data.domain.Pageable;
 
+import java.time.LocalDateTime;
+
 public interface InternalUserFileV2Service {
 
     default UserSvgFileV2Response saveUserFile(
@@ -184,4 +186,30 @@ public interface InternalUserFileV2Service {
     void revokeShare(User currentUser, Long fileId, Long targetUserId);
 
     String getOriginalFilename(Long id);
+
+    // ==========================================
+    // ADMIN V2 APIs
+    // ==========================================
+
+    PageResponse<UserSvgFileV2Response> listAdminFiles(
+            String keyword,
+            Long categoryId,
+            Long vehicleNodeId,
+            Long brandId,
+            Long modelId,
+            Long dealerId,
+            Long userId,
+            LocalDateTime createdFrom,
+            LocalDateTime createdTo,
+            String status,
+            Pageable pageable
+    );
+
+    UserSvgFileV2Response getAdminFile(Long id);
+
+    Resource downloadAdminFile(Long id);
+
+    byte[] getAdminFileBytes(Long id);
+
+    void deleteAdminFile(Long id);
 }

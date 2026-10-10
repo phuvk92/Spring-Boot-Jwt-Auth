@@ -168,13 +168,14 @@ class AdminFilesPostgresIntegrationTest {
                         .with(asAdmin()))
                 .andExpect(status().isBadRequest());
 
-        // vehicleNodeIds trỏ vào BRAND (không phải MODEL/SUBTYPE) → 400
+        // vehicleNodeIds trỏ vào BRAND (MODEL không bắt buộc) → 201 Created
         mockMvc.perform(multipart("/api/admin/files")
                         .file(svgPart("<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"10mm\" height=\"10mm\" viewBox=\"0 0 10 10\"><rect width=\"10\" height=\"10\"/></svg>"))
-                        .param("name", "x").param("categoryId", "1")
+                        .param("name", "x-brand").param("categoryId", "1")
                         .param("vehicleNodeIds", String.valueOf(BRAND_TOYOTA))
                         .with(asAdmin()))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.vehicles[0].path", is("Toyota")));
     }
 
     @Test
@@ -315,14 +316,16 @@ class AdminFilesPostgresIntegrationTest {
         mockMvc.perform(get("/api/v1/files/{id}/svg", rawFileKey).param("layout", "nested").with(asUser()))
                 .andExpect(status().isNotFound());
 
-        // 3. Thiếu cả hai → 400 FILE_REQUIRED
+        // 3. Thiếu cả hai → 201 Created (ít nhất một file .svg không còn bắt buộc)
         mockMvc.perform(multipart("/api/admin/files")
                         .param("name", "Khong file")
                         .param("categoryId", "1")
                         .param("vehicleNodeIds", String.valueOf(MODEL_CAMRY_25Q))
                         .with(asAdmin()))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code", is("FILE_REQUIRED")));
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.hasNested", is(false)))
+                .andExpect(jsonPath("$.hasRaw", is(false)))
+                .andExpect(jsonPath("$.partCount", is(0)));
     }
 
     @Test
@@ -370,13 +373,14 @@ class AdminFilesPostgresIntegrationTest {
                 .andExpect(jsonPath("$.hasNested", is(false)))
                 .andExpect(jsonPath("$.hasRaw", is(true)));
 
-        // PUT bỏ tiếp bản raw (removeRaw=true) → bỏ cả hai → 400
+        // PUT bỏ tiếp bản raw (removeRaw=true) → bỏ cả hai → 200 OK
         mockMvc.perform(multipart("/api/admin/files/" + id)
                         .param("removeRaw", "true")
                         .with(r -> { r.setMethod("PUT"); return r; })
                         .with(asAdmin()))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code", is("FILE_REQUIRED")));
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.hasNested", is(false)))
+                .andExpect(jsonPath("$.hasRaw", is(false)));
     }
 
     @Test
