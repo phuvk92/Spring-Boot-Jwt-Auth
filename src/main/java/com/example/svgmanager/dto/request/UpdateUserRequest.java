@@ -3,7 +3,6 @@ package com.example.svgmanager.dto.request;
 import com.fasterxml.jackson.annotation.JsonFormat;
 import java.time.LocalDate;
 
-
 import com.example.svgmanager.entity.Role;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.Email;
@@ -51,7 +50,10 @@ public class UpdateUserRequest {
     @JsonFormat(pattern = "yyyy-MM-dd")
     private LocalDate expirationDate;
 
-
+    @Schema(description = "Số máy tối đa (F-57) — chỉ ADMIN. 0 = về mặc định hệ thống. Bỏ trống = giữ nguyên", example = "1")
+    @jakarta.validation.constraints.Min(0)
+    @jakarta.validation.constraints.Max(50)
+    private Integer maxDevices;
 
     public UpdateUserRequest() {
     }
@@ -64,7 +66,7 @@ public class UpdateUserRequest {
         this.agentId = agentId;
         this.dealerId = dealerId;
         this.enabled = enabled != null ? enabled : true;
-        this.password = password;
+        setPassword(password);
     }
 
     public static Builder builder() {
@@ -81,6 +83,7 @@ public class UpdateUserRequest {
         private Boolean enabled = true;
         private String password;
         private LocalDate expirationDate;
+        private Integer maxDevices;
 
         public Builder email(String email) {
             this.email = email;
@@ -127,9 +130,15 @@ public class UpdateUserRequest {
             return this;
         }
 
+        public Builder maxDevices(Integer maxDevices) {
+            this.maxDevices = maxDevices;
+            return this;
+        }
+
         public UpdateUserRequest build() {
             UpdateUserRequest req = new UpdateUserRequest(email, fullName, phone, role, agentId, dealerId, enabled, password);
             req.setExpirationDate(this.expirationDate);
+            req.setMaxDevices(this.maxDevices);
             return req;
         }
     }
@@ -195,13 +204,8 @@ public class UpdateUserRequest {
     }
 
     public void setPassword(String password) {
-        this.password = password;
+        this.password = (password != null && !password.trim().isEmpty()) ? password.trim() : null;
     }
-
-    @Schema(description = "Số máy tối đa (F-57) — chỉ ADMIN. 0 = về mặc định hệ thống. Bỏ trống = giữ nguyên", example = "1")
-    @jakarta.validation.constraints.Min(0)
-    @jakarta.validation.constraints.Max(50)
-    private Integer maxDevices;
 
     public Integer getMaxDevices() {
         return maxDevices;

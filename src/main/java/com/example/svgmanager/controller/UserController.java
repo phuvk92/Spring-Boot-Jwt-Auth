@@ -1,6 +1,7 @@
 package com.example.svgmanager.controller;
 
 import com.example.svgmanager.dto.request.CreateUserRequest;
+import com.example.svgmanager.dto.request.ResetPasswordRequest;
 import com.example.svgmanager.dto.request.UpdateUserRequest;
 import com.example.svgmanager.dto.request.UpdateUserRoleRequest;
 import com.example.svgmanager.dto.request.UpdateUserStatusRequest;
@@ -143,6 +144,26 @@ public class UserController {
     ) {
         UserResponse response = userService.updateUserRole(id, request);
         return ResponseEntity.ok(response);
+    }
+
+    @PostMapping("/{id}/reset-password")
+    @PreAuthorize("hasRole('ADMIN')")
+    @Operation(summary = "Reset user password (Admin only)", description = "Sets a new password for the specified user in Keycloak. ADMIN role only.")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Password reset successfully"),
+            @ApiResponse(responseCode = "400", description = "Invalid password format or Keycloak error", content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+            @ApiResponse(responseCode = "403", description = "Forbidden - Requires ADMIN role", content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+            @ApiResponse(responseCode = "404", description = "User not found", content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    })
+    public ResponseEntity<java.util.Map<String, Object>> resetPassword(
+            @PathVariable Long id,
+            @Valid @RequestBody ResetPasswordRequest request
+    ) {
+        userService.resetPassword(id, request);
+        return ResponseEntity.ok(java.util.Map.of(
+                "message", "Đặt lại mật khẩu thành công",
+                "userId", id
+        ));
     }
 
     @DeleteMapping("/{id}")

@@ -1,6 +1,7 @@
 package com.example.svgmanager.service;
 
 import com.example.svgmanager.dto.request.CreateUserRequest;
+import com.example.svgmanager.dto.request.ResetPasswordRequest;
 import com.example.svgmanager.dto.request.UpdateUserRequest;
 import com.example.svgmanager.dto.request.UpdateUserRoleRequest;
 import com.example.svgmanager.dto.request.UpdateUserStatusRequest;
@@ -44,6 +45,8 @@ public interface UserService {
     UserResponse updateUserStatus(Long id, UpdateUserStatusRequest request);
 
     UserResponse updateUserRole(Long id, UpdateUserRoleRequest request);
+
+    void resetPassword(Long id, ResetPasswordRequest request);
 
     void deleteUser(Long id);
 

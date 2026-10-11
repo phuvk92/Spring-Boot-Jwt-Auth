@@ -8,7 +8,13 @@ public interface KeycloakUserService {
 
     String createUser(String username, String email, String password, Role role, boolean enabled, String fullName);
 
-    void updateUser(String keycloakUserId, String email, Boolean enabled);
+    default void updateUser(String keycloakUserId, String email, Boolean enabled) {
+        updateUser(keycloakUserId, email, enabled, null);
+    }
+
+    void updateUser(String keycloakUserId, String email, Boolean enabled, String fullName);
+
+    String findUserIdByUsername(String username);
 
     void deleteUser(String keycloakUserId);
 

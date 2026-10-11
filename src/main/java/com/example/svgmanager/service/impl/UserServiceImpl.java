@@ -5,6 +5,7 @@ import java.time.LocalDate;
 
 
 import com.example.svgmanager.dto.request.CreateUserRequest;
+import com.example.svgmanager.dto.request.ResetPasswordRequest;
 import com.example.svgmanager.dto.request.UpdateUserRequest;
 import com.example.svgmanager.dto.request.UpdateUserRoleRequest;
 import com.example.svgmanager.dto.request.UpdateUserStatusRequest;
@@ -312,14 +313,20 @@ public class UserServiceImpl implements UserService {
         User currentUser = currentUserService.getCurrentUser();
         User user = findScopedUserById(id);
 
-        if (userRepository.existsByEmailAndIdNot(request.getEmail(), id)) {
+        String normalizedEmail = request.getEmail().trim().toLowerCase();
+        if (userRepository.existsByEmailAndIdNot(normalizedEmail, id)) {
             throw new ConflictException("Email is already in use by another user: " + request.getEmail());
         }
 
         String oldEmail = user.getEmail();
-        user.setEmail(request.getEmail());
-        user.setFullName(request.getFullName());
-        user.setPhone(request.getPhone());
+        user.setEmail(normalizedEmail);
+
+        if (request.getFullName() != null) {
+            user.setFullName(request.getFullName().trim().isEmpty() ? null : request.getFullName().trim());
+        }
+        if (request.getPhone() != null) {
+            user.setPhone(request.getPhone().trim().isEmpty() ? null : request.getPhone().trim());
+        }
 
         if (request.getEnabled() != null) {
             user.setEnabled(request.getEnabled());
@@ -345,15 +352,23 @@ public class UserServiceImpl implements UserService {
             auditLogService.log(actorUsername, actorRole, auditAction, "User", user.getId(), details);
         }
 
+        Role oldRole = user.getRole();
         if (currentUserService.isAdmin()) {
-            if (request.getRole() != null) {
+            if (request.getRole() != null && request.getRole() != oldRole) {
                 user.setRole(request.getRole());
+                if (StringUtils.hasText(user.getKeycloakUserId())) {
+                    keycloakUserService.updateRole(user.getKeycloakUserId(), oldRole, request.getRole());
+                }
             }
             if (request.getAgentId() != null) {
-                User agent = userRepository.findById(request.getAgentId())
-                        .filter(u -> u.getRole() == Role.AGENT && !u.isDeleted())
-                        .orElseThrow(() -> new BadRequestException("Assigned agent not found with id: " + request.getAgentId()));
-                user.setAgent(agent);
+                if (request.getAgentId() > 0) {
+                    User agent = userRepository.findById(request.getAgentId())
+                            .filter(u -> u.getRole() == Role.AGENT && !u.isDeleted())
+                            .orElseThrow(() -> new BadRequestException("Assigned agent not found with id: " + request.getAgentId()));
+                    user.setAgent(agent);
+                } else {
+                    user.setAgent(null);
+                }
             }
             if (request.getDealerId() != null) {
                 if (request.getDealerId() > 0) {
@@ -381,7 +396,7 @@ public class UserServiceImpl implements UserService {
 
         // Sync updates to Keycloak
         if (StringUtils.hasText(user.getKeycloakUserId())) {
-            keycloakUserService.updateUser(user.getKeycloakUserId(), request.getEmail(), request.getEnabled());
+            keycloakUserService.updateUser(user.getKeycloakUserId(), normalizedEmail, request.getEnabled(), user.getFullName());
             if (StringUtils.hasText(request.getPassword())) {
                 keycloakUserService.resetPassword(user.getKeycloakUserId(), request.getPassword());
             }
@@ -389,9 +404,50 @@ public class UserServiceImpl implements UserService {
 
         User updatedUser = userRepository.save(user);
         log.info("[USER_UPDATED] User id={} ({}) updated successfully. Email changed: {} -> {}",
-                user.getId(), user.getUsername(), oldEmail, request.getEmail());
+                user.getId(), user.getUsername(), oldEmail, normalizedEmail);
 
         return userMapper.toUserResponse(updatedUser);
+    }
+
+    @Override
+    @Transactional
+    public void resetPassword(Long id, ResetPasswordRequest request) {
+        User currentUser = currentUserService.getCurrentUser();
+        if (!currentUserService.isAdmin()) {
+            throw new ForbiddenException("Chỉ ADMIN mới có quyền đặt lại mật khẩu cho người dùng");
+        }
+
+        User user = userRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found with id: " + id));
+
+        if (user.isDeleted()) {
+            throw new ResourceNotFoundException("User not found with id: " + id);
+        }
+
+        String keycloakUserId = user.getKeycloakUserId();
+        if (!StringUtils.hasText(keycloakUserId)) {
+            // Fallback self-heal attempt by username lookup in Keycloak
+            keycloakUserId = keycloakUserService.findUserIdByUsername(user.getUsername());
+            if (StringUtils.hasText(keycloakUserId)) {
+                user.setKeycloakUserId(keycloakUserId);
+                userRepository.save(user);
+            } else {
+                throw new BadRequestException("Tài khoản chưa được liên kết với hệ thống xác thực Keycloak");
+            }
+        }
+
+        keycloakUserService.resetPassword(keycloakUserId, request.getNewPassword());
+
+        if (auditLogService != null) {
+            String actorUsername = currentUser.getUsername();
+            String actorRole = currentUser.getRole() != null ? currentUser.getRole().name() : "ADMIN";
+            String details = String.format("targetUserId=%d, targetUsername='%s', operatorUserId=%d",
+                    user.getId(), user.getUsername(), currentUser.getId());
+            auditLogService.log(actorUsername, actorRole, "ADMIN_RESET_PASSWORD", "User", user.getId(), details);
+        }
+
+        log.info("[ADMIN_PASSWORD_RESET] Admin id={} ({}) reset password for user id={} ({}) successfully",
+                currentUser.getId(), currentUser.getUsername(), user.getId(), user.getUsername());
     }
 
     @Override

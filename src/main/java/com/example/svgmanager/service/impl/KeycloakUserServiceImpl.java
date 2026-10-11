@@ -167,6 +167,15 @@ public class KeycloakUserServiceImpl implements KeycloakUserService {
         }
     }
 
+    @Override
+    public String findUserIdByUsername(String username) {
+        if (!syncEnabled || !StringUtils.hasText(username)) {
+            return null;
+        }
+        String adminToken = getAdminToken();
+        return findUserIdByUsername(username, adminToken);
+    }
+
     private String findUserIdByUsername(String username, String adminToken) {
         String searchUrl = getBaseUrl() + "/admin/realms/" + realm + "/users?username=" + username + "&exact=true";
         try {
@@ -187,7 +196,7 @@ public class KeycloakUserServiceImpl implements KeycloakUserService {
     }
 
     @Override
-    public void updateUser(String keycloakUserId, String email, Boolean enabled) {
+    public void updateUser(String keycloakUserId, String email, Boolean enabled, String fullName) {
         if (!syncEnabled || !StringUtils.hasText(keycloakUserId)) {
             return;
         }
@@ -202,6 +211,11 @@ public class KeycloakUserServiceImpl implements KeycloakUserService {
         if (enabled != null) {
             updatePayload.put("enabled", enabled);
         }
+        if (StringUtils.hasText(fullName)) {
+            String[] parts = fullName.trim().split("\s+", 2);
+            updatePayload.put("firstName", parts[0]);
+            updatePayload.put("lastName", parts.length > 1 ? parts[1] : parts[0]);
+        }
 
         try {
             restClient.put()
@@ -212,8 +226,8 @@ public class KeycloakUserServiceImpl implements KeycloakUserService {
                     .retrieve()
                     .toBodilessEntity();
 
-            log.info("[KEYCLOAK_USER_UPDATED] Updated user in Keycloak: id={}, email='{}', enabled={}",
-                    keycloakUserId, email, enabled);
+            log.info("[KEYCLOAK_USER_UPDATED] Updated user in Keycloak: id={}, email='{}', enabled={}, fullName='{}'",
+                    keycloakUserId, email, enabled, fullName);
         } catch (Exception e) {
             log.error("Failed to update user in Keycloak: id={}, error={}", keycloakUserId, e.getMessage());
             throw new BadRequestException("Keycloak user update failed: " + e.getMessage());
