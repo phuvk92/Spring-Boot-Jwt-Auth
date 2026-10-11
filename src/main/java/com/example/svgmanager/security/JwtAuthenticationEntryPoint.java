@@ -1,6 +1,7 @@
 package com.example.svgmanager.security;
 
 import com.example.svgmanager.dto.response.ErrorResponse;
+import com.example.svgmanager.exception.ErrorCodes;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -9,6 +10,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.security.core.AuthenticationException;
+import org.springframework.security.oauth2.jwt.JwtValidationException;
 import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.stereotype.Component;
 
@@ -42,8 +44,22 @@ public class JwtAuthenticationEntryPoint implements AuthenticationEntryPoint {
                 .error(HttpStatus.UNAUTHORIZED.getReasonPhrase())
                 .message("Full authentication is required to access this resource: " + authException.getMessage())
                 .path(request.getRequestURI())
+                // PCU-6: token hết hạn thì gắn mã để app cắt biết chỉ cần refresh,
+                // các lỗi 401 khác (thiếu token, sai chữ ký) giữ nguyên không code.
+                .code(isExpiredToken(authException) ? ErrorCodes.TOKEN_EXPIRED : null)
                 .build();
 
         objectMapper.writeValue(response.getOutputStream(), errorResponse);
+    }
+
+    /** Resource server bọc lỗi validate JWT trong chuỗi cause — chỉ nhận diện đúng ca hết hạn. */
+    private static boolean isExpiredToken(AuthenticationException authException) {
+        for (Throwable t = authException; t != null; t = t.getCause()) {
+            if (t instanceof JwtValidationException jve) {
+                return jve.getErrors().stream()
+                        .anyMatch(e -> e.getDescription() != null && e.getDescription().contains("expired"));
+            }
+        }
+        return false;
     }
 }

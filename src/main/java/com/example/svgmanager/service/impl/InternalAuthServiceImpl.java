@@ -299,11 +299,12 @@ public class InternalAuthServiceImpl implements InternalAuthService {
                 tokenResponse = response.getBody();
             } else {
                 log.warn("[INTERNAL_REFRESH_TOKEN_FAILED] Keycloak returned status: {}{}", response.getStatusCode(), clientInfo);
-                throw new UnauthorizedException("Invalid or expired refresh token");
+                throw new UnauthorizedException("Invalid or expired refresh token", ErrorCodes.REFRESH_EXPIRED);
             }
         } catch (HttpClientErrorException e) {
+            // PCU-6: Keycloak từ chối grant refresh_token (hết hạn, đã thu hồi, reuse) = phiên chết hẳn
             log.warn("[INTERNAL_REFRESH_TOKEN_FAILED] Refresh token rejected by Keycloak: {}{}", e.getMessage(), clientInfo);
-            throw new UnauthorizedException("Invalid or expired refresh token");
+            throw new UnauthorizedException("Invalid or expired refresh token", ErrorCodes.REFRESH_EXPIRED);
         } catch (UnauthorizedException e) {
             throw e;
         } catch (Exception e) {

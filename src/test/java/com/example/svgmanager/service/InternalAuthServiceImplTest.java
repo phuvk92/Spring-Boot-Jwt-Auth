@@ -274,7 +274,9 @@ class InternalAuthServiceImplTest {
 
         assertThatThrownBy(() -> internalAuthService.refreshToken(request))
                 .isInstanceOf(UnauthorizedException.class)
-                .hasMessage("Invalid or expired refresh token");
+                .hasMessage("Invalid or expired refresh token")
+                .satisfies(e -> assertThat(((UnauthorizedException) e).getCode())
+                        .isEqualTo(ErrorCodes.REFRESH_EXPIRED));
     }
 
     @Test

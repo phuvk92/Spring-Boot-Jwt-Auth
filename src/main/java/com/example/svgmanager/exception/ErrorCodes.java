@@ -63,6 +63,11 @@ public final class ErrorCodes {
     /** Vượt quá tần suất gọi API cho phép (Rate Limit). */
     public static final String RATE_LIMIT_EXCEEDED = "RATE_LIMIT_EXCEEDED";
 
+    /** Access token Bearer đã hết hạn (exp quá) — app cắt chỉ cần refresh, không phải đăng nhập lại. */
+    public static final String TOKEN_EXPIRED = "TOKEN_EXPIRED";
+    /** Refresh token hết hạn hoặc bị thu hồi khi gọi /api/internal/auth/refresh — phiên chết hẳn. */
+    public static final String REFRESH_EXPIRED = "REFRESH_EXPIRED";
+
     private ErrorCodes() {
     }
 }
