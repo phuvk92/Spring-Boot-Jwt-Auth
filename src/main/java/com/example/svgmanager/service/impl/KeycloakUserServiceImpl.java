@@ -374,11 +374,21 @@ public class KeycloakUserServiceImpl implements KeycloakUserService {
         try {
             String adminToken = getAdminToken();
             String sessionUrl = getBaseUrl() + "/admin/realms/" + realm + "/sessions/" + sessionId;
-            restClient.delete()
-                    .uri(sessionUrl)
-                    .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken)
-                    .retrieve()
-                    .toBodilessEntity();
+            try {
+                restClient.delete()
+                        .uri(sessionUrl)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken)
+                        .retrieve()
+                        .toBodilessEntity();
+            } catch (HttpClientErrorException.NotFound e) {
+                // Offline session (F-01) không nằm trong danh sách session thường —
+                // thử lại với cờ isOffline (Keycloak >= 24)
+                restClient.delete()
+                        .uri(sessionUrl + "?isOffline=true")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken)
+                        .retrieve()
+                        .toBodilessEntity();
+            }
 
             log.info("[KEYCLOAK_SESSION_DELETED] Deleted Keycloak session: sid={}", sessionId);
         } catch (Exception e) {

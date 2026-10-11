@@ -25,13 +25,29 @@ public record InternalLoginRequest(
         @JsonAlias({"machineName", "machine_name", "tenMay", "ten_may"})
         String deviceLabel,
         @Schema(description = "Hệ điều hành (không bắt buộc)", example = "Windows")
-        String platform
+        String platform,
+
+        @Schema(description = "Ghi nhớ đăng nhập trên máy này — true → server xin offline token của Keycloak (F-01). Mặc định false = hành vi cũ", example = "true")
+        @JsonAlias({"remember_me", "ghiNho", "ghi_nho"})
+        Boolean rememberMe
 ) {
+    public InternalLoginRequest {
+        // Thiếu trường (client cũ chưa gửi) = không ghi nhớ — giữ nguyên hành vi cũ
+        if (rememberMe == null) {
+            rememberMe = Boolean.FALSE;
+        }
+    }
+
     public InternalLoginRequest(String username, String password) {
-        this(username, password, null, null, null, null);
+        this(username, password, null, null, null, null, null);
     }
 
     public InternalLoginRequest(String username, String password, String device, String ipAddress) {
-        this(username, password, device, ipAddress, null, null);
+        this(username, password, device, ipAddress, null, null, null);
+    }
+
+    public InternalLoginRequest(String username, String password, String device, String ipAddress,
+                                String deviceLabel, String platform) {
+        this(username, password, device, ipAddress, deviceLabel, platform, null);
     }
 }

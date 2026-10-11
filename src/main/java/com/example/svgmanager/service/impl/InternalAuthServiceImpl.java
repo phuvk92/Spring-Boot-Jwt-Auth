@@ -60,6 +60,7 @@ public class InternalAuthServiceImpl implements InternalAuthService {
     private final RestClient restClient;
     private final String tokenUri;
     private final String logoutUri;
+    private final String revokeUri;
     private final String clientId;
 
     @Autowired
@@ -84,6 +85,8 @@ public class InternalAuthServiceImpl implements InternalAuthService {
         this.logoutUri = (logoutUri != null && !logoutUri.isBlank())
                 ? logoutUri
                 : tokenUri.replaceFirst("/token$", "/logout");
+        // F-01: logout endpoint không chắc xoá offline session — thu hồi refresh token qua RFC 7009 revocation
+        this.revokeUri = tokenUri.replaceFirst("/token$", "/revoke");
         this.clientId = clientId;
         this.restClient = RestClient.builder().build();
     }
@@ -111,6 +114,7 @@ public class InternalAuthServiceImpl implements InternalAuthService {
         this.logoutUri = (logoutUri != null && !logoutUri.isBlank())
                 ? logoutUri
                 : tokenUri.replaceFirst("/token$", "/logout");
+        this.revokeUri = tokenUri.replaceFirst("/token$", "/revoke");
         this.clientId = clientId;
     }
 
@@ -173,6 +177,10 @@ public class InternalAuthServiceImpl implements InternalAuthService {
             form.add("client_id", clientId);
             form.add("username", keycloakUser);
             form.add("password", request.password());
+            // F-01: thợ chọn ghi nhớ → xin offline token (sống theo Offline Session Idle/Max, không phải 10 giờ như refresh thường)
+            if (Boolean.TRUE.equals(request.rememberMe())) {
+                form.add("scope", "offline_access");
+            }
 
             ResponseEntity<Map> response = restClient.post()
                     .uri(tokenUri)
@@ -228,8 +236,11 @@ public class InternalAuthServiceImpl implements InternalAuthService {
         String refreshToken = (String) tokenResponse.get("refresh_token");
         String tokenType = tokenResponse.containsKey("token_type") ? (String) tokenResponse.get("token_type") : "Bearer";
         Long expiresIn = tokenResponse.containsKey("expires_in") ? ((Number) tokenResponse.get("expires_in")).longValue() : 3600L;
+        Long refreshExpiresIn = refreshExpiresIn(tokenResponse);
 
         // 4b. F-57: gắn phiên vào máy. Đủ số máy → huỷ ngay phiên Keycloak vừa tạo rồi báo SESSION_LIMIT
+        // F-01: với grant offline_access, sid của access/refresh token chính là mã offline session —
+        //       lưu sid này thì verifyOnRefresh vẫn khớp, không cần khoá riêng
         if (userDeviceService.isEnforced()) {
             String sessionId = TokenClaims.sessionId(accessToken);
             if (sessionId == null) {
@@ -254,7 +265,7 @@ public class InternalAuthServiceImpl implements InternalAuthService {
         log.info("[INTERNAL_LOGIN_SUCCESS] User '{}' (email='{}', id={}, dealerId={}) successfully logged in via Client app{}",
                 user.getUsername(), user.getEmail(), user.getId(), dealerId, clientInfo);
 
-        return new InternalLoginResponse(accessToken, refreshToken, tokenType, expiresIn, userResponse);
+        return new InternalLoginResponse(accessToken, refreshToken, tokenType, expiresIn, refreshExpiresIn, userResponse);
     }
 
     @Override
@@ -316,6 +327,7 @@ public class InternalAuthServiceImpl implements InternalAuthService {
         String newRefreshToken = (String) tokenResponse.getOrDefault("refresh_token", request.refreshToken());
         String tokenType = tokenResponse.containsKey("token_type") ? (String) tokenResponse.get("token_type") : "Bearer";
         Long expiresIn = tokenResponse.containsKey("expires_in") ? ((Number) tokenResponse.get("expires_in")).longValue() : 3600L;
+        Long refreshExpiresIn = refreshExpiresIn(tokenResponse);
 
         // Extract user from access token payload
         User user = extractAndValidateUser(accessToken);
@@ -340,7 +352,7 @@ public class InternalAuthServiceImpl implements InternalAuthService {
         log.info("[INTERNAL_REFRESH_TOKEN_SUCCESS] Token refreshed for user '{}' (id={}, dealerId={}){}",
                 user.getUsername(), user.getId(), dealerId, clientInfo);
 
-        return new InternalLoginResponse(accessToken, newRefreshToken, tokenType, expiresIn, userResponse);
+        return new InternalLoginResponse(accessToken, newRefreshToken, tokenType, expiresIn, refreshExpiresIn, userResponse);
     }
 
     @Override
@@ -374,26 +386,28 @@ public class InternalAuthServiceImpl implements InternalAuthService {
                 .orElseGet(() -> TokenClaims.sessionId(refreshToken));
         userDeviceService.releaseSession(sessionId);
 
-        // 2. Revoke refresh token via Keycloak logout endpoint
+        // 2. Thu hồi refresh token qua revocation endpoint (RFC 7009) — logout endpoint của Keycloak
+        //    không chắc xoá offline session, còn revoke thì gỡ được cả offline token (F-01)
         if (refreshToken != null && !refreshToken.isBlank()) {
             try {
                 MultiValueMap<String, String> form = new LinkedMultiValueMap<>();
                 form.add("client_id", clientId);
-                form.add("refresh_token", refreshToken);
+                form.add("token", refreshToken);
+                form.add("token_type_hint", "refresh_token");
 
                 ResponseEntity<Void> response = restClient.post()
-                        .uri(logoutUri)
+                        .uri(revokeUri)
                         .contentType(MediaType.APPLICATION_FORM_URLENCODED)
                         .body(form)
                         .retrieve()
                         .toBodilessEntity();
 
-                log.info("[INTERNAL_LOGOUT_KEYCLOAK] Keycloak logout endpoint responded with status {}{}", response.getStatusCode(), clientInfo);
+                log.info("[INTERNAL_LOGOUT_KEYCLOAK] Keycloak revoke endpoint responded with status {}{}", response.getStatusCode(), clientInfo);
             } catch (HttpClientErrorException e) {
                 // Keycloak returns 400 if token was already expired or revoked; logout is still successfully acknowledged
                 log.warn("[INTERNAL_LOGOUT_KEYCLOAK] Keycloak token already invalid or expired during logout: {}{}", e.getMessage(), clientInfo);
             } catch (Exception e) {
-                log.error("[INTERNAL_LOGOUT_ERROR] Error during Keycloak logout call: {}{}", e.getMessage(), clientInfo);
+                log.error("[INTERNAL_LOGOUT_ERROR] Error during Keycloak revoke call: {}{}", e.getMessage(), clientInfo);
             }
 
             // If username wasn't resolved from Bearer token, attempt extraction from refresh token payload for audit
@@ -494,6 +508,18 @@ public class InternalAuthServiceImpl implements InternalAuthService {
         // 4. Update password via Keycloak admin service
         keycloakUserService.resetPassword(keycloakUserId, request.newPassword());
 
+        // 4b. F-01: mật khẩu đã lộ → thu hồi mọi phiên khác của user (kể cả offline token trên máy ghi nhớ).
+        //     Phiên đang đổi mật khẩu giữ lại để thợ không bị đá ra giữa chừng.
+        try {
+            String currentSid = currentUserService.getCurrentJwt()
+                    .map(jwt -> jwt.getClaimAsString("sid"))
+                    .orElse(null);
+            userDeviceService.revokeOtherSessions(currentUser, currentSid);
+        } catch (Exception e) {
+            // Best-effort: đổi mật khẩu đã xong, phiên còn sót sẽ tự hết hạn theo hạn Keycloak
+            log.error("[INTERNAL_CHANGE_PASSWORD_ERROR] Could not revoke other sessions for user '{}': {}{}", username, e.getMessage(), clientInfo);
+        }
+
         // 5. Audit log
         auditLogService.log(
                 username,
@@ -555,6 +581,12 @@ public class InternalAuthServiceImpl implements InternalAuthService {
         return user;
     }
 
+    /** {@code refresh_expires_in} của Keycloak: hạn tuyệt đối của refresh token; 0/thiếu = không hạn tuyệt đối (offline token). */
+    private static Long refreshExpiresIn(Map<String, Object> tokenResponse) {
+        Object v = tokenResponse.get("refresh_expires_in");
+        return (v instanceof Number) ? ((Number) v).longValue() : 0L;
+    }
+
     /** Chấm dứt phiên Keycloak bằng refresh token — lỗi chỉ ghi log (phiên sẽ tự hết hạn). */
     private void keycloakLogoutQuietly(String refreshToken, String clientInfo) {
         if (!StringUtils.hasText(refreshToken)) {
@@ -563,15 +595,16 @@ public class InternalAuthServiceImpl implements InternalAuthService {
         try {
             MultiValueMap<String, String> form = new LinkedMultiValueMap<>();
             form.add("client_id", clientId);
-            form.add("refresh_token", refreshToken);
+            form.add("token", refreshToken);
+            form.add("token_type_hint", "refresh_token");
             restClient.post()
-                    .uri(logoutUri)
+                    .uri(revokeUri)
                     .contentType(MediaType.APPLICATION_FORM_URLENCODED)
                     .body(form)
                     .retrieve()
                     .toBodilessEntity();
         } catch (Exception e) {
-            log.warn("[INTERNAL_LOGOUT_KEYCLOAK] Could not end Keycloak session: {}{}", e.getMessage(), clientInfo);
+            log.warn("[INTERNAL_LOGOUT_KEYCLOAK] Could not revoke Keycloak session: {}{}", e.getMessage(), clientInfo);
         }
     }
 
