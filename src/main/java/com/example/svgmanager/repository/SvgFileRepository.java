@@ -10,6 +10,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -41,6 +42,8 @@ public interface SvgFileRepository extends JpaRepository<SvgFile, Long>, JpaSpec
     long countByPartLibraryCategory_Id(Long categoryId);
 
     boolean existsByPartLibraryCategory_Id(Long categoryId);
+
+    List<SvgFile> findByStatusAndPartLibraryCategory_IdIn(String status, Collection<Long> categoryIds);
 
     /**
      * File cho app thợ (SA-DanhMucXe-v2 §3.3): ACTIVE + đúng danh mục + gắn vào một trong

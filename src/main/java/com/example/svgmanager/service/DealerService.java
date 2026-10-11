@@ -2,6 +2,7 @@ package com.example.svgmanager.service;
 
 import com.example.svgmanager.dto.request.CreateDealerRequest;
 import com.example.svgmanager.dto.request.UpdateDealerRequest;
+import com.example.svgmanager.dto.response.DealerPackageResponse;
 import com.example.svgmanager.dto.response.DealerResponse;
 import com.example.svgmanager.dto.response.DealerStatsResponse;
 import com.example.svgmanager.dto.response.PageResponse;
@@ -27,4 +28,8 @@ public interface DealerService {
     DealerResponse updateStatus(Long id, String status);
 
     String generateUniqueCode();
+
+    DealerPackageResponse getDealerPackage(Long id);
+
+    DealerPackageResponse getMyDealerPackage();
 }

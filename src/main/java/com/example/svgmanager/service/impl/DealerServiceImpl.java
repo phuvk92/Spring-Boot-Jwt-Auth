@@ -2,13 +2,18 @@ package com.example.svgmanager.service.impl;
 
 import com.example.svgmanager.dto.request.CreateDealerRequest;
 import com.example.svgmanager.dto.request.UpdateDealerRequest;
+import com.example.svgmanager.dto.response.DealerPackageResponse;
 import com.example.svgmanager.dto.response.DealerResponse;
 import com.example.svgmanager.dto.response.DealerStatsResponse;
 import com.example.svgmanager.dto.response.PageResponse;
 import com.example.svgmanager.entity.Dealer;
+import com.example.svgmanager.entity.DealerPackageHistory;
+import com.example.svgmanager.entity.User;
 import com.example.svgmanager.exception.BadRequestException;
 import com.example.svgmanager.exception.ConflictException;
+import com.example.svgmanager.exception.ForbiddenException;
 import com.example.svgmanager.exception.ResourceNotFoundException;
+import com.example.svgmanager.repository.DealerPackageHistoryRepository;
 import com.example.svgmanager.repository.DealerRepository;
 import com.example.svgmanager.security.CurrentUserService;
 import com.example.svgmanager.service.DealerService;
@@ -28,6 +33,7 @@ import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
 @Service
@@ -38,10 +44,14 @@ public class DealerServiceImpl implements DealerService {
     private static final SecureRandom RANDOM = new SecureRandom();
 
     private final DealerRepository dealerRepository;
+    private final DealerPackageHistoryRepository dealerPackageHistoryRepository;
     private final CurrentUserService currentUserService;
 
-    public DealerServiceImpl(DealerRepository dealerRepository, CurrentUserService currentUserService) {
+    public DealerServiceImpl(DealerRepository dealerRepository,
+                             DealerPackageHistoryRepository dealerPackageHistoryRepository,
+                             CurrentUserService currentUserService) {
         this.dealerRepository = dealerRepository;
+        this.dealerPackageHistoryRepository = dealerPackageHistoryRepository;
         this.currentUserService = currentUserService;
     }
 
@@ -143,6 +153,14 @@ public class DealerServiceImpl implements DealerService {
             code = generateUniqueCode();
         }
 
+        int maxAccounts = request.getMaxAccounts() != null ? request.getMaxAccounts() : 10;
+        int totalAllocatedDays = request.getTotalAllocatedDays() != null ? request.getTotalAllocatedDays() : 3600;
+        LocalDate startDate = request.getPackageStartDate() != null ? request.getPackageStartDate() : LocalDate.now();
+        LocalDate expiryDate = request.getPackageExpiryDate() != null ? request.getPackageExpiryDate() : startDate.plusDays(360);
+        String pkgStatus = (request.getPackageStatus() != null && !request.getPackageStatus().isBlank())
+                ? request.getPackageStatus().trim().toUpperCase()
+                : "ACTIVE";
+
         Dealer dealer = Dealer.builder()
                 .code(code)
                 .name(request.getName().trim())
@@ -151,19 +169,39 @@ public class DealerServiceImpl implements DealerService {
                 .phone(request.getPhone() != null ? request.getPhone().trim() : null)
                 .email(request.getEmail() != null ? request.getEmail().trim() : null)
                 .contactPerson(request.getContactPerson() != null ? request.getContactPerson().trim() : null)
-                .plan(request.getPlan() != null && !request.getPlan().isBlank() ? request.getPlan().trim() : "Cơ bản")
-                .dueDate(request.getDueDate() != null ? request.getDueDate().trim() : null)
+                .plan("Cơ bản")
+                .dueDate(null)
                 .status(request.getStatus() != null && !request.getStatus().isBlank() ? request.getStatus().trim().toUpperCase() : "ACTIVE")
                 .notes(request.getNotes() != null ? request.getNotes().trim() : null)
                 .deleted(false)
+                .maxAccounts(maxAccounts)
+                .totalAllocatedDays(totalAllocatedDays)
+                .usedAllocatedDays(0)
+                .packageStartDate(startDate)
+                .packageExpiryDate(expiryDate)
+                .packageStatus(pkgStatus)
                 .build();
 
         Dealer saved = dealerRepository.save(dealer);
         String actor = currentUserService.getCurrentJwt()
                 .map(j -> j.getClaimAsString("preferred_username"))
                 .orElse("system");
-        log.info("[DEALER_CREATED] Dealer created: id={}, code='{}', name='{}', actor='{}'",
-                saved.getId(), saved.getCode(), saved.getName(), actor);
+
+        dealerPackageHistoryRepository.save(DealerPackageHistory.builder()
+                .dealer(saved)
+                .action("GRANT_PACKAGE")
+                .previousMaxAccounts(0)
+                .newMaxAccounts(maxAccounts)
+                .previousTotalDays(0)
+                .newTotalDays(totalAllocatedDays)
+                .usedDays(0)
+                .changeDays(totalAllocatedDays)
+                .notes("Khởi tạo gói đại lý mới: " + maxAccounts + " accounts, " + totalAllocatedDays + " ngày")
+                .createdBy(actor)
+                .build());
+
+        log.info("[DEALER_CREATED] Dealer created: id={}, code='{}', name='{}', maxAccounts={}, totalDays={}, actor='{}'",
+                saved.getId(), saved.getCode(), saved.getName(), maxAccounts, totalAllocatedDays, actor);
 
         return mapToResponse(saved);
     }
@@ -171,7 +209,7 @@ public class DealerServiceImpl implements DealerService {
     @Override
     @Transactional
     public DealerResponse updateDealer(Long id, UpdateDealerRequest request) {
-        Dealer dealer = dealerRepository.findByIdAndDeletedFalse(id)
+        Dealer dealer = dealerRepository.findByIdForUpdate(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Đại lý không tồn tại với ID: " + id));
 
         String code = request.getCode().trim().toUpperCase();
@@ -186,21 +224,79 @@ public class DealerServiceImpl implements DealerService {
         dealer.setPhone(request.getPhone() != null ? request.getPhone().trim() : null);
         dealer.setEmail(request.getEmail() != null ? request.getEmail().trim() : null);
         dealer.setContactPerson(request.getContactPerson() != null ? request.getContactPerson().trim() : null);
-        if (request.getPlan() != null && !request.getPlan().isBlank()) {
-            dealer.setPlan(request.getPlan().trim());
-        }
-        dealer.setDueDate(request.getDueDate() != null ? request.getDueDate().trim() : null);
         if (request.getStatus() != null && !request.getStatus().isBlank()) {
             dealer.setStatus(request.getStatus().trim().toUpperCase());
         }
         dealer.setNotes(request.getNotes() != null ? request.getNotes().trim() : null);
 
+        // --- Cập nhật gói account và kiểm tra giới hạn đang sử dụng ---
+        long currentCreatedAccounts = dealerRepository.countActiveUserAccountsByDealerId(id);
+        int currentUsedDays = dealer.getUsedAllocatedDays() != null ? dealer.getUsedAllocatedDays() : 0;
+        int prevMaxAccounts = dealer.getMaxAccounts();
+        int prevTotalDays = dealer.getTotalAllocatedDays();
+        boolean packageChanged = false;
+
+        if (request.getMaxAccounts() != null) {
+            if (request.getMaxAccounts() < currentCreatedAccounts) {
+                throw new BadRequestException(String.format(
+                        "Không thể giảm số lượng account tối đa xuống %d vì đại lý đã tạo %d account",
+                        request.getMaxAccounts(), currentCreatedAccounts
+                ));
+            }
+            if (!Objects.equals(dealer.getMaxAccounts(), request.getMaxAccounts())) {
+                dealer.setMaxAccounts(request.getMaxAccounts());
+                packageChanged = true;
+            }
+        }
+
+        if (request.getTotalAllocatedDays() != null) {
+            if (request.getTotalAllocatedDays() < currentUsedDays) {
+                throw new BadRequestException(String.format(
+                        "Không thể giảm tổng quỹ ngày xuống %d ngày vì đại lý đã phân bổ %d ngày",
+                        request.getTotalAllocatedDays(), currentUsedDays
+                ));
+            }
+            if (!Objects.equals(dealer.getTotalAllocatedDays(), request.getTotalAllocatedDays())) {
+                dealer.setTotalAllocatedDays(request.getTotalAllocatedDays());
+                packageChanged = true;
+            }
+        }
+
+        if (request.getPackageStartDate() != null) {
+            dealer.setPackageStartDate(request.getPackageStartDate());
+            packageChanged = true;
+        }
+        if (request.getPackageExpiryDate() != null) {
+            dealer.setPackageExpiryDate(request.getPackageExpiryDate());
+            packageChanged = true;
+        }
+        if (request.getPackageStatus() != null && !request.getPackageStatus().isBlank()) {
+            dealer.setPackageStatus(request.getPackageStatus().trim().toUpperCase());
+            packageChanged = true;
+        }
+
         Dealer updated = dealerRepository.save(dealer);
         String actor = currentUserService.getCurrentJwt()
                 .map(j -> j.getClaimAsString("preferred_username"))
                 .orElse("system");
-        log.info("[DEALER_UPDATED] Dealer updated: id={}, code='{}', name='{}', actor='{}'",
-                updated.getId(), updated.getCode(), updated.getName(), actor);
+
+        if (packageChanged) {
+            dealerPackageHistoryRepository.save(DealerPackageHistory.builder()
+                    .dealer(updated)
+                    .action("UPDATE_PACKAGE")
+                    .previousMaxAccounts(prevMaxAccounts)
+                    .newMaxAccounts(updated.getMaxAccounts())
+                    .previousTotalDays(prevTotalDays)
+                    .newTotalDays(updated.getTotalAllocatedDays())
+                    .usedDays(currentUsedDays)
+                    .changeDays(updated.getTotalAllocatedDays() - prevTotalDays)
+                    .notes("Cập nhật thông tin gói đại lý")
+                    .createdBy(actor)
+                    .build());
+        }
+
+        log.info("[DEALER_UPDATED] Dealer updated: id={}, code='{}', name='{}', maxAccounts={}, totalDays={}, actor='{}'",
+                updated.getId(), updated.getCode(), updated.getName(), updated.getMaxAccounts(), updated.getTotalAllocatedDays(), actor);
 
         return mapToResponse(updated);
     }
@@ -253,9 +349,53 @@ public class DealerServiceImpl implements DealerService {
         return mapToResponse(saved);
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public DealerPackageResponse getDealerPackage(Long id) {
+        Dealer dealer = dealerRepository.findByIdAndDeletedFalse(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Đại lý không tồn tại với ID: " + id));
+
+        if (!currentUserService.isAdmin()) {
+            User currentUser = currentUserService.getCurrentUser();
+            if (currentUser.getDealer() == null || !currentUser.getDealer().getId().equals(id)) {
+                throw new ForbiddenException("Không có quyền xem thông tin gói của đại lý khác");
+            }
+        }
+
+        long activeAccounts = dealerRepository.countActiveUserAccountsByDealerId(dealer.getId());
+        return DealerPackageResponse.builder()
+                .dealerId(dealer.getId())
+                .dealerCode(dealer.getCode())
+                .dealerName(dealer.getName())
+                .maxAccounts(dealer.getMaxAccounts())
+                .createdAccounts((int) activeAccounts)
+                .remainingAccounts(Math.max(0, dealer.getMaxAccounts() - (int) activeAccounts))
+                .totalAllocatedDays(dealer.getTotalAllocatedDays())
+                .usedAllocatedDays(dealer.getUsedAllocatedDays())
+                .remainingAllocatedDays(dealer.getRemainingAllocatedDays())
+                .packageStartDate(dealer.getPackageStartDate())
+                .packageExpiryDate(dealer.getPackageExpiryDate())
+                .packageStatus(dealer.getPackageStatus())
+                .packageExpired(dealer.isPackageExpired())
+                .packageActive(dealer.isPackageActive())
+                .build();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public DealerPackageResponse getMyDealerPackage() {
+        User currentUser = currentUserService.getCurrentUser();
+        Dealer dealer = currentUser.getDealer();
+        if (dealer == null) {
+            throw new BadRequestException("Tài khoản của bạn chưa được liên kết với đại lý nào");
+        }
+        return getDealerPackage(dealer.getId());
+    }
+
     private DealerResponse mapToResponse(Dealer dealer) {
         long usersCount = dealerRepository.countUsersByDealerId(dealer.getId());
-        return new DealerResponse(
+        long activeAccounts = dealerRepository.countActiveUserAccountsByDealerId(dealer.getId());
+        DealerResponse res = new DealerResponse(
                 dealer.getId(),
                 dealer.getCode(),
                 dealer.getName(),
@@ -272,5 +412,16 @@ public class DealerServiceImpl implements DealerService {
                 dealer.getCreatedAt(),
                 dealer.getUpdatedAt()
         );
+        res.setMaxAccounts(dealer.getMaxAccounts());
+        res.setCreatedAccounts((int) activeAccounts);
+        res.setRemainingAccounts(Math.max(0, dealer.getMaxAccounts() - (int) activeAccounts));
+        res.setTotalAllocatedDays(dealer.getTotalAllocatedDays());
+        res.setUsedAllocatedDays(dealer.getUsedAllocatedDays());
+        res.setRemainingAllocatedDays(dealer.getRemainingAllocatedDays());
+        res.setPackageStartDate(dealer.getPackageStartDate());
+        res.setPackageExpiryDate(dealer.getPackageExpiryDate());
+        res.setPackageStatus(dealer.getPackageStatus());
+        res.setPackageExpired(dealer.isPackageExpired());
+        return res;
     }
 }

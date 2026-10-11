@@ -5,6 +5,7 @@ import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -15,7 +16,9 @@ import java.util.List;
         @Index(name = "idx_dealers_name", columnList = "name"),
         @Index(name = "idx_dealers_region", columnList = "region"),
         @Index(name = "idx_dealers_status", columnList = "status"),
-        @Index(name = "idx_dealers_deleted", columnList = "deleted")
+        @Index(name = "idx_dealers_deleted", columnList = "deleted"),
+        @Index(name = "idx_dealers_pkg_status", columnList = "package_status"),
+        @Index(name = "idx_dealers_pkg_expiry", columnList = "package_expiry_date")
 })
 @EntityListeners(AuditingEntityListener.class)
 public class Dealer {
@@ -60,6 +63,25 @@ public class Dealer {
     @Column(nullable = false)
     private boolean deleted = false;
 
+    // --- Thông tin gói account của đại lý ---
+    @Column(name = "max_accounts", nullable = false)
+    private Integer maxAccounts = 10;
+
+    @Column(name = "total_allocated_days", nullable = false)
+    private Integer totalAllocatedDays = 3600;
+
+    @Column(name = "used_allocated_days", nullable = false)
+    private Integer usedAllocatedDays = 0;
+
+    @Column(name = "package_start_date")
+    private LocalDate packageStartDate;
+
+    @Column(name = "package_expiry_date")
+    private LocalDate packageExpiryDate;
+
+    @Column(name = "package_status", nullable = false, length = 50)
+    private String packageStatus = "ACTIVE";
+
     @OneToMany(mappedBy = "dealer", fetch = FetchType.LAZY)
     private List<User> users = new ArrayList<>();
 
@@ -76,7 +98,9 @@ public class Dealer {
 
     public Dealer(Long id, String code, String name, String region, String address, String phone,
                   String email, String contactPerson, String plan, String dueDate, String status,
-                  String notes, boolean deleted, List<User> users, LocalDateTime createdAt, LocalDateTime updatedAt) {
+                  String notes, boolean deleted, Integer maxAccounts, Integer totalAllocatedDays,
+                  Integer usedAllocatedDays, LocalDate packageStartDate, LocalDate packageExpiryDate,
+                  String packageStatus, List<User> users, LocalDateTime createdAt, LocalDateTime updatedAt) {
         this.id = id;
         this.code = code;
         this.name = name;
@@ -90,6 +114,12 @@ public class Dealer {
         this.status = status != null ? status : "ACTIVE";
         this.notes = notes;
         this.deleted = deleted;
+        this.maxAccounts = maxAccounts != null ? maxAccounts : 10;
+        this.totalAllocatedDays = totalAllocatedDays != null ? totalAllocatedDays : 3600;
+        this.usedAllocatedDays = usedAllocatedDays != null ? usedAllocatedDays : 0;
+        this.packageStartDate = packageStartDate;
+        this.packageExpiryDate = packageExpiryDate;
+        this.packageStatus = packageStatus != null ? packageStatus : "ACTIVE";
         this.users = users != null ? users : new ArrayList<>();
         this.createdAt = createdAt;
         this.updatedAt = updatedAt;
@@ -97,6 +127,20 @@ public class Dealer {
 
     public static Builder builder() {
         return new Builder();
+    }
+
+    public Integer getRemainingAllocatedDays() {
+        int total = totalAllocatedDays != null ? totalAllocatedDays : 0;
+        int used = usedAllocatedDays != null ? usedAllocatedDays : 0;
+        return Math.max(0, total - used);
+    }
+
+    public boolean isPackageExpired() {
+        return packageExpiryDate != null && LocalDate.now().isAfter(packageExpiryDate);
+    }
+
+    public boolean isPackageActive() {
+        return "ACTIVE".equalsIgnoreCase(packageStatus) && !isPackageExpired() && !deleted;
     }
 
     public static class Builder {
@@ -113,6 +157,12 @@ public class Dealer {
         private String status = "ACTIVE";
         private String notes;
         private boolean deleted = false;
+        private Integer maxAccounts = 10;
+        private Integer totalAllocatedDays = 3600;
+        private Integer usedAllocatedDays = 0;
+        private LocalDate packageStartDate;
+        private LocalDate packageExpiryDate;
+        private String packageStatus = "ACTIVE";
         private List<User> users = new ArrayList<>();
         private LocalDateTime createdAt;
         private LocalDateTime updatedAt;
@@ -182,6 +232,36 @@ public class Dealer {
             return this;
         }
 
+        public Builder maxAccounts(Integer maxAccounts) {
+            this.maxAccounts = maxAccounts;
+            return this;
+        }
+
+        public Builder totalAllocatedDays(Integer totalAllocatedDays) {
+            this.totalAllocatedDays = totalAllocatedDays;
+            return this;
+        }
+
+        public Builder usedAllocatedDays(Integer usedAllocatedDays) {
+            this.usedAllocatedDays = usedAllocatedDays;
+            return this;
+        }
+
+        public Builder packageStartDate(LocalDate packageStartDate) {
+            this.packageStartDate = packageStartDate;
+            return this;
+        }
+
+        public Builder packageExpiryDate(LocalDate packageExpiryDate) {
+            this.packageExpiryDate = packageExpiryDate;
+            return this;
+        }
+
+        public Builder packageStatus(String packageStatus) {
+            this.packageStatus = packageStatus;
+            return this;
+        }
+
         public Builder users(List<User> users) {
             this.users = users;
             return this;
@@ -198,7 +278,10 @@ public class Dealer {
         }
 
         public Dealer build() {
-            return new Dealer(id, code, name, region, address, phone, email, contactPerson, plan, dueDate, status, notes, deleted, users, createdAt, updatedAt);
+            return new Dealer(id, code, name, region, address, phone, email, contactPerson,
+                    plan, dueDate, status, notes, deleted, maxAccounts, totalAllocatedDays,
+                    usedAllocatedDays, packageStartDate, packageExpiryDate, packageStatus,
+                    users, createdAt, updatedAt);
         }
     }
 
@@ -304,6 +387,54 @@ public class Dealer {
 
     public void setDeleted(boolean deleted) {
         this.deleted = deleted;
+    }
+
+    public Integer getMaxAccounts() {
+        return maxAccounts;
+    }
+
+    public void setMaxAccounts(Integer maxAccounts) {
+        this.maxAccounts = maxAccounts;
+    }
+
+    public Integer getTotalAllocatedDays() {
+        return totalAllocatedDays;
+    }
+
+    public void setTotalAllocatedDays(Integer totalAllocatedDays) {
+        this.totalAllocatedDays = totalAllocatedDays;
+    }
+
+    public Integer getUsedAllocatedDays() {
+        return usedAllocatedDays;
+    }
+
+    public void setUsedAllocatedDays(Integer usedAllocatedDays) {
+        this.usedAllocatedDays = usedAllocatedDays;
+    }
+
+    public LocalDate getPackageStartDate() {
+        return packageStartDate;
+    }
+
+    public void setPackageStartDate(LocalDate packageStartDate) {
+        this.packageStartDate = packageStartDate;
+    }
+
+    public LocalDate getPackageExpiryDate() {
+        return packageExpiryDate;
+    }
+
+    public void setPackageExpiryDate(LocalDate packageExpiryDate) {
+        this.packageExpiryDate = packageExpiryDate;
+    }
+
+    public String getPackageStatus() {
+        return packageStatus;
+    }
+
+    public void setPackageStatus(String packageStatus) {
+        this.packageStatus = packageStatus;
     }
 
     public List<User> getUsers() {

@@ -2,6 +2,7 @@ package com.example.svgmanager.controller;
 
 import com.example.svgmanager.dto.request.CreateDealerRequest;
 import com.example.svgmanager.dto.request.UpdateDealerRequest;
+import com.example.svgmanager.dto.response.DealerPackageResponse;
 import com.example.svgmanager.dto.response.DealerResponse;
 import com.example.svgmanager.dto.response.DealerStatsResponse;
 import com.example.svgmanager.dto.response.PageResponse;
@@ -63,6 +64,20 @@ public class DealerController {
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Map<String, String>> generateCode() {
         return ResponseEntity.ok(Map.of("code", dealerService.generateUniqueCode()));
+    }
+
+    @GetMapping("/my-package")
+    @Operation(summary = "Lấy thông tin gói tài khoản và quỹ ngày của đại lý hiện tại (cho Agent)")
+    @PreAuthorize("hasRole('ADMIN') or hasRole('AGENT')")
+    public ResponseEntity<DealerPackageResponse> getMyDealerPackage() {
+        return ResponseEntity.ok(dealerService.getMyDealerPackage());
+    }
+
+    @GetMapping("/{id}/package")
+    @Operation(summary = "Lấy thông tin gói tài khoản và quỹ ngày của đại lý theo ID")
+    @PreAuthorize("hasRole('ADMIN') or hasRole('AGENT')")
+    public ResponseEntity<DealerPackageResponse> getDealerPackage(@PathVariable Long id) {
+        return ResponseEntity.ok(dealerService.getDealerPackage(id));
     }
 
     @GetMapping("/{id}")

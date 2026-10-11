@@ -1,8 +1,12 @@
 package com.example.svgmanager.dto.request;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
 import io.swagger.v3.oas.annotations.media.Schema;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
+
+import java.time.LocalDate;
 
 public class UpdateDealerRequest {
 
@@ -36,20 +40,32 @@ public class UpdateDealerRequest {
     @Size(max = 100, message = "Người đại diện tối đa 100 ký tự")
     private String contactPerson;
 
-    @Schema(description = "Gói cước (Cơ bản, Chuyên nghiệp, Chuỗi, Enterprise)", example = "Chuỗi")
-    @Size(max = 50, message = "Gói cước tối đa 50 ký tự")
-    private String plan = "Cơ bản";
-
-    @Schema(description = "Hạn dùng / Ngày hết hạn", example = "12/2026")
-    @Size(max = 50, message = "Hạn dùng tối đa 50 ký tự")
-    private String dueDate;
-
     @Schema(description = "Trạng thái (ACTIVE, EXPIRING, LOCKED)", example = "ACTIVE")
     @Size(max = 50, message = "Trạng thái tối đa 50 ký tự")
     private String status = "ACTIVE";
 
     @Schema(description = "Ghi chú nội bộ")
     private String notes;
+
+    // --- Cấu hình gói account đại lý ---
+    @Schema(description = "Số lượng account tối đa", example = "10")
+    @Min(value = 1, message = "Số lượng account tối đa phải từ 1 trở lên")
+    private Integer maxAccounts;
+
+    @Schema(description = "Tổng quỹ ngày sử dụng", example = "3600")
+    @Min(value = 1, message = "Tổng quỹ ngày sử dụng phải lớn hơn 0")
+    private Integer totalAllocatedDays;
+
+    @Schema(description = "Ngày bắt đầu gói (yyyy-MM-dd)", example = "2026-01-01")
+    @JsonFormat(pattern = "yyyy-MM-dd")
+    private LocalDate packageStartDate;
+
+    @Schema(description = "Ngày hết hạn gói đại lý (yyyy-MM-dd)", example = "2026-12-31")
+    @JsonFormat(pattern = "yyyy-MM-dd")
+    private LocalDate packageExpiryDate;
+
+    @Schema(description = "Trạng thái gói (ACTIVE, EXPIRED, SUSPENDED)", example = "ACTIVE")
+    private String packageStatus;
 
     public UpdateDealerRequest() {
     }
@@ -110,22 +126,6 @@ public class UpdateDealerRequest {
         this.contactPerson = contactPerson;
     }
 
-    public String getPlan() {
-        return plan;
-    }
-
-    public void setPlan(String plan) {
-        this.plan = plan;
-    }
-
-    public String getDueDate() {
-        return dueDate;
-    }
-
-    public void setDueDate(String dueDate) {
-        this.dueDate = dueDate;
-    }
-
     public String getStatus() {
         return status;
     }
@@ -140,5 +140,45 @@ public class UpdateDealerRequest {
 
     public void setNotes(String notes) {
         this.notes = notes;
+    }
+
+    public Integer getMaxAccounts() {
+        return maxAccounts;
+    }
+
+    public void setMaxAccounts(Integer maxAccounts) {
+        this.maxAccounts = maxAccounts;
+    }
+
+    public Integer getTotalAllocatedDays() {
+        return totalAllocatedDays;
+    }
+
+    public void setTotalAllocatedDays(Integer totalAllocatedDays) {
+        this.totalAllocatedDays = totalAllocatedDays;
+    }
+
+    public LocalDate getPackageStartDate() {
+        return packageStartDate;
+    }
+
+    public void setPackageStartDate(LocalDate packageStartDate) {
+        this.packageStartDate = packageStartDate;
+    }
+
+    public LocalDate getPackageExpiryDate() {
+        return packageExpiryDate;
+    }
+
+    public void setPackageExpiryDate(LocalDate packageExpiryDate) {
+        this.packageExpiryDate = packageExpiryDate;
+    }
+
+    public String getPackageStatus() {
+        return packageStatus;
+    }
+
+    public void setPackageStatus(String packageStatus) {
+        this.packageStatus = packageStatus;
     }
 }

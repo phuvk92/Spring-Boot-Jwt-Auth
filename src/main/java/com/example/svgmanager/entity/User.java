@@ -54,6 +54,9 @@ public class User {
     @Column(name = "max_devices")
     private Integer maxDevices;
 
+    @Column(name = "allocated_days", nullable = false)
+    private Integer allocatedDays = 0;
+
     @Column(name = "expiration_date")
     private LocalDate expirationDate;
 
@@ -115,6 +118,7 @@ public class User {
         private boolean deleted = false;
         private LocalDateTime createdAt;
         private LocalDateTime updatedAt;
+        private Integer allocatedDays = 0;
         private LocalDate expirationDate;
 
         public Builder id(Long id) {
@@ -187,6 +191,11 @@ public class User {
             return this;
         }
 
+        public Builder allocatedDays(Integer allocatedDays) {
+            this.allocatedDays = allocatedDays != null ? allocatedDays : 0;
+            return this;
+        }
+
         public Builder expirationDate(LocalDate expirationDate) {
             this.expirationDate = expirationDate;
             return this;
@@ -194,6 +203,7 @@ public class User {
 
         public User build() {
             User user = new User(id, keycloakUserId, username, email, password, fullName, phone, role, agent, dealer, enabled, deleted, createdAt, updatedAt);
+            user.setAllocatedDays(this.allocatedDays);
             user.setExpirationDate(this.expirationDate);
             return user;
         }
@@ -317,6 +327,14 @@ public class User {
 
     public void setMaxDevices(Integer maxDevices) {
         this.maxDevices = maxDevices;
+    }
+
+    public Integer getAllocatedDays() {
+        return allocatedDays != null ? allocatedDays : 0;
+    }
+
+    public void setAllocatedDays(Integer allocatedDays) {
+        this.allocatedDays = allocatedDays != null ? allocatedDays : 0;
     }
 
     public LocalDate getExpirationDate() {

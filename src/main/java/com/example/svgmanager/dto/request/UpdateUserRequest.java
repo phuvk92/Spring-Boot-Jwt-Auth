@@ -2,6 +2,7 @@ package com.example.svgmanager.dto.request;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
 import java.time.LocalDate;
+import java.util.List;
 
 import com.example.svgmanager.entity.Role;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -46,6 +47,9 @@ public class UpdateUserRequest {
     @Schema(example = "NewPassword123!", description = "Optional new password. Leave null or empty to keep current password.")
     private String password;
 
+    @Schema(example = "360", description = "Số ngày phân bổ mới từ quỹ đại lý nếu muốn thay đổi")
+    private Integer allocatedDays;
+
     @Schema(example = "2026-12-31", description = "Ngày hết hạn tài khoản (yyyy-MM-dd). Tùy chọn. Truyền null để chuyển thành Không hết hạn.")
     @JsonFormat(pattern = "yyyy-MM-dd")
     private LocalDate expirationDate;
@@ -54,6 +58,9 @@ public class UpdateUserRequest {
     @jakarta.validation.constraints.Min(0)
     @jakarta.validation.constraints.Max(50)
     private Integer maxDevices;
+
+    @Schema(description = "Danh sách ID danh mục kho mẫu & part được cấp quyền. null = giữ nguyên, rỗng [] = thu hồi toàn bộ", example = "[1, 2]")
+    private List<Long> partCategoryIds;
 
     public UpdateUserRequest() {
     }
@@ -82,8 +89,10 @@ public class UpdateUserRequest {
         private Long dealerId;
         private Boolean enabled = true;
         private String password;
+        private Integer allocatedDays;
         private LocalDate expirationDate;
         private Integer maxDevices;
+        private List<Long> partCategoryIds;
 
         public Builder email(String email) {
             this.email = email;
@@ -125,6 +134,11 @@ public class UpdateUserRequest {
             return this;
         }
 
+        public Builder allocatedDays(Integer allocatedDays) {
+            this.allocatedDays = allocatedDays;
+            return this;
+        }
+
         public Builder expirationDate(LocalDate expirationDate) {
             this.expirationDate = expirationDate;
             return this;
@@ -135,10 +149,17 @@ public class UpdateUserRequest {
             return this;
         }
 
+        public Builder partCategoryIds(List<Long> partCategoryIds) {
+            this.partCategoryIds = partCategoryIds;
+            return this;
+        }
+
         public UpdateUserRequest build() {
             UpdateUserRequest req = new UpdateUserRequest(email, fullName, phone, role, agentId, dealerId, enabled, password);
+            req.setAllocatedDays(this.allocatedDays);
             req.setExpirationDate(this.expirationDate);
             req.setMaxDevices(this.maxDevices);
+            req.setPartCategoryIds(this.partCategoryIds);
             return req;
         }
     }
@@ -215,11 +236,27 @@ public class UpdateUserRequest {
         this.maxDevices = maxDevices;
     }
 
+    public Integer getAllocatedDays() {
+        return allocatedDays;
+    }
+
+    public void setAllocatedDays(Integer allocatedDays) {
+        this.allocatedDays = allocatedDays;
+    }
+
     public LocalDate getExpirationDate() {
         return expirationDate;
     }
 
     public void setExpirationDate(LocalDate expirationDate) {
         this.expirationDate = expirationDate;
+    }
+
+    public List<Long> getPartCategoryIds() {
+        return partCategoryIds;
+    }
+
+    public void setPartCategoryIds(List<Long> partCategoryIds) {
+        this.partCategoryIds = partCategoryIds;
     }
 }

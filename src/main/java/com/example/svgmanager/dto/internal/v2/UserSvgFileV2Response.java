@@ -36,6 +36,9 @@ public class UserSvgFileV2Response {
     @Schema(description = "Quyền truy cập của user đang gọi: OWNER (chính chủ) hoặc SHARED (được chia sẻ)", example = "OWNER")
     private String accessType;
 
+    @Schema(description = "Nguồn file: USER_SAVED hoặc ADMIN_LIBRARY", example = "USER_SAVED")
+    private String fileSource = "USER_SAVED";
+
     @Schema(description = "Thông tin danh mục")
     private CategoryDto category;
 
@@ -210,4 +213,6 @@ public class UserSvgFileV2Response {
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
     public LocalDateTime getUpdatedAt() { return updatedAt; }
     public void setUpdatedAt(LocalDateTime updatedAt) { this.updatedAt = updatedAt; }
+    public String getFileSource() { return fileSource; }
+    public void setFileSource(String fileSource) { this.fileSource = fileSource; }
 }

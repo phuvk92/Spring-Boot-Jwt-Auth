@@ -2,19 +2,23 @@ package com.example.svgmanager.service.impl;
 
 import com.example.svgmanager.dto.internal.InternalSvgDetailResponse;
 import com.example.svgmanager.dto.internal.InternalSvgPermissionResponse;
+import com.example.svgmanager.entity.Role;
 import com.example.svgmanager.entity.SvgFile;
 import com.example.svgmanager.entity.SvgFileVehicleNode;
 import com.example.svgmanager.entity.User;
 import com.example.svgmanager.entity.VehicleNode;
+import com.example.svgmanager.exception.ForbiddenException;
 import com.example.svgmanager.exception.ResourceNotFoundException;
 import com.example.svgmanager.repository.SvgFileRepository;
 import com.example.svgmanager.repository.SvgFileVehicleNodeRepository;
+import com.example.svgmanager.repository.UserPartCategoryPermissionRepository;
 import com.example.svgmanager.security.CurrentUserService;
 import com.example.svgmanager.service.AuditLogService;
 import com.example.svgmanager.service.FileStorageService;
 import com.example.svgmanager.service.InternalSvgService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -31,6 +35,7 @@ import java.util.List;
  * Data Center v2 (chốt 29/09, Q6): bỏ phân quyền đại lý theo file — phiên hợp lệ
  * là xem/tải được mọi file còn hiệu lực. Chỉ còn kiểm phiên (thiết bị kiểm ở
  * DeviceSessionFilter, ngoài service này).
+ * Phân quyền Danh mục kho mẫu & part kiểm tra quyền của USER đối với PartLibraryCategory của file.
  */
 @Service
 public class InternalSvgServiceImpl implements InternalSvgService {
@@ -42,6 +47,7 @@ public class InternalSvgServiceImpl implements InternalSvgService {
     private final FileStorageService fileStorageService;
     private final CurrentUserService currentUserService;
     private final AuditLogService auditLogService;
+    private final UserPartCategoryPermissionRepository userPartCategoryPermissionRepository;
 
     public InternalSvgServiceImpl(
             SvgFileRepository svgFileRepository,
@@ -50,11 +56,24 @@ public class InternalSvgServiceImpl implements InternalSvgService {
             CurrentUserService currentUserService,
             AuditLogService auditLogService
     ) {
+        this(svgFileRepository, vehicleNodeLinkRepository, fileStorageService, currentUserService, auditLogService, null);
+    }
+
+    @Autowired
+    public InternalSvgServiceImpl(
+            SvgFileRepository svgFileRepository,
+            SvgFileVehicleNodeRepository vehicleNodeLinkRepository,
+            FileStorageService fileStorageService,
+            CurrentUserService currentUserService,
+            AuditLogService auditLogService,
+            @Autowired(required = false) UserPartCategoryPermissionRepository userPartCategoryPermissionRepository
+    ) {
         this.svgFileRepository = svgFileRepository;
         this.vehicleNodeLinkRepository = vehicleNodeLinkRepository;
         this.fileStorageService = fileStorageService;
         this.currentUserService = currentUserService;
         this.auditLogService = auditLogService;
+        this.userPartCategoryPermissionRepository = userPartCategoryPermissionRepository;
     }
 
     @Override
@@ -148,6 +167,19 @@ public class InternalSvgServiceImpl implements InternalSvgService {
 
         if ("DELETED".equalsIgnoreCase(svgFile.getStatus())) {
             throw new ResourceNotFoundException("SVG file not found with id: " + svgFileId);
+        }
+
+        User currentUser = currentUserService.getCurrentUser();
+        if (currentUser != null && currentUser.getRole() == Role.USER && svgFile.getPartLibraryCategory() != null) {
+            if (userPartCategoryPermissionRepository != null) {
+                boolean hasPermission = userPartCategoryPermissionRepository
+                        .existsByUserIdAndPartLibraryCategoryId(currentUser.getId(), svgFile.getPartLibraryCategory().getId());
+                if (!hasPermission) {
+                    log.warn("[INTERNAL_SVG_ACCESS_DENIED] User id={} does not have permission for category id={} on file id={}",
+                            currentUser.getId(), svgFile.getPartLibraryCategory().getId(), svgFileId);
+                    throw new ForbiddenException("Người dùng không có quyền truy cập file thuộc danh mục này");
+                }
+            }
         }
 
         return svgFile;

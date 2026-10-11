@@ -1,6 +1,9 @@
 package com.example.svgmanager.dto.response;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
 import io.swagger.v3.oas.annotations.media.Schema;
+
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 public class DealerResponse {
@@ -43,6 +46,39 @@ public class DealerResponse {
 
     @Schema(description = "Ghi chú nội bộ")
     private String notes;
+
+    // --- Thông tin gói account của đại lý ---
+    @Schema(description = "Số lượng account tối đa", example = "10")
+    private Integer maxAccounts;
+
+    @Schema(description = "Số lượng account đã tạo", example = "4")
+    private Integer createdAccounts;
+
+    @Schema(description = "Số lượng account còn lại", example = "6")
+    private Integer remainingAccounts;
+
+    @Schema(description = "Tổng quỹ ngày sử dụng", example = "3600")
+    private Integer totalAllocatedDays;
+
+    @Schema(description = "Số ngày đã phân bổ", example = "1440")
+    private Integer usedAllocatedDays;
+
+    @Schema(description = "Số ngày còn lại", example = "2160")
+    private Integer remainingAllocatedDays;
+
+    @Schema(description = "Ngày bắt đầu gói (yyyy-MM-dd)", example = "2026-01-01")
+    @JsonFormat(pattern = "yyyy-MM-dd")
+    private LocalDate packageStartDate;
+
+    @Schema(description = "Ngày hết hạn gói đại lý (yyyy-MM-dd)", example = "2026-12-31")
+    @JsonFormat(pattern = "yyyy-MM-dd")
+    private LocalDate packageExpiryDate;
+
+    @Schema(description = "Trạng thái gói (ACTIVE, EXPIRED, SUSPENDED)", example = "ACTIVE")
+    private String packageStatus;
+
+    @Schema(description = "Gói đã hết hạn hay chưa", example = "false")
+    private boolean packageExpired;
 
     @Schema(description = "Thời gian tạo")
     private LocalDateTime createdAt;
@@ -176,6 +212,86 @@ public class DealerResponse {
 
     public void setNotes(String notes) {
         this.notes = notes;
+    }
+
+    public Integer getMaxAccounts() {
+        return maxAccounts;
+    }
+
+    public void setMaxAccounts(Integer maxAccounts) {
+        this.maxAccounts = maxAccounts;
+    }
+
+    public Integer getCreatedAccounts() {
+        return createdAccounts;
+    }
+
+    public void setCreatedAccounts(Integer createdAccounts) {
+        this.createdAccounts = createdAccounts;
+    }
+
+    public Integer getRemainingAccounts() {
+        return remainingAccounts;
+    }
+
+    public void setRemainingAccounts(Integer remainingAccounts) {
+        this.remainingAccounts = remainingAccounts;
+    }
+
+    public Integer getTotalAllocatedDays() {
+        return totalAllocatedDays;
+    }
+
+    public void setTotalAllocatedDays(Integer totalAllocatedDays) {
+        this.totalAllocatedDays = totalAllocatedDays;
+    }
+
+    public Integer getUsedAllocatedDays() {
+        return usedAllocatedDays;
+    }
+
+    public void setUsedAllocatedDays(Integer usedAllocatedDays) {
+        this.usedAllocatedDays = usedAllocatedDays;
+    }
+
+    public Integer getRemainingAllocatedDays() {
+        return remainingAllocatedDays;
+    }
+
+    public void setRemainingAllocatedDays(Integer remainingAllocatedDays) {
+        this.remainingAllocatedDays = remainingAllocatedDays;
+    }
+
+    public LocalDate getPackageStartDate() {
+        return packageStartDate;
+    }
+
+    public void setPackageStartDate(LocalDate packageStartDate) {
+        this.packageStartDate = packageStartDate;
+    }
+
+    public LocalDate getPackageExpiryDate() {
+        return packageExpiryDate;
+    }
+
+    public void setPackageExpiryDate(LocalDate packageExpiryDate) {
+        this.packageExpiryDate = packageExpiryDate;
+    }
+
+    public String getPackageStatus() {
+        return packageStatus;
+    }
+
+    public void setPackageStatus(String packageStatus) {
+        this.packageStatus = packageStatus;
+    }
+
+    public boolean isPackageExpired() {
+        return packageExpired;
+    }
+
+    public void setPackageExpired(boolean packageExpired) {
+        this.packageExpired = packageExpired;
     }
 
     public LocalDateTime getCreatedAt() {

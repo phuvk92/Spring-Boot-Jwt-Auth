@@ -63,6 +63,9 @@ public class UserSavedFileResponse {
     @Schema(description = "Loại quyền truy cập của người dùng đối với file: OWNER hoặc SHARED", example = "OWNER")
     private String accessType;
 
+    @Schema(description = "Nguồn file: USER_SAVED hoặc ADMIN_LIBRARY", example = "USER_SAVED")
+    private String fileSource = "USER_SAVED";
+
     public UserSavedFileResponse() {
     }
 
@@ -223,4 +226,6 @@ public class UserSavedFileResponse {
     public void setSourceFileName(String sourceFileName) { this.sourceFileName = sourceFileName; }
     public String getAccessType() { return accessType; }
     public void setAccessType(String accessType) { this.accessType = accessType; }
+    public String getFileSource() { return fileSource; }
+    public void setFileSource(String fileSource) { this.fileSource = fileSource; }
 }

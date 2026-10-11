@@ -35,6 +35,12 @@ import org.springframework.web.bind.annotation.*;
 
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
+import com.example.svgmanager.entity.Role;
+import com.example.svgmanager.exception.ForbiddenException;
+import com.example.svgmanager.repository.UserRepository;
+import org.springframework.beans.factory.annotation.Autowired;
+import java.util.Collections;
+
 
 @RestController
 @RequestMapping("/api/admin/user-files")
@@ -46,13 +52,23 @@ public class AdminUserSvgFileController {
     private final UserSvgFileService userSvgFileService;
     private final UserSvgFileShareService userSvgFileShareService;
     private final CurrentUserService currentUserService;
+    private final UserRepository userRepository;
 
     public AdminUserSvgFileController(UserSvgFileService userSvgFileService,
                                      UserSvgFileShareService userSvgFileShareService,
                                      CurrentUserService currentUserService) {
+        this(userSvgFileService, userSvgFileShareService, currentUserService, null);
+    }
+
+    @Autowired
+    public AdminUserSvgFileController(UserSvgFileService userSvgFileService,
+                                     UserSvgFileShareService userSvgFileShareService,
+                                     CurrentUserService currentUserService,
+                                     @Autowired(required = false) UserRepository userRepository) {
         this.userSvgFileService = userSvgFileService;
         this.userSvgFileShareService = userSvgFileShareService;
         this.currentUserService = currentUserService;
+        this.userRepository = userRepository;
     }
 
     @GetMapping
@@ -83,8 +99,43 @@ public class AdminUserSvgFileController {
         Sort sortObj = parseSort(sort);
         Pageable pageable = PageRequest.of(Math.max(0, page), Math.max(1, size), sortObj);
 
+        User currentUser = currentUserService.getCurrentUser();
+        Long effectiveDealerId = dealerId;
+        Long effectiveUserId = userId;
+
+        if (currentUser.getRole() == Role.AGENT) {
+            if (currentUser.getDealer() == null) {
+                return ResponseEntity.ok(PageResponse.<UserSavedFileResponse>builder()
+                        .content(Collections.emptyList())
+                        .page(page)
+                        .size(size)
+                        .totalElements(0L)
+                        .totalPages(0)
+                        .first(true)
+                        .last(true)
+                        .build());
+            }
+            effectiveDealerId = currentUser.getDealer().getId();
+            if (userId != null && userRepository != null) {
+                boolean belongs = userRepository.findById(userId).filter(u -> !u.isDeleted())
+                        .map(u -> u.getDealer() != null && u.getDealer().getId().equals(currentUser.getDealer().getId()))
+                        .orElse(false);
+                if (!belongs) {
+                    return ResponseEntity.ok(PageResponse.<UserSavedFileResponse>builder()
+                            .content(Collections.emptyList())
+                            .page(page)
+                            .size(size)
+                            .totalElements(0L)
+                            .totalPages(0)
+                            .first(true)
+                            .last(true)
+                            .build());
+                }
+            }
+        }
+
         PageResponse<UserSavedFileResponse> response = userSvgFileService.listAdminFiles(
-                keyword, categoryId, effectiveNodeId, brandId, modelId, dealerId, userId,
+                keyword, categoryId, effectiveNodeId, brandId, modelId, effectiveDealerId, effectiveUserId,
                 createdFrom, createdTo, status, pageable
         );
         return ResponseEntity.ok(response);
@@ -100,10 +151,19 @@ public class AdminUserSvgFileController {
             @ApiResponse(responseCode = "404", description = "Không tìm thấy bản lưu", content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
     })
     public ResponseEntity<UserSavedFileResponse> getFileDetail(@PathVariable Long id) {
-        return ResponseEntity.ok(userSvgFileService.getAdminFile(id));
+        User currentUser = currentUserService.getCurrentUser();
+        UserSavedFileResponse detail = userSvgFileService.getAdminFile(id);
+        if (currentUser.getRole() == Role.AGENT) {
+            if (detail.getDealer() == null || currentUser.getDealer() == null ||
+                    !detail.getDealer().getId().equals(currentUser.getDealer().getId())) {
+                throw new ForbiddenException("Không có quyền truy cập file của đại lý khác");
+            }
+        }
+        return ResponseEntity.ok(detail);
     }
 
     @GetMapping("/{id}/download")
+    @PreAuthorize("hasRole('ADMIN')")
     @Operation(summary = "Tải file SVG đã lưu của người dùng",
             description = "ADMIN tải trực tiếp file SVG nhị phân.")
     @ApiResponses(value = {
@@ -124,6 +184,7 @@ public class AdminUserSvgFileController {
     }
 
     @GetMapping("/{id}/preview")
+    @PreAuthorize("hasRole('ADMIN')")
     @Operation(summary = "Xem trước nội dung file SVG (inline stream)",
             description = "Stream nội dung SVG an toàn cho component xem trước trực tiếp trên giao diện Admin.")
     public ResponseEntity<byte[]> previewFile(@PathVariable Long id) {
@@ -138,6 +199,7 @@ public class AdminUserSvgFileController {
     }
 
     @PostMapping("/{id}/shares")
+    @PreAuthorize("hasRole('ADMIN')")
     @Operation(summary = "Chia sẻ file SVG cho người dùng (ADMIN)",
             description = "ADMIN chia sẻ quyền xem/tải file SVG của bất kỳ user nào cho một USER khác.")
     @ApiResponses(value = {
@@ -157,6 +219,7 @@ public class AdminUserSvgFileController {
     }
 
     @GetMapping("/{id}/shares")
+    @PreAuthorize("hasRole('ADMIN')")
     @Operation(summary = "Xem danh sách người dùng được chia sẻ file SVG (ADMIN)",
             description = "ADMIN xem danh sách người dùng đang được chia sẻ file.")
     public ResponseEntity<FileSharesResponse> getFileShares(@PathVariable Long id) {
@@ -165,6 +228,7 @@ public class AdminUserSvgFileController {
     }
 
     @DeleteMapping("/{id}/shares/{targetUserId}")
+    @PreAuthorize("hasRole('ADMIN')")
     @Operation(summary = "Thu hồi quyền chia sẻ file SVG (ADMIN)",
             description = "ADMIN thu hồi quyền chia sẻ file từ một USER.")
     public ResponseEntity<Void> revokeFileShare(

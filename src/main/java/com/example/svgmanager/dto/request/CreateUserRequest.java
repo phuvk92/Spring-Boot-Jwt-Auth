@@ -2,7 +2,7 @@ package com.example.svgmanager.dto.request;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
 import java.time.LocalDate;
-
+import java.util.List;
 
 import com.example.svgmanager.entity.Role;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -51,12 +51,18 @@ public class CreateUserRequest {
     @Schema(example = "1", description = "ID của đại lý / chi nhánh trực thuộc")
     private Long dealerId;
 
+    @Schema(example = "360", description = "Số ngày phân bổ từ quỹ đại lý (quy ước 30 ngày/tháng, 360 ngày/năm)")
+    private Integer allocatedDays;
+
     @Schema(example = "2026-12-31", description = "Ngày hết hạn tài khoản (yyyy-MM-dd). Không bắt buộc. Riêng ADMIN không áp dụng điều kiện hết hạn.")
     @JsonFormat(pattern = "yyyy-MM-dd")
     private LocalDate expirationDate;
 
     @Schema(example = "true", description = "Account status")
     private Boolean enabled = true;
+
+    @Schema(description = "Danh sách ID danh mục kho mẫu & part được cấp quyền", example = "[1, 2]")
+    private List<Long> partCategoryIds;
 
     public CreateUserRequest() {
     }
@@ -87,7 +93,9 @@ public class CreateUserRequest {
         private Long agentId;
         private Long dealerId;
         private Boolean enabled = true;
+        private Integer allocatedDays;
         private LocalDate expirationDate;
+        private List<Long> partCategoryIds;
 
         public Builder username(String username) {
             this.username = username;
@@ -134,14 +142,26 @@ public class CreateUserRequest {
             return this;
         }
 
+        public Builder allocatedDays(Integer allocatedDays) {
+            this.allocatedDays = allocatedDays;
+            return this;
+        }
+
         public Builder expirationDate(LocalDate expirationDate) {
             this.expirationDate = expirationDate;
             return this;
         }
 
+        public Builder partCategoryIds(List<Long> partCategoryIds) {
+            this.partCategoryIds = partCategoryIds;
+            return this;
+        }
+
         public CreateUserRequest build() {
             CreateUserRequest req = new CreateUserRequest(username, email, fullName, phone, password, role, agentId, dealerId, enabled);
+            req.setAllocatedDays(this.allocatedDays);
             req.setExpirationDate(this.expirationDate);
+            req.setPartCategoryIds(this.partCategoryIds);
             return req;
         }
     }
@@ -218,11 +238,27 @@ public class CreateUserRequest {
         this.enabled = enabled;
     }
 
+    public Integer getAllocatedDays() {
+        return allocatedDays;
+    }
+
+    public void setAllocatedDays(Integer allocatedDays) {
+        this.allocatedDays = allocatedDays;
+    }
+
     public LocalDate getExpirationDate() {
         return expirationDate;
     }
 
     public void setExpirationDate(LocalDate expirationDate) {
         this.expirationDate = expirationDate;
+    }
+
+    public List<Long> getPartCategoryIds() {
+        return partCategoryIds;
+    }
+
+    public void setPartCategoryIds(List<Long> partCategoryIds) {
+        this.partCategoryIds = partCategoryIds;
     }
 }

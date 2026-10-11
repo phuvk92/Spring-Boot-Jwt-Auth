@@ -55,6 +55,9 @@ public class UserSvgFileShareServiceImpl implements UserSvgFileShareService {
         if (currentUser.getRole() == Role.AGENT) {
             throw new ForbiddenException("Agent không có quyền chia sẻ file", ErrorCodes.USER_FILE_SHARE_FORBIDDEN);
         }
+        if (fileId != null && fileId >= 1_000_000_000L) {
+            throw new ForbiddenException("Không được phép chia sẻ file thư viện của Quản trị viên", ErrorCodes.USER_FILE_SHARE_FORBIDDEN);
+        }
 
         UserSvgFile file = userSvgFileRepository.findById(fileId)
                 .orElseThrow(() -> new ResourceNotFoundException("File bản lưu không tồn tại", ErrorCodes.USER_FILE_NOT_FOUND));
@@ -135,6 +138,9 @@ public class UserSvgFileShareServiceImpl implements UserSvgFileShareService {
         if (currentUser == null) {
             throw new UnauthorizedException("Chưa xác thực người dùng");
         }
+        if (fileId != null && fileId >= 1_000_000_000L) {
+            throw new ForbiddenException("Không được phép quản lý chia sẻ file thư viện của Quản trị viên", ErrorCodes.USER_FILE_SHARE_FORBIDDEN);
+        }
 
         UserSvgFile file = userSvgFileRepository.findById(fileId)
                 .orElseThrow(() -> new ResourceNotFoundException("File bản lưu không tồn tại", ErrorCodes.USER_FILE_NOT_FOUND));
@@ -160,6 +166,9 @@ public class UserSvgFileShareServiceImpl implements UserSvgFileShareService {
         }
         if (currentUser.getRole() == Role.AGENT) {
             throw new ForbiddenException("Agent không có quyền thu hồi chia sẻ file", ErrorCodes.USER_FILE_SHARE_FORBIDDEN);
+        }
+        if (fileId != null && fileId >= 1_000_000_000L) {
+            throw new ForbiddenException("Không được phép quản lý chia sẻ file thư viện của Quản trị viên", ErrorCodes.USER_FILE_SHARE_FORBIDDEN);
         }
 
         UserSvgFile file = userSvgFileRepository.findById(fileId)

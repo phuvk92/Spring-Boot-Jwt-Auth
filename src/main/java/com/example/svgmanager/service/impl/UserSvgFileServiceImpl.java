@@ -3,6 +3,18 @@ package com.example.svgmanager.service.impl;
 import com.example.svgmanager.dto.response.PageResponse;
 import com.example.svgmanager.dto.response.UserSavedFileResponse;
 import com.example.svgmanager.entity.*;
+import com.example.svgmanager.entity.PartLibraryCategory;
+import com.example.svgmanager.entity.Role;
+import com.example.svgmanager.entity.SvgFileVehicleNode;
+import com.example.svgmanager.repository.PartLibraryCategoryRepository;
+import com.example.svgmanager.repository.SvgFileVehicleNodeRepository;
+import com.example.svgmanager.repository.UserPartCategoryPermissionRepository;
+import org.springframework.beans.factory.annotation.Autowired;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Collection;
+import java.util.Collections;
+
 import com.example.svgmanager.exception.BadRequestException;
 import com.example.svgmanager.exception.ErrorCodes;
 import com.example.svgmanager.exception.ForbiddenException;
@@ -45,8 +57,13 @@ public class UserSvgFileServiceImpl implements UserSvgFileService {
     private final FileStorageService fileStorageService;
     private final SvgSanitizerService svgSanitizerService;
     private final AuditLogService auditLogService;
+    public static final long ADMIN_LIBRARY_ID_OFFSET = 1_000_000_000L;
+
     private final UserSvgFileShareService userSvgFileShareService;
     private final DealerRepository dealerRepository;
+    private final UserPartCategoryPermissionRepository userPartCategoryPermissionRepository;
+    private final PartLibraryCategoryRepository partLibraryCategoryRepository;
+    private final SvgFileVehicleNodeRepository vehicleNodeLinkRepository;
 
     public UserSvgFileServiceImpl(UserSvgFileRepository userSvgFileRepository,
                                   FileCategoryRepository fileCategoryRepository,
@@ -57,6 +74,24 @@ public class UserSvgFileServiceImpl implements UserSvgFileService {
                                   AuditLogService auditLogService,
                                   @Lazy UserSvgFileShareService userSvgFileShareService,
                                   DealerRepository dealerRepository) {
+        this(userSvgFileRepository, fileCategoryRepository, vehicleNodeRepository, svgFileRepository,
+             fileStorageService, svgSanitizerService, auditLogService, userSvgFileShareService, dealerRepository,
+             null, null, null);
+    }
+
+    @Autowired
+    public UserSvgFileServiceImpl(UserSvgFileRepository userSvgFileRepository,
+                                  FileCategoryRepository fileCategoryRepository,
+                                  VehicleNodeRepository vehicleNodeRepository,
+                                  SvgFileRepository svgFileRepository,
+                                  FileStorageService fileStorageService,
+                                  SvgSanitizerService svgSanitizerService,
+                                  AuditLogService auditLogService,
+                                  @Lazy UserSvgFileShareService userSvgFileShareService,
+                                  DealerRepository dealerRepository,
+                                  @Autowired(required = false) UserPartCategoryPermissionRepository userPartCategoryPermissionRepository,
+                                  @Autowired(required = false) PartLibraryCategoryRepository partLibraryCategoryRepository,
+                                  @Autowired(required = false) SvgFileVehicleNodeRepository vehicleNodeLinkRepository) {
         this.userSvgFileRepository = userSvgFileRepository;
         this.fileCategoryRepository = fileCategoryRepository;
         this.vehicleNodeRepository = vehicleNodeRepository;
@@ -66,6 +101,9 @@ public class UserSvgFileServiceImpl implements UserSvgFileService {
         this.auditLogService = auditLogService;
         this.userSvgFileShareService = userSvgFileShareService;
         this.dealerRepository = dealerRepository;
+        this.userPartCategoryPermissionRepository = userPartCategoryPermissionRepository;
+        this.partLibraryCategoryRepository = partLibraryCategoryRepository;
+        this.vehicleNodeLinkRepository = vehicleNodeLinkRepository;
     }
 
     @Override
@@ -211,6 +249,9 @@ public class UserSvgFileServiceImpl implements UserSvgFileService {
     ) {
         if (currentUser == null) {
             throw new ResourceNotFoundException("File bản lưu không tồn tại", ErrorCodes.FILE_NOT_FOUND);
+        }
+        if (id != null && id >= ADMIN_LIBRARY_ID_OFFSET) {
+            throw new ForbiddenException("Không được phép chỉnh sửa file thư viện của Quản trị viên");
         }
 
         UserSvgFile existing = userSvgFileRepository.findById(id)
@@ -404,20 +445,72 @@ public class UserSvgFileServiceImpl implements UserSvgFileService {
             String status,
             Pageable pageable
     ) {
-        // Section 13: Lấy cả file sở hữu và file được share ACTIVE
         Specification<UserSvgFile> spec = UserSvgFileSpecification.filterAccessibleByUser(
                 currentUser, keyword, categoryId, status
         );
 
-        Page<UserSvgFile> page = userSvgFileRepository.findAll(spec, pageable);
+        List<UserSvgFile> userFiles = userSvgFileRepository.findAll(spec);
+        List<UserSavedFileResponse> combined = new ArrayList<>();
+        for (UserSvgFile f : userFiles) {
+            combined.add(toResponse(f, currentUser));
+        }
+
+        if (currentUser != null && userPartCategoryPermissionRepository != null && svgFileRepository != null) {
+            List<Long> permittedCatIds = (currentUser.getRole() == Role.ADMIN)
+                    ? (partLibraryCategoryRepository != null
+                            ? partLibraryCategoryRepository.findAll().stream().map(PartLibraryCategory::getId).toList()
+                            : List.of())
+                    : userPartCategoryPermissionRepository.findPartCategoryIdsByUserId(currentUser.getId());
+
+            if (permittedCatIds != null && !permittedCatIds.isEmpty()) {
+                Collection<Long> queryCatIds = permittedCatIds;
+                if (categoryId != null) {
+                    if (permittedCatIds.contains(categoryId)) {
+                        queryCatIds = List.of(categoryId);
+                    } else {
+                        queryCatIds = Collections.emptyList();
+                    }
+                }
+
+                if (!queryCatIds.isEmpty() && (status == null || "ACTIVE".equalsIgnoreCase(status) || "ALL".equalsIgnoreCase(status))) {
+                    List<SvgFile> adminFiles = svgFileRepository.findByStatusAndPartLibraryCategory_IdIn("ACTIVE", queryCatIds);
+                    for (SvgFile sf : adminFiles) {
+                        if (keyword != null && !keyword.trim().isEmpty()) {
+                            String kw = keyword.trim().toLowerCase();
+                            String name = (sf.getDisplayName() != null ? sf.getDisplayName() : sf.getOriginalFilename()).toLowerCase();
+                            String desc = (sf.getNote() != null ? sf.getNote() : "").toLowerCase();
+                            if (!name.contains(kw) && !desc.contains(kw)) {
+                                continue;
+                            }
+                        }
+                        combined.add(toAdminLibraryResponse(sf));
+                    }
+                }
+            }
+        }
+
+        combined.sort((a, b) -> {
+            LocalDateTime tA = a.getCreatedAt() != null ? a.getCreatedAt() : LocalDateTime.MIN;
+            LocalDateTime tB = b.getCreatedAt() != null ? b.getCreatedAt() : LocalDateTime.MIN;
+            return tB.compareTo(tA);
+        });
+
+        int totalElements = combined.size();
+        int pageNumber = pageable.getPageNumber();
+        int pageSize = pageable.getPageSize();
+        int start = Math.min(pageNumber * pageSize, totalElements);
+        int end = Math.min(start + pageSize, totalElements);
+        List<UserSavedFileResponse> pageContent = combined.subList(start, end);
+        int totalPages = pageSize > 0 ? (int) Math.ceil((double) totalElements / pageSize) : 0;
+
         return PageResponse.<UserSavedFileResponse>builder()
-                .content(page.getContent().stream().map(f -> toResponse(f, currentUser)).toList())
-                .page(page.getNumber())
-                .size(page.getSize())
-                .totalElements(page.getTotalElements())
-                .totalPages(page.getTotalPages())
-                .first(page.isFirst())
-                .last(page.isLast())
+                .content(pageContent)
+                .page(pageNumber)
+                .size(pageSize)
+                .totalElements((long) totalElements)
+                .totalPages(totalPages)
+                .first(pageNumber == 0)
+                .last(pageNumber >= totalPages - 1)
                 .build();
     }
 
@@ -434,6 +527,24 @@ public class UserSvgFileServiceImpl implements UserSvgFileService {
     public UserSavedFileResponse getUserFile(User currentUser, Long id) {
         if (currentUser == null) {
             throw new ResourceNotFoundException("File bản lưu không tồn tại", ErrorCodes.FILE_NOT_FOUND);
+        }
+        if (id != null && id >= ADMIN_LIBRARY_ID_OFFSET) {
+            Long svgFileId = id - ADMIN_LIBRARY_ID_OFFSET;
+            SvgFile sf = svgFileRepository.findById(svgFileId)
+                    .orElseThrow(() -> new ResourceNotFoundException("File bản lưu không tồn tại", ErrorCodes.FILE_NOT_FOUND));
+            if ("DELETED".equalsIgnoreCase(sf.getStatus())) {
+                throw new ResourceNotFoundException("File bản lưu không tồn tại", ErrorCodes.FILE_NOT_FOUND);
+            }
+            if (currentUser.getRole() == Role.USER) {
+                if (sf.getPartLibraryCategory() == null || userPartCategoryPermissionRepository == null ||
+                        !userPartCategoryPermissionRepository.existsByUserIdAndPartLibraryCategoryId(currentUser.getId(), sf.getPartLibraryCategory().getId())) {
+                    throw new ForbiddenException("Bạn không có quyền truy cập file này", ErrorCodes.USER_FILE_SHARE_FORBIDDEN);
+                }
+            }
+            return toAdminLibraryResponse(sf);
+        }
+        if (id != null && id >= ADMIN_LIBRARY_ID_OFFSET) {
+            throw new ForbiddenException("Không được phép chỉnh sửa file thư viện của Quản trị viên");
         }
         UserSvgFile file = userSvgFileRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("File bản lưu không tồn tại", ErrorCodes.FILE_NOT_FOUND));
@@ -460,6 +571,24 @@ public class UserSvgFileServiceImpl implements UserSvgFileService {
         if (currentUser == null) {
             throw new ResourceNotFoundException("File bản lưu không tồn tại", ErrorCodes.FILE_NOT_FOUND);
         }
+        if (id != null && id >= ADMIN_LIBRARY_ID_OFFSET) {
+            Long svgFileId = id - ADMIN_LIBRARY_ID_OFFSET;
+            SvgFile sf = svgFileRepository.findById(svgFileId)
+                    .orElseThrow(() -> new ResourceNotFoundException("File bản lưu không tồn tại", ErrorCodes.FILE_NOT_FOUND));
+            if ("DELETED".equalsIgnoreCase(sf.getStatus())) {
+                throw new ResourceNotFoundException("File bản lưu không tồn tại", ErrorCodes.FILE_NOT_FOUND);
+            }
+            if (currentUser.getRole() == Role.USER) {
+                if (sf.getPartLibraryCategory() == null || userPartCategoryPermissionRepository == null ||
+                        !userPartCategoryPermissionRepository.existsByUserIdAndPartLibraryCategoryId(currentUser.getId(), sf.getPartLibraryCategory().getId())) {
+                    throw new ForbiddenException("Bạn không có quyền tải file này", ErrorCodes.USER_FILE_SHARE_FORBIDDEN);
+                }
+            }
+            return fileStorageService.loadFileAsResource(sf.getFilePath());
+        }
+        if (id != null && id >= ADMIN_LIBRARY_ID_OFFSET) {
+            throw new ForbiddenException("Không được phép chỉnh sửa file thư viện của Quản trị viên");
+        }
         UserSvgFile file = userSvgFileRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("File bản lưu không tồn tại", ErrorCodes.FILE_NOT_FOUND));
         if ("DELETED".equalsIgnoreCase(file.getStatus())) {
@@ -477,6 +606,24 @@ public class UserSvgFileServiceImpl implements UserSvgFileService {
         if (currentUser == null) {
             throw new ResourceNotFoundException("File bản lưu không tồn tại", ErrorCodes.FILE_NOT_FOUND);
         }
+        if (id != null && id >= ADMIN_LIBRARY_ID_OFFSET) {
+            Long svgFileId = id - ADMIN_LIBRARY_ID_OFFSET;
+            SvgFile sf = svgFileRepository.findById(svgFileId)
+                    .orElseThrow(() -> new ResourceNotFoundException("File bản lưu không tồn tại", ErrorCodes.FILE_NOT_FOUND));
+            if ("DELETED".equalsIgnoreCase(sf.getStatus())) {
+                throw new ResourceNotFoundException("File bản lưu không tồn tại", ErrorCodes.FILE_NOT_FOUND);
+            }
+            if (currentUser.getRole() == Role.USER) {
+                if (sf.getPartLibraryCategory() == null || userPartCategoryPermissionRepository == null ||
+                        !userPartCategoryPermissionRepository.existsByUserIdAndPartLibraryCategoryId(currentUser.getId(), sf.getPartLibraryCategory().getId())) {
+                    throw new ForbiddenException("Bạn không có quyền xem trước file này", ErrorCodes.USER_FILE_SHARE_FORBIDDEN);
+                }
+            }
+            return fileStorageService.loadFileAsBytes(sf.getFilePath());
+        }
+        if (id != null && id >= ADMIN_LIBRARY_ID_OFFSET) {
+            throw new ForbiddenException("Không được phép chỉnh sửa file thư viện của Quản trị viên");
+        }
         UserSvgFile file = userSvgFileRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("File bản lưu không tồn tại", ErrorCodes.FILE_NOT_FOUND));
         if ("DELETED".equalsIgnoreCase(file.getStatus())) {
@@ -493,6 +640,12 @@ public class UserSvgFileServiceImpl implements UserSvgFileService {
     public void deleteUserFile(User currentUser, Long id) {
         if (currentUser == null) {
             throw new ResourceNotFoundException("File bản lưu không tồn tại", ErrorCodes.FILE_NOT_FOUND);
+        }
+        if (id != null && id >= ADMIN_LIBRARY_ID_OFFSET) {
+            throw new ForbiddenException("Không được phép xóa file thư viện của Quản trị viên");
+        }
+        if (id != null && id >= ADMIN_LIBRARY_ID_OFFSET) {
+            throw new ForbiddenException("Không được phép chỉnh sửa file thư viện của Quản trị viên");
         }
         UserSvgFile file = userSvgFileRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("File bản lưu không tồn tại", ErrorCodes.FILE_NOT_FOUND));
@@ -530,6 +683,12 @@ public class UserSvgFileServiceImpl implements UserSvgFileService {
     @Override
     @Transactional(readOnly = true)
     public String getOriginalFilename(Long id) {
+        if (id != null && id >= ADMIN_LIBRARY_ID_OFFSET) {
+            Long svgFileId = id - ADMIN_LIBRARY_ID_OFFSET;
+            return svgFileRepository.findById(svgFileId)
+                    .map(SvgFile::getOriginalFilename)
+                    .orElse("file.svg");
+        }
         return userSvgFileRepository.findById(id)
                 .map(UserSvgFile::getOriginalFileName)
                 .orElse("file.svg");
@@ -644,6 +803,62 @@ public class UserSvgFileServiceImpl implements UserSvgFileService {
             resp.setAccessType(entity.getUser().getId().equals(currentUser.getId()) ? "OWNER" : "SHARED");
         } else {
             resp.setAccessType("OWNER");
+        }
+
+        resp.setFileSource("USER_SAVED");
+
+        return resp;
+    }
+
+
+    private UserSavedFileResponse toAdminLibraryResponse(SvgFile sf) {
+        UserSavedFileResponse resp = new UserSavedFileResponse();
+        resp.setId(ADMIN_LIBRARY_ID_OFFSET + sf.getId());
+        String name = StringUtils.hasText(sf.getDisplayName()) ? sf.getDisplayName() : sf.getOriginalFilename();
+        resp.setFileName(name);
+        resp.setOriginalFileName(sf.getOriginalFilename());
+        resp.setDescription(sf.getNote());
+        resp.setFileSize(sf.getFileSize());
+        resp.setMimeType(sf.getContentType() != null ? sf.getContentType() : "image/svg+xml");
+        resp.setChecksum(sf.getChecksum());
+        resp.setStatus(sf.getStatus() != null ? sf.getStatus() : "ACTIVE");
+        resp.setCreatedAt(sf.getCreatedAt());
+        resp.setUpdatedAt(sf.getUpdatedAt());
+        resp.setFileSource("ADMIN_LIBRARY");
+        resp.setAccessType("LIBRARY");
+
+        if (sf.getPartLibraryCategory() != null) {
+            resp.setCategory(new UserSavedFileResponse.CategoryDto(
+                    sf.getPartLibraryCategory().getId(),
+                    sf.getPartLibraryCategory().getName()
+            ));
+        }
+
+        if (sf.getUploadedBy() != null) {
+            String displayName = StringUtils.hasText(sf.getUploadedBy().getFullName())
+                    ? sf.getUploadedBy().getFullName()
+                    : sf.getUploadedBy().getUsername();
+            resp.setCreatedBy(new UserSavedFileResponse.UserSummaryDto(
+                    sf.getUploadedBy().getId(),
+                    sf.getUploadedBy().getUsername(),
+                    displayName
+            ));
+        }
+
+        if (vehicleNodeLinkRepository != null) {
+            List<SvgFileVehicleNode> links = vehicleNodeLinkRepository.findBySvgFileId(sf.getId());
+            if (links != null && !links.isEmpty()) {
+                VehicleNode node = links.get(0).getVehicleNode();
+                if (node != null) {
+                    resp.setVehicleConfiguration(new UserSavedFileResponse.VehicleConfigurationDto(
+                            node.getId(),
+                            null, null,
+                            resolveBrandName(node),
+                            resolveModelName(node),
+                            sf.getModelYear(), null, null
+                    ));
+                }
+            }
         }
 
         return resp;

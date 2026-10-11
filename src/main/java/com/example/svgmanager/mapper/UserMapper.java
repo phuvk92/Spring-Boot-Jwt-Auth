@@ -3,14 +3,33 @@ package com.example.svgmanager.mapper;
 import com.example.svgmanager.dto.response.UserResponse;
 import com.example.svgmanager.dto.response.UserSummaryResponse;
 import com.example.svgmanager.entity.User;
+import com.example.svgmanager.repository.UserPartCategoryPermissionRepository;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
+
+import java.util.Collections;
+import java.util.List;
 
 @Component
 public class UserMapper {
 
     @Value("${app.device.max-per-user:1}")
     private int defaultMaxDevices = 1;
+
+    private UserPartCategoryPermissionRepository userPartCategoryPermissionRepository;
+
+    public UserMapper() {
+    }
+
+    @Autowired(required = false)
+    public UserMapper(UserPartCategoryPermissionRepository userPartCategoryPermissionRepository) {
+        this.userPartCategoryPermissionRepository = userPartCategoryPermissionRepository;
+    }
+
+    public void setUserPartCategoryPermissionRepository(UserPartCategoryPermissionRepository repo) {
+        this.userPartCategoryPermissionRepository = repo;
+    }
 
     public UserResponse toUserResponse(User user) {
         if (user == null) {
@@ -42,11 +61,18 @@ public class UserMapper {
                 .updatedAt(user.getUpdatedAt())
                 .build();
         response.setExpirationDate(user.getExpirationDate());
+        response.setAllocatedDays(user.getAllocatedDays());
         response.setExpired(user.isExpired());
         response.setMaxDevices(user.getMaxDevices());
         response.setEffectiveMaxDevices(user.getMaxDevices() != null && user.getMaxDevices() > 0
                 ? user.getMaxDevices()
                 : Math.max(1, defaultMaxDevices));
+
+        if (userPartCategoryPermissionRepository != null && user.getId() != null) {
+            List<Long> categoryIds = userPartCategoryPermissionRepository.findPartCategoryIdsByUserId(user.getId());
+            response.setPartCategoryIds(categoryIds != null ? categoryIds : Collections.emptyList());
+        }
+
         return response;
     }
 

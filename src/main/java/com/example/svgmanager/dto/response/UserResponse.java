@@ -2,7 +2,7 @@ package com.example.svgmanager.dto.response;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
 import java.time.LocalDate;
-
+import java.util.List;
 
 import com.example.svgmanager.entity.Role;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -64,7 +64,11 @@ public class UserResponse {
     @Schema(description = "Tài khoản đã hết hạn hay chưa", example = "false")
     private boolean expired;
 
+    @Schema(description = "Số ngày được phân bổ từ quỹ đại lý", example = "360")
+    private Integer allocatedDays;
 
+    @Schema(description = "Danh sách ID danh mục kho mẫu & part được cấp quyền", example = "[1, 2]")
+    private List<Long> partCategoryIds;
 
     public UserResponse() {
     }
@@ -110,7 +114,9 @@ public class UserResponse {
         private LocalDateTime createdAt;
         private LocalDateTime updatedAt;
         private LocalDate expirationDate;
+        private Integer allocatedDays;
         private boolean expired;
+        private List<Long> partCategoryIds;
 
         public Builder id(Long id) {
             this.id = id;
@@ -192,8 +198,18 @@ public class UserResponse {
             return this;
         }
 
+        public Builder allocatedDays(Integer allocatedDays) {
+            this.allocatedDays = allocatedDays;
+            return this;
+        }
+
         public Builder expired(boolean expired) {
             this.expired = expired;
+            return this;
+        }
+
+        public Builder partCategoryIds(List<Long> partCategoryIds) {
+            this.partCategoryIds = partCategoryIds;
             return this;
         }
 
@@ -201,7 +217,9 @@ public class UserResponse {
             UserResponse res = new UserResponse(id, keycloakUserId, username, email, fullName, phone, role, agentId, agentUsername,
                     dealerId, dealerName, dealerCode, enabled, createdAt, updatedAt);
             res.setExpirationDate(this.expirationDate);
+            res.setAllocatedDays(this.allocatedDays);
             res.setExpired(this.expired);
+            res.setPartCategoryIds(this.partCategoryIds);
             return res;
         }
     }
@@ -356,11 +374,27 @@ public class UserResponse {
         this.expirationDate = expirationDate;
     }
 
+    public Integer getAllocatedDays() {
+        return allocatedDays != null ? allocatedDays : 0;
+    }
+
+    public void setAllocatedDays(Integer allocatedDays) {
+        this.allocatedDays = allocatedDays != null ? allocatedDays : 0;
+    }
+
     public boolean isExpired() {
         return expired;
     }
 
     public void setExpired(boolean expired) {
         this.expired = expired;
+    }
+
+    public List<Long> getPartCategoryIds() {
+        return partCategoryIds;
+    }
+
+    public void setPartCategoryIds(List<Long> partCategoryIds) {
+        this.partCategoryIds = partCategoryIds;
     }
 }
