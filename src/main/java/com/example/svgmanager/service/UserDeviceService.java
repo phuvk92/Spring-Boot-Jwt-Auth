@@ -34,6 +34,13 @@ public interface UserDeviceService {
     /** Đăng xuất: máy vẫn giữ chỗ, chỉ bỏ liên kết phiên. */
     void releaseSession(String sessionId);
 
+    /**
+     * Thu hồi mọi phiên Keycloak đang gắn với máy của user, TRỪ {@code keepSessionId} (phiên đang thao tác).
+     * F-01: đổi mật khẩu xong phải cắt được cả offline token trên máy ghi nhớ.
+     * Trả về số phiên đã thu hồi.
+     */
+    int revokeOtherSessions(User user, String keepSessionId);
+
     List<UserDeviceResponse> listDevices(User user, String currentSessionId);
 
     /** Gỡ máy: nhả chỗ + chấm dứt phiên đang chạy trên máy đó. Gỡ máy đã gỡ thì không làm gì. */

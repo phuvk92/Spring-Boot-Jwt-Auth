@@ -186,6 +186,28 @@ public class UserDeviceServiceImpl implements UserDeviceService {
     }
 
     @Override
+    @Transactional
+    public int revokeOtherSessions(User user, String keepSessionId) {
+        int revoked = 0;
+        for (UserDevice d : userDeviceRepository.findByUserIdOrderByStatusAscLastSeenAtDesc(user.getId())) {
+            String sid = d.getKeycloakSessionId();
+            if (sid == null || sid.equals(keepSessionId)) {
+                continue;
+            }
+            // Bỏ liên kết để verifyOnRefresh chặn ngay kể cả khi Keycloak chưa kịp xoá session
+            d.setKeycloakSessionId(null);
+            userDeviceRepository.save(d);
+            evict(sid);
+            keycloakUserService.deleteSession(sid);
+            revoked++;
+        }
+        if (revoked > 0) {
+            log.info("[DEVICE_SESSIONS_REVOKED] user='{}' sessions={}", user.getUsername(), revoked);
+        }
+        return revoked;
+    }
+
+    @Override
     @Transactional(readOnly = true)
     public List<UserDeviceResponse> listDevices(User user, String currentSessionId) {
         return userDeviceRepository.findByUserIdOrderByStatusAscLastSeenAtDesc(user.getId()).stream()

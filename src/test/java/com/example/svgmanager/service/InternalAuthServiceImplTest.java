@@ -46,6 +46,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
+import static org.springframework.test.web.client.match.MockRestRequestMatchers.content;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.method;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withStatus;
@@ -57,6 +58,7 @@ class InternalAuthServiceImplTest {
 
     private static final String TOKEN_URI = "http://localhost:8180/realms/cutting/protocol/openid-connect/token";
     private static final String LOGOUT_URI = "http://localhost:8180/realms/cutting/protocol/openid-connect/logout";
+    private static final String REVOKE_URI = "http://localhost:8180/realms/cutting/protocol/openid-connect/revoke";
     private static final String CLIENT_ID = "cutting-manager-web";
 
     @Mock
@@ -274,7 +276,9 @@ class InternalAuthServiceImplTest {
 
         assertThatThrownBy(() -> internalAuthService.refreshToken(request))
                 .isInstanceOf(UnauthorizedException.class)
-                .hasMessage("Invalid or expired refresh token");
+                .hasMessage("Invalid or expired refresh token")
+                .satisfies(e -> assertThat(((UnauthorizedException) e).getCode())
+                        .isEqualTo(ErrorCodes.REFRESH_EXPIRED));
     }
 
     @Test
@@ -291,7 +295,7 @@ class InternalAuthServiceImplTest {
         when(currentUserService.getCurrentJwt()).thenReturn(Optional.of(mockJwt));
         when(currentUserService.getCurrentUser()).thenReturn(validUser);
 
-        mockServer.expect(requestTo(LOGOUT_URI))
+        mockServer.expect(requestTo(REVOKE_URI))
                 .andExpect(method(HttpMethod.POST))
                 .andRespond(withStatus(HttpStatus.NO_CONTENT));
 
@@ -310,7 +314,7 @@ class InternalAuthServiceImplTest {
     void testLogout_KeycloakExpiredToken_StillSucceeds() {
         when(currentUserService.getCurrentJwt()).thenReturn(Optional.empty());
 
-        mockServer.expect(requestTo(LOGOUT_URI))
+        mockServer.expect(requestTo(REVOKE_URI))
                 .andExpect(method(HttpMethod.POST))
                 .andRespond(withStatus(HttpStatus.BAD_REQUEST));
 
@@ -497,7 +501,7 @@ class InternalAuthServiceImplTest {
         mockServer.expect(requestTo(TOKEN_URI)).andExpect(method(HttpMethod.POST))
                 .andRespond(withSuccess("{\"access_token\":\"" + fakeToken("sid-new") + "\",\"refresh_token\":\"" + refresh
                         + "\",\"expires_in\":300}", MediaType.APPLICATION_JSON));
-        mockServer.expect(requestTo(LOGOUT_URI)).andExpect(method(HttpMethod.POST))
+        mockServer.expect(requestTo(REVOKE_URI)).andExpect(method(HttpMethod.POST))
                 .andRespond(withStatus(HttpStatus.NO_CONTENT));
         doThrow(new ForbiddenException("limit", ErrorCodes.SESSION_LIMIT))
                 .when(userDeviceService).bindOnLogin(any(), any(), eq("sid-new"));
@@ -516,7 +520,7 @@ class InternalAuthServiceImplTest {
         String refresh = fakeToken("sid-A");
         doThrow(new UnauthorizedException("revoked", ErrorCodes.SESSION_REVOKED))
                 .when(userDeviceService).verifyOnRefresh("may-A", "sid-A");
-        mockServer.expect(requestTo(LOGOUT_URI)).andExpect(method(HttpMethod.POST))
+        mockServer.expect(requestTo(REVOKE_URI)).andExpect(method(HttpMethod.POST))
                 .andRespond(withStatus(HttpStatus.NO_CONTENT));
 
         assertThatThrownBy(() -> internalAuthService.refreshToken(new InternalRefreshTokenRequest(refresh, "may-A", null)))
@@ -558,5 +562,77 @@ class InternalAuthServiceImplTest {
 
         assertThatThrownBy(() -> internalAuthService.refreshToken(new InternalRefreshTokenRequest("any_refresh")))
                 .isInstanceOf(ServiceUnavailableException.class);
+    }
+
+    // ── F-01: ghi nhớ đăng nhập — offline token ─────────────────────────────
+
+    @Test
+    @DisplayName("F-01: login rememberMe=true → password grant kèm scope=offline_access, trả refreshExpiresIn")
+    void testLogin_RememberMe_AddsOfflineScope() {
+        givenKnownUser();
+        mockServer.expect(requestTo(TOKEN_URI)).andExpect(method(HttpMethod.POST))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("scope=offline_access")))
+                .andRespond(withSuccess("{\"access_token\":\"" + fakeToken("sid-off")
+                        + "\",\"refresh_token\":\"" + fakeToken("sid-off")
+                        + "\",\"expires_in\":300,\"refresh_expires_in\":0,\"token_type\":\"Bearer\"}", MediaType.APPLICATION_JSON));
+
+        InternalLoginResponse response = internalAuthService.login(
+                new InternalLoginRequest("dealer_user01", "Password123!", null, null, null, null, true));
+
+        assertThat(response.refreshExpiresIn()).isEqualTo(0L);
+        mockServer.verify();
+    }
+
+    @Test
+    @DisplayName("F-01: login mặc định (không rememberMe) → không gửi scope, hành vi cũ")
+    void testLogin_NoRememberMe_NoOfflineScope() {
+        givenKnownUser();
+        mockServer.expect(requestTo(TOKEN_URI)).andExpect(method(HttpMethod.POST))
+                .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("offline_access"))))
+                .andRespond(withSuccess("{\"access_token\":\"mock_acc\",\"refresh_token\":\"mock_ref\",\"expires_in\":300,\"refresh_expires_in\":1800}", MediaType.APPLICATION_JSON));
+
+        InternalLoginResponse response = internalAuthService.login(
+                new InternalLoginRequest("dealer_user01", "Password123!"));
+
+        assertThat(response.refreshExpiresIn()).isEqualTo(1800L);
+    }
+
+    @Test
+    @DisplayName("F-01: refresh trả về refreshExpiresIn từ refresh_expires_in của Keycloak")
+    void testRefresh_ReturnsRefreshExpiresIn() {
+        String sub = "kc-user-uuid-1001";
+        String payload = Base64.getUrlEncoder().withoutPadding().encodeToString(
+                ("{\"sub\":\"" + sub + "\",\"preferred_username\":\"dealer_user01\",\"sid\":\"sid-off\"}").getBytes(StandardCharsets.UTF_8));
+        String validJwt = "header." + payload + ".sig";
+
+        when(userRepository.findByKeycloakUserId(sub)).thenReturn(Optional.of(validUser));
+        mockServer.expect(requestTo(TOKEN_URI)).andExpect(method(HttpMethod.POST))
+                .andRespond(withSuccess("{\"access_token\":\"" + validJwt
+                        + "\",\"refresh_token\":\"new_offline\",\"expires_in\":300,\"refresh_expires_in\":0}", MediaType.APPLICATION_JSON));
+
+        InternalLoginResponse response = internalAuthService.refreshToken(
+                new InternalRefreshTokenRequest("old_offline_refresh"));
+
+        assertThat(response.refreshExpiresIn()).isEqualTo(0L);
+    }
+
+    @Test
+    @DisplayName("F-01: đổi mật khẩu → thu hồi mọi phiên khác của user, giữ phiên hiện tại")
+    void testChangePassword_RevokesOtherSessions() {
+        Jwt mockJwt = Jwt.withTokenValue("mock.jwt.token")
+                .header("alg", "none")
+                .claim("preferred_username", "dealer_user01")
+                .claim("sid", "sid-current")
+                .issuedAt(Instant.now())
+                .expiresAt(Instant.now().plusSeconds(3600))
+                .build();
+        when(currentUserService.getCurrentUser()).thenReturn(validUser);
+        when(currentUserService.getCurrentJwt()).thenReturn(Optional.of(mockJwt));
+        mockServer.expect(requestTo(TOKEN_URI)).andExpect(method(HttpMethod.POST))
+                .andRespond(withSuccess("{\"access_token\":\"verified_ok\"}", MediaType.APPLICATION_JSON));
+
+        internalAuthService.changePassword(new InternalChangePasswordRequest("Cur123!", "New456!", "New456!"));
+
+        verify(userDeviceService).revokeOtherSessions(validUser, "sid-current");
     }
 }
