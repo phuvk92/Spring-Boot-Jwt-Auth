@@ -2,6 +2,7 @@ package com.example.svgmanager.dto.request;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
 import io.swagger.v3.oas.annotations.media.Schema;
+import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
@@ -46,6 +47,23 @@ public class UpdateDealerRequest {
 
     @Schema(description = "Ghi chú nội bộ")
     private String notes;
+
+    // --- Thông tin tài khoản AGENT liên kết ---
+    @Schema(description = "Tên đăng nhập (chỉ dùng nếu đại lý cũ chưa có AGENT)", example = "agent_saigon")
+    private String agentUsername;
+
+    @Schema(description = "Email tài khoản đại lý", example = "agent_saigon@gmail.com")
+    @Email(message = "Email đăng nhập đại lý không hợp lệ")
+    private String agentEmail;
+
+    @Schema(description = "Đổi mật khẩu tài khoản đại lý (để trống nếu không đổi)")
+    private String agentPassword;
+
+    @Schema(description = "Họ tên người đại diện tài khoản đại lý", example = "Nguyễn Văn Thắng")
+    private String agentFullName;
+
+    @Schema(description = "Số điện thoại tài khoản đại lý", example = "0903123456")
+    private String agentPhone;
 
     // --- Cấu hình gói account đại lý ---
     @Schema(description = "Số lượng account tối đa", example = "10")
@@ -140,6 +158,46 @@ public class UpdateDealerRequest {
 
     public void setNotes(String notes) {
         this.notes = notes;
+    }
+
+    public String getAgentUsername() {
+        return agentUsername;
+    }
+
+    public void setAgentUsername(String agentUsername) {
+        this.agentUsername = agentUsername;
+    }
+
+    public String getAgentEmail() {
+        return agentEmail;
+    }
+
+    public void setAgentEmail(String agentEmail) {
+        this.agentEmail = agentEmail;
+    }
+
+    public String getAgentPassword() {
+        return agentPassword;
+    }
+
+    public void setAgentPassword(String agentPassword) {
+        this.agentPassword = agentPassword;
+    }
+
+    public String getAgentFullName() {
+        return agentFullName;
+    }
+
+    public void setAgentFullName(String agentFullName) {
+        this.agentFullName = agentFullName;
+    }
+
+    public String getAgentPhone() {
+        return agentPhone;
+    }
+
+    public void setAgentPhone(String agentPhone) {
+        this.agentPhone = agentPhone;
     }
 
     public Integer getMaxAccounts() {

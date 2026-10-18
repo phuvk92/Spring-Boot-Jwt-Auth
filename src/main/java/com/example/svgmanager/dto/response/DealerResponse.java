@@ -41,29 +41,48 @@ public class DealerResponse {
     @Schema(description = "Trạng thái (ACTIVE, EXPIRING, LOCKED)", example = "ACTIVE")
     private String status;
 
-    @Schema(description = "Số lượng user / thợ thuộc đại lý", example = "14")
+    @Schema(description = "Tổng số lượng user thuộc đại lý (bao gồm AGENT và USER)", example = "14")
     private long usersCount;
 
     @Schema(description = "Ghi chú nội bộ")
     private String notes;
 
-    // --- Thông tin gói account của đại lý ---
+    // --- Thông tin tài khoản AGENT duy nhất của đại lý ---
+    @Schema(description = "ID tài khoản đăng nhập đại lý (Role AGENT)", example = "11")
+    private Long agentUserId;
+
+    @Schema(description = "Username đăng nhập đại lý", example = "agent_saigon")
+    private String agentUsername;
+
+    @Schema(description = "Họ tên người dùng đại diện đại lý", example = "Nguyễn Văn Thắng")
+    private String agentFullName;
+
+    @Schema(description = "Email đăng nhập đại lý", example = "agent_saigon@gmail.com")
+    private String agentEmail;
+
+    @Schema(description = "Số điện thoại tài khoản đại lý", example = "0903123456")
+    private String agentPhone;
+
+    @Schema(description = "Trạng thái kích hoạt của tài khoản đại lý", example = "true")
+    private Boolean agentEnabled;
+
+    // --- Thống kê gói account của đại lý ---
     @Schema(description = "Số lượng account tối đa", example = "10")
     private Integer maxAccounts;
 
-    @Schema(description = "Số lượng account đã tạo", example = "4")
+    @Schema(description = "Số lượng account Thợ cắt (USER) đã tạo", example = "4")
     private Integer createdAccounts;
 
-    @Schema(description = "Số lượng account còn lại", example = "6")
+    @Schema(description = "Số lượng account Thợ cắt (USER) còn lại", example = "6")
     private Integer remainingAccounts;
 
     @Schema(description = "Tổng quỹ ngày sử dụng", example = "3600")
     private Integer totalAllocatedDays;
 
-    @Schema(description = "Số ngày đã phân bổ", example = "1440")
+    @Schema(description = "Số ngày đã phân bổ cho các USER", example = "1440")
     private Integer usedAllocatedDays;
 
-    @Schema(description = "Số ngày còn lại", example = "2160")
+    @Schema(description = "Số ngày còn lại trong quỹ", example = "2160")
     private Integer remainingAllocatedDays;
 
     @Schema(description = "Ngày bắt đầu gói (yyyy-MM-dd)", example = "2026-01-01")
@@ -212,6 +231,54 @@ public class DealerResponse {
 
     public void setNotes(String notes) {
         this.notes = notes;
+    }
+
+    public Long getAgentUserId() {
+        return agentUserId;
+    }
+
+    public void setAgentUserId(Long agentUserId) {
+        this.agentUserId = agentUserId;
+    }
+
+    public String getAgentUsername() {
+        return agentUsername;
+    }
+
+    public void setAgentUsername(String agentUsername) {
+        this.agentUsername = agentUsername;
+    }
+
+    public String getAgentFullName() {
+        return agentFullName;
+    }
+
+    public void setAgentFullName(String agentFullName) {
+        this.agentFullName = agentFullName;
+    }
+
+    public String getAgentEmail() {
+        return agentEmail;
+    }
+
+    public void setAgentEmail(String agentEmail) {
+        this.agentEmail = agentEmail;
+    }
+
+    public String getAgentPhone() {
+        return agentPhone;
+    }
+
+    public void setAgentPhone(String agentPhone) {
+        this.agentPhone = agentPhone;
+    }
+
+    public Boolean getAgentEnabled() {
+        return agentEnabled;
+    }
+
+    public void setAgentEnabled(Boolean agentEnabled) {
+        this.agentEnabled = agentEnabled;
     }
 
     public Integer getMaxAccounts() {

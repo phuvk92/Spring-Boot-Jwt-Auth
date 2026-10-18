@@ -6,17 +6,22 @@ import com.example.svgmanager.dto.response.DealerPackageResponse;
 import com.example.svgmanager.dto.response.DealerResponse;
 import com.example.svgmanager.dto.response.DealerStatsResponse;
 import com.example.svgmanager.dto.response.PageResponse;
+import com.example.svgmanager.dto.response.UserResponse;
 import com.example.svgmanager.entity.Dealer;
 import com.example.svgmanager.entity.DealerPackageHistory;
+import com.example.svgmanager.entity.Role;
 import com.example.svgmanager.entity.User;
 import com.example.svgmanager.exception.BadRequestException;
 import com.example.svgmanager.exception.ConflictException;
 import com.example.svgmanager.exception.ForbiddenException;
 import com.example.svgmanager.exception.ResourceNotFoundException;
+import com.example.svgmanager.mapper.UserMapper;
 import com.example.svgmanager.repository.DealerPackageHistoryRepository;
 import com.example.svgmanager.repository.DealerRepository;
+import com.example.svgmanager.repository.UserRepository;
 import com.example.svgmanager.security.CurrentUserService;
 import com.example.svgmanager.service.DealerService;
+import com.example.svgmanager.service.KeycloakUserService;
 import jakarta.persistence.criteria.Predicate;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -27,6 +32,7 @@ import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
 import java.security.SecureRandom;
 import java.time.LocalDate;
@@ -34,6 +40,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 @Service
@@ -42,17 +49,32 @@ public class DealerServiceImpl implements DealerService {
     private static final Logger log = LoggerFactory.getLogger(DealerServiceImpl.class);
     private static final String CHAR_POOL = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
     private static final SecureRandom RANDOM = new SecureRandom();
+    private static final Pattern PASSWORD_PATTERN = Pattern.compile(
+            "^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)(?=.*[@$!%*?&#^()_+\\-=\\[\\]{};':\"\\\\|,.<>\\/?]).{8,}$"
+    );
+    private static final Pattern EMAIL_PATTERN = Pattern.compile(
+            "^[A-Za-z0-9+_.-]+@(.+)$"
+    );
 
     private final DealerRepository dealerRepository;
     private final DealerPackageHistoryRepository dealerPackageHistoryRepository;
     private final CurrentUserService currentUserService;
+    private final UserRepository userRepository;
+    private final KeycloakUserService keycloakUserService;
+    private final UserMapper userMapper;
 
     public DealerServiceImpl(DealerRepository dealerRepository,
                              DealerPackageHistoryRepository dealerPackageHistoryRepository,
-                             CurrentUserService currentUserService) {
+                             CurrentUserService currentUserService,
+                             UserRepository userRepository,
+                             KeycloakUserService keycloakUserService,
+                             UserMapper userMapper) {
         this.dealerRepository = dealerRepository;
         this.dealerPackageHistoryRepository = dealerPackageHistoryRepository;
         this.currentUserService = currentUserService;
+        this.userRepository = userRepository;
+        this.keycloakUserService = keycloakUserService;
+        this.userMapper = userMapper;
     }
 
     @Override
@@ -153,55 +175,137 @@ public class DealerServiceImpl implements DealerService {
             code = generateUniqueCode();
         }
 
-        int maxAccounts = request.getMaxAccounts() != null ? request.getMaxAccounts() : 10;
-        int totalAllocatedDays = request.getTotalAllocatedDays() != null ? request.getTotalAllocatedDays() : 3600;
-        LocalDate startDate = request.getPackageStartDate() != null ? request.getPackageStartDate() : LocalDate.now();
-        LocalDate expiryDate = request.getPackageExpiryDate() != null ? request.getPackageExpiryDate() : startDate.plusDays(360);
-        String pkgStatus = (request.getPackageStatus() != null && !request.getPackageStatus().isBlank())
-                ? request.getPackageStatus().trim().toUpperCase()
-                : "ACTIVE";
+        // --- Validate Agent Credentials ---
+        String effectiveAgentEmail = StringUtils.hasText(request.getAgentEmail())
+                ? request.getAgentEmail().trim()
+                : (StringUtils.hasText(request.getEmail()) ? request.getEmail().trim() : null);
 
-        Dealer dealer = Dealer.builder()
-                .code(code)
-                .name(request.getName().trim())
-                .region(request.getRegion() != null ? request.getRegion().trim() : null)
-                .address(request.getAddress() != null ? request.getAddress().trim() : null)
-                .phone(request.getPhone() != null ? request.getPhone().trim() : null)
-                .email(request.getEmail() != null ? request.getEmail().trim() : null)
-                .contactPerson(request.getContactPerson() != null ? request.getContactPerson().trim() : null)
-                .plan("Cơ bản")
-                .dueDate(null)
-                .status(request.getStatus() != null && !request.getStatus().isBlank() ? request.getStatus().trim().toUpperCase() : "ACTIVE")
-                .notes(request.getNotes() != null ? request.getNotes().trim() : null)
-                .deleted(false)
-                .maxAccounts(maxAccounts)
-                .totalAllocatedDays(totalAllocatedDays)
-                .usedAllocatedDays(0)
-                .packageStartDate(startDate)
-                .packageExpiryDate(expiryDate)
-                .packageStatus(pkgStatus)
-                .build();
+        if (!StringUtils.hasText(effectiveAgentEmail)) {
+            throw new BadRequestException("Email tài khoản đăng nhập đại lý là bắt buộc (vui lòng điền Email đại lý hoặc Email tài khoản)");
+        }
+        if (!EMAIL_PATTERN.matcher(effectiveAgentEmail).matches()) {
+            throw new BadRequestException("Email tài khoản đại lý không hợp lệ: " + effectiveAgentEmail);
+        }
 
-        Dealer saved = dealerRepository.save(dealer);
-        String actor = currentUserService.getCurrentJwt()
-                .map(j -> j.getClaimAsString("preferred_username"))
-                .orElse("system");
+        String effectiveAgentUsername = StringUtils.hasText(request.getAgentUsername())
+                ? request.getAgentUsername().trim()
+                : effectiveAgentEmail;
 
-        dealerPackageHistoryRepository.save(DealerPackageHistory.builder()
-                .dealer(saved)
-                .action("GRANT_PACKAGE")
-                .previousMaxAccounts(0)
-                .newMaxAccounts(maxAccounts)
-                .previousTotalDays(0)
-                .newTotalDays(totalAllocatedDays)
-                .usedDays(0)
-                .changeDays(totalAllocatedDays)
-                .notes("Khởi tạo gói đại lý mới: " + maxAccounts + " accounts, " + totalAllocatedDays + " ngày")
-                .createdBy(actor)
-                .build());
+        if (!StringUtils.hasText(request.getAgentPassword())) {
+            throw new BadRequestException("Mật khẩu tài khoản đại lý không được để trống");
+        }
+        if (!PASSWORD_PATTERN.matcher(request.getAgentPassword()).matches()) {
+            throw new BadRequestException("Mật khẩu đại lý phải có ít nhất 8 ký tự, gồm chữ hoa, chữ thường, số và ký tự đặc biệt");
+        }
 
-        log.info("[DEALER_CREATED] Dealer created: id={}, code='{}', name='{}', maxAccounts={}, totalDays={}, actor='{}'",
-                saved.getId(), saved.getCode(), saved.getName(), maxAccounts, totalAllocatedDays, actor);
+        if (userRepository.existsByUsername(effectiveAgentUsername)) {
+            throw new ConflictException("Tên đăng nhập '" + effectiveAgentUsername + "' đã được sử dụng");
+        }
+        if (userRepository.existsByEmail(effectiveAgentEmail)) {
+            throw new ConflictException("Email '" + effectiveAgentEmail + "' đã được sử dụng");
+        }
+
+        String effectiveAgentFullName = StringUtils.hasText(request.getAgentFullName())
+                ? request.getAgentFullName().trim()
+                : (StringUtils.hasText(request.getContactPerson()) ? request.getContactPerson().trim() : request.getName().trim());
+
+        String effectiveAgentPhone = StringUtils.hasText(request.getAgentPhone())
+                ? request.getAgentPhone().trim()
+                : (StringUtils.hasText(request.getPhone()) ? request.getPhone().trim() : null);
+
+        // --- Step 1: Create Keycloak User with Role AGENT ---
+        String keycloakUserId = keycloakUserService.createUser(
+                effectiveAgentUsername,
+                effectiveAgentEmail,
+                request.getAgentPassword(),
+                Role.AGENT,
+                true,
+                effectiveAgentFullName
+        );
+
+        // --- Step 2: Create Dealer and User with Compensating Rollback ---
+        Dealer saved;
+        try {
+            int maxAccounts = request.getMaxAccounts() != null ? request.getMaxAccounts() : 10;
+            int totalAllocatedDays = request.getTotalAllocatedDays() != null ? request.getTotalAllocatedDays() : 3600;
+            LocalDate startDate = request.getPackageStartDate() != null ? request.getPackageStartDate() : LocalDate.now();
+            LocalDate expiryDate = request.getPackageExpiryDate() != null ? request.getPackageExpiryDate() : startDate.plusDays(360);
+            String pkgStatus = (request.getPackageStatus() != null && !request.getPackageStatus().isBlank())
+                    ? request.getPackageStatus().trim().toUpperCase()
+                    : "ACTIVE";
+
+            Dealer dealer = Dealer.builder()
+                    .code(code)
+                    .name(request.getName().trim())
+                    .region(request.getRegion() != null ? request.getRegion().trim() : null)
+                    .address(request.getAddress() != null ? request.getAddress().trim() : null)
+                    .phone(request.getPhone() != null ? request.getPhone().trim() : null)
+                    .email(request.getEmail() != null ? request.getEmail().trim() : null)
+                    .contactPerson(request.getContactPerson() != null ? request.getContactPerson().trim() : null)
+                    .plan("Cơ bản")
+                    .dueDate(null)
+                    .status(request.getStatus() != null && !request.getStatus().isBlank() ? request.getStatus().trim().toUpperCase() : "ACTIVE")
+                    .notes(request.getNotes() != null ? request.getNotes().trim() : null)
+                    .deleted(false)
+                    .maxAccounts(maxAccounts)
+                    .totalAllocatedDays(totalAllocatedDays)
+                    .usedAllocatedDays(0)
+                    .packageStartDate(startDate)
+                    .packageExpiryDate(expiryDate)
+                    .packageStatus(pkgStatus)
+                    .build();
+
+            saved = dealerRepository.save(dealer);
+
+            // Create Agent User in Database: Role AGENT, allocatedDays = 0 (DO NOT consume quota)
+            User agentUser = User.builder()
+                    .keycloakUserId(keycloakUserId)
+                    .username(effectiveAgentUsername)
+                    .email(effectiveAgentEmail)
+                    .fullName(effectiveAgentFullName)
+                    .phone(effectiveAgentPhone)
+                    .role(Role.AGENT)
+                    .dealer(saved)
+                    .enabled(true)
+                    .deleted(false)
+                    .allocatedDays(0) // AGENT consumes 0 days from quota
+                    .build();
+
+            User savedAgent = userRepository.save(agentUser);
+
+            // Bind agent_user_id on Dealer
+            saved.setAgentUser(savedAgent);
+            saved = dealerRepository.save(saved);
+
+            String actor = currentUserService.getCurrentJwt()
+                    .map(j -> j.getClaimAsString("preferred_username"))
+                    .orElse("system");
+
+            dealerPackageHistoryRepository.save(DealerPackageHistory.builder()
+                    .dealer(saved)
+                    .action("GRANT_PACKAGE")
+                    .previousMaxAccounts(0)
+                    .newMaxAccounts(maxAccounts)
+                    .previousTotalDays(0)
+                    .newTotalDays(totalAllocatedDays)
+                    .usedDays(0)
+                    .changeDays(totalAllocatedDays)
+                    .notes("Khởi tạo gói đại lý mới: " + maxAccounts + " accounts, " + totalAllocatedDays + " ngày. Tạo tài khoản đại lý: " + effectiveAgentUsername)
+                    .createdBy(actor)
+                    .build());
+
+            log.info("[DEALER_CREATED] Dealer created: id={}, code='{}', name='{}', agentUser='{}' (id={}), maxAccounts={}, totalDays={}, actor='{}'",
+                    saved.getId(), saved.getCode(), saved.getName(), savedAgent.getUsername(), savedAgent.getId(), maxAccounts, totalAllocatedDays, actor);
+
+        } catch (Exception e) {
+            log.error("[DEALER_CREATE_FAILED] Error persisting dealer and agent in database, rolling back Keycloak user: {}", keycloakUserId, e);
+            try {
+                keycloakUserService.deleteUser(keycloakUserId);
+            } catch (Exception kcEx) {
+                log.error("[KEYCLOAK_ROLLBACK_ERROR] Failed to delete Keycloak user {} during compensation", keycloakUserId, kcEx);
+            }
+            throw e;
+        }
 
         return mapToResponse(saved);
     }
@@ -229,7 +333,7 @@ public class DealerServiceImpl implements DealerService {
         }
         dealer.setNotes(request.getNotes() != null ? request.getNotes().trim() : null);
 
-        // --- Cập nhật gói account và kiểm tra giới hạn đang sử dụng ---
+        // --- Cập nhật gói account và kiểm tra giới hạn đang sử dụng (chỉ tính role USER) ---
         long currentCreatedAccounts = dealerRepository.countActiveUserAccountsByDealerId(id);
         int currentUsedDays = dealer.getUsedAllocatedDays() != null ? dealer.getUsedAllocatedDays() : 0;
         int prevMaxAccounts = dealer.getMaxAccounts();
@@ -239,7 +343,7 @@ public class DealerServiceImpl implements DealerService {
         if (request.getMaxAccounts() != null) {
             if (request.getMaxAccounts() < currentCreatedAccounts) {
                 throw new BadRequestException(String.format(
-                        "Không thể giảm số lượng account tối đa xuống %d vì đại lý đã tạo %d account",
+                        "Không thể giảm số lượng account tối đa xuống %d vì đại lý đã tạo %d account Thợ cắt",
                         request.getMaxAccounts(), currentCreatedAccounts
                 ));
             }
@@ -252,7 +356,7 @@ public class DealerServiceImpl implements DealerService {
         if (request.getTotalAllocatedDays() != null) {
             if (request.getTotalAllocatedDays() < currentUsedDays) {
                 throw new BadRequestException(String.format(
-                        "Không thể giảm tổng quỹ ngày xuống %d ngày vì đại lý đã phân bổ %d ngày",
+                        "Không thể giảm tổng quỹ ngày xuống %d ngày vì đại lý đã phân bổ %d ngày cho Thợ cắt",
                         request.getTotalAllocatedDays(), currentUsedDays
                 ));
             }
@@ -273,6 +377,95 @@ public class DealerServiceImpl implements DealerService {
         if (request.getPackageStatus() != null && !request.getPackageStatus().isBlank()) {
             dealer.setPackageStatus(request.getPackageStatus().trim().toUpperCase());
             packageChanged = true;
+        }
+
+        // --- Handle Linked AGENT user updates ---
+        User agentUser = dealer.getAgentUser();
+        if (agentUser == null) {
+            // Check if there is an existing unlinked AGENT user for this dealer
+            agentUser = userRepository.findByDealerIdAndRoleAndDeletedFalse(dealer.getId(), Role.AGENT).orElse(null);
+            if (agentUser != null) {
+                dealer.setAgentUser(agentUser);
+            }
+        }
+
+        if (agentUser != null) {
+            boolean agentChanged = false;
+            if (StringUtils.hasText(request.getAgentEmail()) && !request.getAgentEmail().equalsIgnoreCase(agentUser.getEmail())) {
+                String newEmail = request.getAgentEmail().trim();
+                if (!EMAIL_PATTERN.matcher(newEmail).matches()) {
+                    throw new BadRequestException("Email tài khoản đại lý không hợp lệ: " + newEmail);
+                }
+                if (userRepository.existsByEmailAndIdNot(newEmail, agentUser.getId())) {
+                    throw new ConflictException("Email '" + newEmail + "' đã được sử dụng bởi người dùng khác");
+                }
+                agentUser.setEmail(newEmail);
+                agentChanged = true;
+            }
+            if (request.getAgentFullName() != null && !request.getAgentFullName().isBlank()) {
+                agentUser.setFullName(request.getAgentFullName().trim());
+                agentChanged = true;
+            }
+            if (request.getAgentPhone() != null) {
+                agentUser.setPhone(request.getAgentPhone().trim());
+                agentChanged = true;
+            }
+            if (agentChanged) {
+                userRepository.save(agentUser);
+                if (StringUtils.hasText(agentUser.getKeycloakUserId())) {
+                    keycloakUserService.updateUser(agentUser.getKeycloakUserId(), agentUser.getEmail(), agentUser.isEnabled(), agentUser.getFullName());
+                }
+            }
+            if (StringUtils.hasText(request.getAgentPassword())) {
+                if (!PASSWORD_PATTERN.matcher(request.getAgentPassword()).matches()) {
+                    throw new BadRequestException("Mật khẩu đại lý phải có ít nhất 8 ký tự, gồm chữ hoa, chữ thường, số và ký tự đặc biệt");
+                }
+                if (StringUtils.hasText(agentUser.getKeycloakUserId())) {
+                    keycloakUserService.resetPassword(agentUser.getKeycloakUserId(), request.getAgentPassword());
+                }
+            }
+        } else if (StringUtils.hasText(request.getAgentPassword())) {
+            // Reconcile legacy dealer without AGENT: create new AGENT if password is provided
+            String effectiveEmail = StringUtils.hasText(request.getAgentEmail())
+                    ? request.getAgentEmail().trim()
+                    : (StringUtils.hasText(dealer.getEmail()) ? dealer.getEmail().trim() : null);
+            if (!StringUtils.hasText(effectiveEmail)) {
+                throw new BadRequestException("Email tài khoản đại lý là bắt buộc");
+            }
+            String effectiveUsername = StringUtils.hasText(request.getAgentUsername())
+                    ? request.getAgentUsername().trim()
+                    : effectiveEmail;
+
+            if (userRepository.existsByUsername(effectiveUsername)) {
+                throw new ConflictException("Tên đăng nhập '" + effectiveUsername + "' đã được sử dụng");
+            }
+            if (userRepository.existsByEmail(effectiveEmail)) {
+                throw new ConflictException("Email '" + effectiveEmail + "' đã được sử dụng");
+            }
+
+            String keycloakUserId = keycloakUserService.createUser(
+                    effectiveUsername,
+                    effectiveEmail,
+                    request.getAgentPassword(),
+                    Role.AGENT,
+                    true,
+                    StringUtils.hasText(request.getAgentFullName()) ? request.getAgentFullName() : dealer.getName()
+            );
+
+            User newAgent = User.builder()
+                    .keycloakUserId(keycloakUserId)
+                    .username(effectiveUsername)
+                    .email(effectiveEmail)
+                    .fullName(StringUtils.hasText(request.getAgentFullName()) ? request.getAgentFullName() : dealer.getName())
+                    .phone(request.getAgentPhone() != null ? request.getAgentPhone() : dealer.getPhone())
+                    .role(Role.AGENT)
+                    .dealer(dealer)
+                    .enabled(true)
+                    .deleted(false)
+                    .allocatedDays(0)
+                    .build();
+            User savedAgent = userRepository.save(newAgent);
+            dealer.setAgentUser(savedAgent);
         }
 
         Dealer updated = dealerRepository.save(dealer);
@@ -310,6 +503,21 @@ public class DealerServiceImpl implements DealerService {
         dealer.setDeleted(true);
         dealerRepository.save(dealer);
 
+        // Soft delete and disable linked AGENT user
+        User agentUser = dealer.getAgentUser();
+        if (agentUser != null) {
+            agentUser.setEnabled(false);
+            agentUser.setDeleted(true);
+            userRepository.save(agentUser);
+            if (StringUtils.hasText(agentUser.getKeycloakUserId())) {
+                try {
+                    keycloakUserService.disableUser(agentUser.getKeycloakUserId());
+                } catch (Exception e) {
+                    log.error("Failed to disable Keycloak user {} on dealer deletion", agentUser.getKeycloakUserId(), e);
+                }
+            }
+        }
+
         String actor = currentUserService.getCurrentJwt()
                 .map(j -> j.getClaimAsString("preferred_username"))
                 .orElse("system");
@@ -339,6 +547,25 @@ public class DealerServiceImpl implements DealerService {
         String cleanStatus = status.trim().toUpperCase();
         dealer.setStatus(cleanStatus);
         Dealer saved = dealerRepository.save(dealer);
+
+        // Sync linked AGENT user enable/disable
+        User agentUser = dealer.getAgentUser();
+        if (agentUser != null) {
+            boolean shouldEnable = "ACTIVE".equalsIgnoreCase(cleanStatus);
+            agentUser.setEnabled(shouldEnable);
+            userRepository.save(agentUser);
+            if (StringUtils.hasText(agentUser.getKeycloakUserId())) {
+                try {
+                    if (shouldEnable) {
+                        keycloakUserService.enableUser(agentUser.getKeycloakUserId());
+                    } else {
+                        keycloakUserService.disableUser(agentUser.getKeycloakUserId());
+                    }
+                } catch (Exception e) {
+                    log.error("Failed to sync status to Keycloak user {}", agentUser.getKeycloakUserId(), e);
+                }
+            }
+        }
 
         String actor = currentUserService.getCurrentJwt()
                 .map(j -> j.getClaimAsString("preferred_username"))
@@ -392,6 +619,25 @@ public class DealerServiceImpl implements DealerService {
         return getDealerPackage(dealer.getId());
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public List<UserResponse> getDealerUsers(Long id) {
+        Dealer dealer = dealerRepository.findByIdAndDeletedFalse(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Đại lý không tồn tại với ID: " + id));
+
+        if (!currentUserService.isAdmin()) {
+            User currentUser = currentUserService.getCurrentUser();
+            if (currentUser.getDealer() == null || !currentUser.getDealer().getId().equals(id)) {
+                throw new ForbiddenException("Không có quyền xem danh sách người dùng của đại lý khác");
+            }
+        }
+
+        List<User> users = userRepository.findAllByDealerIdAndDeletedFalseOrderByCreatedAtDesc(id);
+        return users.stream()
+                .map(userMapper::toUserResponse)
+                .collect(Collectors.toList());
+    }
+
     private DealerResponse mapToResponse(Dealer dealer) {
         long usersCount = dealerRepository.countUsersByDealerId(dealer.getId());
         long activeAccounts = dealerRepository.countActiveUserAccountsByDealerId(dealer.getId());
@@ -422,6 +668,20 @@ public class DealerServiceImpl implements DealerService {
         res.setPackageExpiryDate(dealer.getPackageExpiryDate());
         res.setPackageStatus(dealer.getPackageStatus());
         res.setPackageExpired(dealer.isPackageExpired());
+
+        User agent = dealer.getAgentUser();
+        if (agent == null) {
+            agent = userRepository.findByDealerIdAndRoleAndDeletedFalse(dealer.getId(), Role.AGENT).orElse(null);
+        }
+        if (agent != null) {
+            res.setAgentUserId(agent.getId());
+            res.setAgentUsername(agent.getUsername());
+            res.setAgentFullName(agent.getFullName());
+            res.setAgentEmail(agent.getEmail());
+            res.setAgentPhone(agent.getPhone());
+            res.setAgentEnabled(agent.isEnabled());
+        }
+
         return res;
     }
 }

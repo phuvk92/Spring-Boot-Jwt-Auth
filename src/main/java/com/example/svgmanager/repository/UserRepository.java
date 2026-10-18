@@ -1,6 +1,7 @@
 package com.example.svgmanager.repository;
 
 import com.example.svgmanager.entity.DeviceStatus;
+import com.example.svgmanager.entity.Role;
 import com.example.svgmanager.entity.User;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -12,6 +13,7 @@ import org.springframework.data.repository.query.Param;
 import jakarta.persistence.LockModeType;
 import org.springframework.stereotype.Repository;
 
+import java.util.List;
 import java.util.Optional;
 
 @Repository
@@ -45,7 +47,20 @@ public interface UserRepository extends JpaRepository<User, Long>, JpaSpecificat
 
     boolean existsByAgent(User agent);
 
-    // ── Thống kê usersAtLimit (F-57 · NGO-422) ───────────────────────────────────
+    Optional<User> findByDealerIdAndRoleAndDeletedFalse(Long dealerId, Role role);
+
+    boolean existsByDealerIdAndRoleAndDeletedFalse(Long dealerId, Role role);
+
+    boolean existsByDealerIdAndRoleAndIdNotAndDeletedFalse(Long dealerId, Role role, Long id);
+
+    List<User> findAllByDealerIdAndDeletedFalseOrderByCreatedAtDesc(Long dealerId);
+
+    List<User> findAllByDealerIdAndRoleAndDeletedFalseOrderByCreatedAtDesc(Long dealerId, Role role);
+
+    @Query("SELECT COALESCE(SUM(u.allocatedDays), 0) FROM User u WHERE u.dealer.id = :dealerId AND u.role = 'USER' AND u.deleted = false")
+    int sumAllocatedDaysByDealerIdAndRoleUser(@Param("dealerId") Long dealerId);
+
+    // ── Thống kê usersAtLimit (F-57 · NGO-422) ──────────────────────────────────
 
     /**
      * Đếm số user đang hoạt động có số máy ACTIVE >= max_devices (mặc định defaultMaxDevices khi max_devices null)

@@ -6,6 +6,7 @@ import com.example.svgmanager.dto.response.DealerPackageResponse;
 import com.example.svgmanager.dto.response.DealerResponse;
 import com.example.svgmanager.dto.response.DealerStatsResponse;
 import com.example.svgmanager.dto.response.PageResponse;
+import com.example.svgmanager.dto.response.UserResponse;
 import com.example.svgmanager.service.DealerService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -87,6 +88,13 @@ public class DealerController {
         return ResponseEntity.ok(dealerService.getDealerById(id));
     }
 
+    @GetMapping("/{id}/users")
+    @Operation(summary = "Lấy danh sách người dùng (thợ cắt và đại lý) thuộc đại lý")
+    @PreAuthorize("hasRole('ADMIN') or hasRole('AGENT')")
+    public ResponseEntity<List<UserResponse>> getDealerUsers(@PathVariable Long id) {
+        return ResponseEntity.ok(dealerService.getDealerUsers(id));
+    }
+
     @PostMapping
     @Operation(summary = "Thêm mới đại lý (Admin)")
     @PreAuthorize("hasRole('ADMIN')")
@@ -119,10 +127,10 @@ public class DealerController {
     }
 
     @DeleteMapping("/{id}")
-    @Operation(summary = "Xóa mềm đại lý (Admin)")
+    @Operation(summary = "Xóa đại lý (Admin, soft delete)")
     @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<Map<String, String>> deleteDealer(@PathVariable Long id) {
+    public ResponseEntity<Void> deleteDealer(@PathVariable Long id) {
         dealerService.deleteDealer(id);
-        return ResponseEntity.ok(Map.of("message", "Xóa đại lý thành công"));
+        return ResponseEntity.noContent().build();
     }
 }

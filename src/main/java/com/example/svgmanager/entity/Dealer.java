@@ -63,6 +63,11 @@ public class Dealer {
     @Column(nullable = false)
     private boolean deleted = false;
 
+    // --- Tài khoản AGENT duy nhất của đại lý ---
+    @OneToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "agent_user_id", unique = true)
+    private User agentUser;
+
     // --- Thông tin gói account của đại lý ---
     @Column(name = "max_accounts", nullable = false)
     private Integer maxAccounts = 10;
@@ -98,7 +103,7 @@ public class Dealer {
 
     public Dealer(Long id, String code, String name, String region, String address, String phone,
                   String email, String contactPerson, String plan, String dueDate, String status,
-                  String notes, boolean deleted, Integer maxAccounts, Integer totalAllocatedDays,
+                  String notes, boolean deleted, User agentUser, Integer maxAccounts, Integer totalAllocatedDays,
                   Integer usedAllocatedDays, LocalDate packageStartDate, LocalDate packageExpiryDate,
                   String packageStatus, List<User> users, LocalDateTime createdAt, LocalDateTime updatedAt) {
         this.id = id;
@@ -114,6 +119,7 @@ public class Dealer {
         this.status = status != null ? status : "ACTIVE";
         this.notes = notes;
         this.deleted = deleted;
+        this.agentUser = agentUser;
         this.maxAccounts = maxAccounts != null ? maxAccounts : 10;
         this.totalAllocatedDays = totalAllocatedDays != null ? totalAllocatedDays : 3600;
         this.usedAllocatedDays = usedAllocatedDays != null ? usedAllocatedDays : 0;
@@ -157,6 +163,7 @@ public class Dealer {
         private String status = "ACTIVE";
         private String notes;
         private boolean deleted = false;
+        private User agentUser;
         private Integer maxAccounts = 10;
         private Integer totalAllocatedDays = 3600;
         private Integer usedAllocatedDays = 0;
@@ -232,6 +239,11 @@ public class Dealer {
             return this;
         }
 
+        public Builder agentUser(User agentUser) {
+            this.agentUser = agentUser;
+            return this;
+        }
+
         public Builder maxAccounts(Integer maxAccounts) {
             this.maxAccounts = maxAccounts;
             return this;
@@ -279,7 +291,7 @@ public class Dealer {
 
         public Dealer build() {
             return new Dealer(id, code, name, region, address, phone, email, contactPerson,
-                    plan, dueDate, status, notes, deleted, maxAccounts, totalAllocatedDays,
+                    plan, dueDate, status, notes, deleted, agentUser, maxAccounts, totalAllocatedDays,
                     usedAllocatedDays, packageStartDate, packageExpiryDate, packageStatus,
                     users, createdAt, updatedAt);
         }
@@ -387,6 +399,14 @@ public class Dealer {
 
     public void setDeleted(boolean deleted) {
         this.deleted = deleted;
+    }
+
+    public User getAgentUser() {
+        return agentUser;
+    }
+
+    public void setAgentUser(User agentUser) {
+        this.agentUser = agentUser;
     }
 
     public Integer getMaxAccounts() {

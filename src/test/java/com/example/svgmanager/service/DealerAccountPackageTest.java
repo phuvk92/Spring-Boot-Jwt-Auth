@@ -1,14 +1,17 @@
 package com.example.svgmanager.service;
 
+import com.example.svgmanager.dto.request.CreateDealerRequest;
 import com.example.svgmanager.dto.request.CreateUserRequest;
 import com.example.svgmanager.dto.request.UpdateDealerRequest;
 import com.example.svgmanager.dto.request.UpdateUserRequest;
+import com.example.svgmanager.dto.response.DealerResponse;
 import com.example.svgmanager.dto.response.UserResponse;
 import com.example.svgmanager.entity.Dealer;
 import com.example.svgmanager.entity.DealerPackageHistory;
 import com.example.svgmanager.entity.Role;
 import com.example.svgmanager.entity.User;
 import com.example.svgmanager.exception.BadRequestException;
+import com.example.svgmanager.exception.ConflictException;
 import com.example.svgmanager.exception.ForbiddenException;
 import com.example.svgmanager.mapper.UserMapper;
 import com.example.svgmanager.repository.DealerPackageHistoryRepository;
@@ -75,7 +78,10 @@ class DealerAccountPackageTest {
         dealerService = new DealerServiceImpl(
                 dealerRepository,
                 dealerPackageHistoryRepository,
-                currentUserService
+                currentUserService,
+                userRepository,
+                keycloakUserService,
+                userMapper
         );
 
         dealer = Dealer.builder()
@@ -104,7 +110,7 @@ class DealerAccountPackageTest {
     }
 
     @Test
-    @DisplayName("Case 1 & 3: Gói 10 account, 3.600 ngày; tạo account với phân bổ hợp lệ thành công")
+    @DisplayName("Case 1 & 3: Gói 10 account, 3.600 ngày; tạo account USER hợp lệ thành công")
     void testCreateUser_ValidQuotaAllocation_Success() {
         when(currentUserService.getCurrentUser()).thenReturn(agentA);
         when(currentUserService.isAgent()).thenReturn(true);
@@ -136,7 +142,7 @@ class DealerAccountPackageTest {
     }
 
     @Test
-    @DisplayName("Case 2: Tạo account thứ 11 khi gói chỉ có tối đa 10 account bị từ chối")
+    @DisplayName("Case 2: Tạo account USER thứ 11 khi gói chỉ có tối đa 10 account bị từ chối")
     void testCreateUser_ExceedMaxAccounts_ThrowsBadRequest() {
         when(currentUserService.getCurrentUser()).thenReturn(agentA);
         when(currentUserService.isAgent()).thenReturn(true);
@@ -159,7 +165,7 @@ class DealerAccountPackageTest {
     }
 
     @Test
-    @DisplayName("Case 4 & 5: Phân bổ vượt quá quỹ ngày còn lại (hoặc > 3600) bị từ chối")
+    @DisplayName("Case 4 & 5: Phân bổ vượt quá quỹ ngày còn lại bị từ chối")
     void testCreateUser_ExceedRemainingDays_ThrowsBadRequest() {
         dealer.setUsedAllocatedDays(3500); // Only 100 days remaining
         when(currentUserService.getCurrentUser()).thenReturn(agentA);
@@ -183,7 +189,7 @@ class DealerAccountPackageTest {
     }
 
     @Test
-    @DisplayName("Case 6: Thay đổi thời hạn account (tăng hoặc giảm) được tính lại delta đúng")
+    @DisplayName("Case 6: Thay đổi thời hạn USER được tính lại delta đúng")
     void testUpdateUser_ChangeAllocatedDays_AdjustsQuotaCorrectly() {
         dealer.setUsedAllocatedDays(360);
         User existingUser = User.builder()
@@ -206,7 +212,7 @@ class DealerAccountPackageTest {
         when(dealerRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(dealer));
         when(userRepository.save(any(User.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
-        // Case 6a: Tăng từ 360 lên 540 ngày (+180 ngày)
+        // Tăng từ 360 lên 540 ngày (+180 ngày)
         UpdateUserRequest extendRequest = UpdateUserRequest.builder()
                 .email("client01@test.com")
                 .allocatedDays(540)
@@ -216,7 +222,7 @@ class DealerAccountPackageTest {
         assertThat(res1.getAllocatedDays()).isEqualTo(540);
         assertThat(dealer.getUsedAllocatedDays()).isEqualTo(540); // 360 + 180
 
-        // Case 6b: Giảm từ 540 xuống 180 ngày (-360 ngày hoàn lại quỹ)
+        // Giảm từ 540 xuống 180 ngày (-360 ngày)
         UpdateUserRequest reduceRequest = UpdateUserRequest.builder()
                 .email("client01@test.com")
                 .allocatedDays(180)
@@ -280,7 +286,7 @@ class DealerAccountPackageTest {
                 .email("client_diff@test.com")
                 .password("Password123!")
                 .role(Role.USER)
-                .dealerId(999L) // Trying to use Dealer 999 while assigned to Dealer 1
+                .dealerId(999L)
                 .allocatedDays(360)
                 .build();
 
@@ -310,6 +316,44 @@ class DealerAccountPackageTest {
     }
 
     @Test
+    @DisplayName("Case 11: Tạo đại lý mới tự động tạo tài khoản AGENT và liên kết 1-1")
+    void testCreateDealer_AutoCreatesAgent_Success() {
+        when(dealerRepository.existsByCodeAndDeletedFalse(anyString())).thenReturn(false);
+        when(userRepository.existsByUsername(anyString())).thenReturn(false);
+        when(userRepository.existsByEmail(anyString())).thenReturn(false);
+        when(keycloakUserService.createUser(any(), any(), any(), eq(Role.AGENT), eq(true), any())).thenReturn("kc-agent-01");
+
+        when(dealerRepository.save(any(Dealer.class))).thenAnswer(inv -> {
+            Dealer d = inv.getArgument(0);
+            if (d.getId() == null) d.setId(99L);
+            return d;
+        });
+        when(userRepository.save(any(User.class))).thenAnswer(inv -> {
+            User u = inv.getArgument(0);
+            if (u.getId() == null) u.setId(777L);
+            return u;
+        });
+
+        CreateDealerRequest req = new CreateDealerRequest();
+        req.setCode("DL-NEW");
+        req.setName("Đại lý Mới Toanh");
+        req.setEmail("contact@newdealer.com");
+        req.setAgentUsername("agent_new");
+        req.setAgentEmail("agent_new@dealer.com");
+        req.setAgentPassword("AgentPass123!");
+        req.setMaxAccounts(15);
+        req.setTotalAllocatedDays(5400);
+
+        DealerResponse res = dealerService.createDealer(req);
+
+        assertThat(res).isNotNull();
+        assertThat(res.getAgentUsername()).isEqualTo("agent_new");
+        assertThat(res.getAgentEmail()).isEqualTo("agent_new@dealer.com");
+        verify(keycloakUserService).createUser("agent_new", "agent_new@dealer.com", "AgentPass123!", Role.AGENT, true, "Đại lý Mới Toanh");
+        verify(dealerPackageHistoryRepository).save(any(DealerPackageHistory.class));
+    }
+
+    @Test
     @DisplayName("Case 12: Khi lỗi DB, rollback Keycloak và không báo thành công giả")
     void testCreateUser_DatabaseFailure_RollsBackKeycloakUser() {
         when(currentUserService.getCurrentUser()).thenReturn(agentA);
@@ -334,6 +378,64 @@ class DealerAccountPackageTest {
     }
 
     @Test
+    @DisplayName("Case 13: Không cho phép tạo tài khoản AGENT thứ hai cho cùng đại lý")
+    void testCreateUser_RoleAgent_CannotCreateDuplicateAgent() {
+        User adminUser = User.builder().id(1L).username("admin").role(Role.ADMIN).build();
+        when(currentUserService.getCurrentUser()).thenReturn(adminUser);
+        when(currentUserService.isAdmin()).thenReturn(true);
+        when(dealerRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(dealer));
+        when(userRepository.existsByDealerIdAndRoleAndDeletedFalse(1L, Role.AGENT)).thenReturn(true);
+
+        CreateUserRequest request = CreateUserRequest.builder()
+                .email("agent_second@test.com")
+                .password("Password123!")
+                .role(Role.AGENT)
+                .dealerId(1L)
+                .build();
+
+        assertThatThrownBy(() -> userService.createUser(request))
+                .isInstanceOf(ConflictException.class)
+                .hasMessageContaining("đã có tài khoản AGENT liên kết");
+    }
+
+    @Test
+    @DisplayName("Case 14: Tạo tài khoản AGENT không được tính vào quota account hoặc Quỹ ngày")
+    void testCreateUser_RoleAgent_DoesNotConsumeQuotaOrDays() {
+        User adminUser = User.builder().id(1L).username("admin").role(Role.ADMIN).build();
+        Dealer freshDealer = Dealer.builder()
+                .id(2L)
+                .code("DL02")
+                .name("Đại lý Chưa có Agent")
+                .maxAccounts(10)
+                .totalAllocatedDays(3600)
+                .usedAllocatedDays(0)
+                .packageStatus("ACTIVE")
+                .build();
+
+        when(currentUserService.getCurrentUser()).thenReturn(adminUser);
+        when(currentUserService.isAdmin()).thenReturn(true);
+        when(dealerRepository.findByIdForUpdate(2L)).thenReturn(Optional.of(freshDealer));
+        when(userRepository.existsByDealerIdAndRoleAndDeletedFalse(2L, Role.AGENT)).thenReturn(false);
+        when(keycloakUserService.createUser(any(), any(), any(), eq(Role.AGENT), eq(true), any())).thenReturn("kc-agent-fresh");
+        when(userRepository.save(any(User.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        CreateUserRequest request = CreateUserRequest.builder()
+                .email("fresh_agent@dealer.com")
+                .password("Password123!")
+                .role(Role.AGENT)
+                .dealerId(2L)
+                .allocatedDays(500) // Even if sent, must NOT consume
+                .build();
+
+        UserResponse res = userService.createUser(request);
+
+        assertThat(res).isNotNull();
+        assertThat(res.getAllocatedDays()).isEqualTo(0);
+        assertThat(freshDealer.getUsedAllocatedDays()).isEqualTo(0); // Quỹ ngày KHÔNG bị trừ
+        assertThat(freshDealer.getAgentUser()).isNotNull();
+    }
+
+    @Test
     @DisplayName("Admin cập nhật gói không được giảm xuống dưới số lượng hoặc số ngày đã sử dụng")
     void testAdminUpdateDealerPackage_CannotReduceBelowUsage() {
         dealer.setUsedAllocatedDays(1500);
@@ -348,7 +450,7 @@ class DealerAccountPackageTest {
 
         assertThatThrownBy(() -> dealerService.updateDealer(1L, invalidAccountReq))
                 .isInstanceOf(BadRequestException.class)
-                .hasMessageContaining("Không thể giảm số lượng account tối đa xuống 5 vì đại lý đã tạo 7 account");
+                .hasMessageContaining("Không thể giảm số lượng account tối đa xuống 5 vì đại lý đã tạo 7 account Thợ cắt");
 
         UpdateDealerRequest invalidDaysReq = new UpdateDealerRequest();
         invalidDaysReq.setCode("DL01");
@@ -358,6 +460,6 @@ class DealerAccountPackageTest {
 
         assertThatThrownBy(() -> dealerService.updateDealer(1L, invalidDaysReq))
                 .isInstanceOf(BadRequestException.class)
-                .hasMessageContaining("Không thể giảm tổng quỹ ngày xuống 1000 ngày vì đại lý đã phân bổ 1500 ngày");
+                .hasMessageContaining("Không thể giảm tổng quỹ ngày xuống 1000 ngày vì đại lý đã phân bổ 1500 ngày cho Thợ cắt");
     }
 }

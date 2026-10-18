@@ -6,6 +6,7 @@ import com.example.svgmanager.dto.response.DealerPackageResponse;
 import com.example.svgmanager.dto.response.DealerResponse;
 import com.example.svgmanager.dto.response.DealerStatsResponse;
 import com.example.svgmanager.dto.response.PageResponse;
+import com.example.svgmanager.dto.response.UserResponse;
 
 import java.util.List;
 
@@ -32,4 +33,6 @@ public interface DealerService {
     DealerPackageResponse getDealerPackage(Long id);
 
     DealerPackageResponse getMyDealerPackage();
+
+    List<UserResponse> getDealerUsers(Long id);
 }

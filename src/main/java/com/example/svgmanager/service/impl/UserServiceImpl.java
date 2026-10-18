@@ -284,7 +284,7 @@ public class UserServiceImpl implements UserService {
 
                 long currentAccounts = dealerRepository.countActiveUserAccountsByDealerId(targetDealer.getId());
                 if (currentAccounts >= targetDealer.getMaxAccounts()) {
-                    throw new BadRequestException("Đại lý đã đạt giới hạn tối đa " + targetDealer.getMaxAccounts() + " tài khoản");
+                    throw new BadRequestException("Đại lý đã đạt giới hạn tối đa " + targetDealer.getMaxAccounts() + " tài khoản Thợ cắt");
                 }
 
                 if (allocatedDays != null && allocatedDays <= 0) {
@@ -322,8 +322,23 @@ public class UserServiceImpl implements UserService {
                         .filter(u -> u.getRole() == Role.AGENT && !u.isDeleted())
                         .orElseThrow(() -> new BadRequestException("Assigned agent not found with id: " + request.getAgentId()));
             }
-            if (request.getDealerId() != null && request.getDealerId() > 0) {
-                if (allocatedDays != null && allocatedDays > 0) {
+
+            if (assignedRole == Role.AGENT) {
+                // Rule: Mỗi đại lý chỉ có duy nhất một tài khoản role AGENT
+                if (request.getDealerId() != null && request.getDealerId() > 0) {
+                    targetDealer = dealerRepository.findByIdForUpdate(request.getDealerId())
+                            .orElseThrow(() -> new BadRequestException("Đại lý không tồn tại với ID: " + request.getDealerId()));
+                    if (targetDealer.getAgentUser() != null || userRepository.existsByDealerIdAndRoleAndDeletedFalse(targetDealer.getId(), Role.AGENT)) {
+                        throw new ConflictException("Đại lý '" + targetDealer.getName() + "' đã có tài khoản AGENT liên kết. Mỗi đại lý chỉ có duy nhất một tài khoản role AGENT.");
+                    }
+                } else {
+                    targetDealer = null;
+                }
+                // Tài khoản AGENT không tính vào gói account và không tiêu thụ Quỹ ngày
+                allocatedDays = 0;
+                effectiveExpirationDate = null;
+            } else if (assignedRole == Role.USER) {
+                if (request.getDealerId() != null && request.getDealerId() > 0) {
                     targetDealer = dealerRepository.findByIdForUpdate(request.getDealerId())
                             .orElseThrow(() -> new BadRequestException("Đại lý không tồn tại với ID: " + request.getDealerId()));
                     if (!"ACTIVE".equalsIgnoreCase(targetDealer.getPackageStatus())) {
@@ -334,7 +349,17 @@ public class UserServiceImpl implements UserService {
                     }
                     long currentAccounts = dealerRepository.countActiveUserAccountsByDealerId(targetDealer.getId());
                     if (currentAccounts >= targetDealer.getMaxAccounts()) {
-                        throw new BadRequestException("Đại lý đã đạt giới hạn tối đa " + targetDealer.getMaxAccounts() + " tài khoản");
+                        throw new BadRequestException("Đại lý đã đạt giới hạn tối đa " + targetDealer.getMaxAccounts() + " tài khoản Thợ cắt");
+                    }
+                    if (allocatedDays != null && allocatedDays <= 0) {
+                        throw new BadRequestException("Số ngày phân bổ cho Thợ cắt phải lớn hơn 0");
+                    }
+                    if (allocatedDays == null) {
+                        if (request.getExpirationDate() != null) {
+                            allocatedDays = Math.max(1, (int) java.time.temporal.ChronoUnit.DAYS.between(LocalDate.now(), request.getExpirationDate()));
+                        } else {
+                            allocatedDays = 360; // Gói mặc định quy ước chuẩn 360 ngày / 1 năm
+                        }
                     }
                     int remainingDays = targetDealer.getRemainingAllocatedDays();
                     if (allocatedDays > remainingDays) {
@@ -345,9 +370,13 @@ public class UserServiceImpl implements UserService {
                         throw new BadRequestException("Thời hạn tài khoản vượt quá ngày hết hạn của gói đại lý (" + targetDealer.getPackageExpiryDate() + ")");
                     }
                 } else {
-                    targetDealer = dealerRepository.findByIdAndDeletedFalse(request.getDealerId())
-                            .orElseThrow(() -> new BadRequestException("Đại lý không tồn tại với ID: " + request.getDealerId()));
+                    targetDealer = null;
                 }
+            } else {
+                // ADMIN role
+                targetDealer = null;
+                allocatedDays = 0;
+                effectiveExpirationDate = null;
             }
         }
 
@@ -366,7 +395,7 @@ public class UserServiceImpl implements UserService {
         // Step 2: Create application user in PostgreSQL (Business Profile Source of Truth)
         // With rollback compensation if DB operation fails
         try {
-            if (targetDealer != null && allocatedDays != null && allocatedDays > 0) {
+            if (targetDealer != null && assignedRole == Role.USER && allocatedDays != null && allocatedDays > 0) {
                 targetDealer.setUsedAllocatedDays(targetDealer.getUsedAllocatedDays() + allocatedDays);
                 dealerRepository.save(targetDealer);
             }
@@ -388,6 +417,12 @@ public class UserServiceImpl implements UserService {
 
             User savedUser = userRepository.save(user);
 
+            // If creating an AGENT, link agent_user_id on Dealer
+            if (targetDealer != null && assignedRole == Role.AGENT) {
+                targetDealer.setAgentUser(savedUser);
+                dealerRepository.save(targetDealer);
+            }
+
             if (request.getPartCategoryIds() != null && !request.getPartCategoryIds().isEmpty()
                     && userPartCategoryPermissionRepository != null && partLibraryCategoryRepository != null) {
                 List<PartLibraryCategory> activeCategories = partLibraryCategoryRepository.findByIdInAndStatus(request.getPartCategoryIds(), "ACTIVE");
@@ -400,7 +435,7 @@ public class UserServiceImpl implements UserService {
                 }
             }
 
-            if (targetDealer != null && allocatedDays != null && allocatedDays > 0 && dealerPackageHistoryRepository != null) {
+            if (targetDealer != null && assignedRole == Role.USER && allocatedDays != null && allocatedDays > 0 && dealerPackageHistoryRepository != null) {
                 DealerPackageHistory history = DealerPackageHistory.builder()
                         .dealer(targetDealer)
                         .action("ALLOCATE_USER")
@@ -439,9 +474,9 @@ public class UserServiceImpl implements UserService {
                 keycloakUserService.deleteUser(keycloakUserId);
                 log.info("[COMPENSATION_SUCCESS] Cleaned up orphaned Keycloak user: '{}' (ID: {})",
                         effectiveUsername, keycloakUserId);
-            } catch (Exception cleanupEx) {
-                log.error("[COMPENSATION_FAILED] CRITICAL: Failed to delete orphaned Keycloak user: '{}' (ID: {}). Manual cleanup required!",
-                        effectiveUsername, keycloakUserId, cleanupEx);
+            } catch (Exception kcEx) {
+                log.error("[COMPENSATION_FAILED] Failed to clean up Keycloak user '{}' (ID: {}). Manual cleanup may be required: {}",
+                        effectiveUsername, keycloakUserId, kcEx.getMessage(), kcEx);
             }
             throw ex;
         }
@@ -450,35 +485,37 @@ public class UserServiceImpl implements UserService {
     @Override
     @Transactional
     public UserResponse updateUser(Long id, UpdateUserRequest request) {
+        User user = findScopedUserById(id);
         User currentUser = currentUserService.getCurrentUser();
         boolean isAdmin = currentUserService.isAdmin();
         boolean isAgent = currentUserService.isAgent();
-        User user = findScopedUserById(id);
-
-        String normalizedEmail = request.getEmail().trim().toLowerCase();
-        if (userRepository.existsByEmailAndIdNot(normalizedEmail, id)) {
-            throw new ConflictException("Email is already in use by another user: " + request.getEmail());
-        }
 
         String oldEmail = user.getEmail();
-        user.setEmail(normalizedEmail);
+        String normalizedEmail = request.getEmail().trim().toLowerCase();
 
-        if (request.getFullName() != null) {
-            user.setFullName(request.getFullName().trim().isEmpty() ? null : request.getFullName().trim());
+        if (userRepository.existsByEmailAndIdNot(normalizedEmail, id)) {
+            throw new ConflictException("Email/Gmail đã được sử dụng bởi người dùng khác: " + normalizedEmail);
         }
-        if (request.getPhone() != null) {
-            user.setPhone(request.getPhone().trim().isEmpty() ? null : request.getPhone().trim());
-        }
+
+        user.setEmail(normalizedEmail);
+        user.setFullName(request.getFullName());
+        user.setPhone(request.getPhone());
 
         if (request.getEnabled() != null) {
+            if (currentUser.getId().equals(id) && !request.getEnabled()) {
+                throw new BadRequestException("Không thể tự vô hiệu hóa tài khoản của chính mình");
+            }
             user.setEnabled(request.getEnabled());
         }
 
         LocalDate oldExpirationDate = user.getExpirationDate();
         LocalDate newExpirationDate = request.getExpirationDate();
 
-        // Handle package allocatedDays adjustments
+        // Handle package allocatedDays adjustments (Chỉ áp dụng cho role USER, không tính AGENT)
         if (request.getAllocatedDays() != null) {
+            if (user.getRole() == Role.AGENT) {
+                throw new BadRequestException("Tài khoản đại lý (AGENT) không tiêu thụ Quỹ ngày, không thể phân bổ ngày");
+            }
             int newDays = request.getAllocatedDays();
             if (newDays <= 0) {
                 throw new BadRequestException("Số ngày phân bổ phải lớn hơn 0");
@@ -563,6 +600,28 @@ public class UserServiceImpl implements UserService {
 
         Role oldRole = user.getRole();
         if (currentUserService.isAdmin()) {
+            Role newRole = request.getRole() != null ? request.getRole() : oldRole;
+            Dealer oldDealer = user.getDealer();
+            Dealer targetDealer = oldDealer;
+
+            if (request.getDealerId() != null) {
+                if (request.getDealerId() > 0) {
+                    targetDealer = dealerRepository.findByIdForUpdate(request.getDealerId())
+                            .orElseThrow(() -> new BadRequestException("Đại lý không tồn tại với ID: " + request.getDealerId()));
+                } else {
+                    targetDealer = null;
+                }
+            }
+
+            // Rule: Mỗi đại lý chỉ có duy nhất một tài khoản AGENT
+            if (newRole == Role.AGENT && targetDealer != null) {
+                if (userRepository.existsByDealerIdAndRoleAndIdNotAndDeletedFalse(targetDealer.getId(), Role.AGENT, user.getId())) {
+                    throw new ConflictException("Đại lý '" + targetDealer.getName() + "' đã có tài khoản AGENT liên kết. Mỗi đại lý chỉ có duy nhất một tài khoản role AGENT.");
+                }
+                user.setAllocatedDays(0);
+                user.setExpirationDate(null);
+            }
+
             if (request.getRole() != null && request.getRole() != oldRole) {
                 user.setRole(request.getRole());
                 if (StringUtils.hasText(user.getKeycloakUserId())) {
@@ -580,13 +639,23 @@ public class UserServiceImpl implements UserService {
                 }
             }
             if (request.getDealerId() != null) {
-                if (request.getDealerId() > 0) {
-                    Dealer dealer = dealerRepository.findByIdAndDeletedFalse(request.getDealerId())
-                            .orElseThrow(() -> new BadRequestException("Đại lý không tồn tại với ID: " + request.getDealerId()));
-                    user.setDealer(dealer);
-                } else {
-                    user.setDealer(null);
+                // If user is AGENT and dealer changed, manage agentUser linkage
+                if (user.getRole() == Role.AGENT) {
+                    if (oldDealer != null && !Objects.equals(oldDealer.getId(), targetDealer != null ? targetDealer.getId() : null)) {
+                        if (oldDealer.getAgentUser() != null && Objects.equals(oldDealer.getAgentUser().getId(), user.getId())) {
+                            oldDealer.setAgentUser(null);
+                            dealerRepository.save(oldDealer);
+                        }
+                    }
+                    if (targetDealer != null) {
+                        targetDealer.setAgentUser(user);
+                        dealerRepository.save(targetDealer);
+                    }
                 }
+                user.setDealer(targetDealer);
+            } else if (newRole == Role.AGENT && targetDealer != null) {
+                targetDealer.setAgentUser(user);
+                dealerRepository.save(targetDealer);
             }
         }
 
@@ -707,6 +776,17 @@ public class UserServiceImpl implements UserService {
 
         User user = findScopedUserById(id);
         Role oldRole = user.getRole();
+
+        if (request.getRole() == Role.AGENT && user.getDealer() != null) {
+            if (userRepository.existsByDealerIdAndRoleAndIdNotAndDeletedFalse(user.getDealer().getId(), Role.AGENT, user.getId())) {
+                throw new ConflictException("Đại lý '" + user.getDealer().getName() + "' đã có tài khoản AGENT liên kết. Mỗi đại lý chỉ có duy nhất một tài khoản role AGENT.");
+            }
+            user.setAllocatedDays(0);
+            user.setExpirationDate(null);
+            user.getDealer().setAgentUser(user);
+            dealerRepository.save(user.getDealer());
+        }
+
         user.setRole(request.getRole());
 
         if (StringUtils.hasText(user.getKeycloakUserId())) {
@@ -727,6 +807,14 @@ public class UserServiceImpl implements UserService {
         }
 
         User user = findScopedUserById(id);
+
+        if (user.getRole() == Role.AGENT && user.getDealer() != null) {
+            Dealer d = user.getDealer();
+            if (d.getAgentUser() != null && Objects.equals(d.getAgentUser().getId(), user.getId())) {
+                d.setAgentUser(null);
+                dealerRepository.save(d);
+            }
+        }
 
         if (user.getDealer() != null && dealerPackageHistoryRepository != null) {
             DealerPackageHistory history = DealerPackageHistory.builder()
