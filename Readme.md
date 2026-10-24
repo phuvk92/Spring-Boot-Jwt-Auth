@@ -120,6 +120,32 @@ com.example.svgmanager
 | **File thiết kế theo bộ lọc** | `GET /api/v1/files?q=&categoryId=&year=&brandId=&seriesId=&modelId=&subtypeId=&page=0&size=20` | ✅ | ✅ | ✅ | ❌ (401) |
 | **Part trong file** | `GET /api/v1/files/{id}/parts` | ✅ | ✅ | ✅ | ❌ (401) |
 | **Hình học cả file** | `GET /api/v1/files/{id}/geometry` | ✅ | ✅ | ✅ | ❌ (401) |
+| **Lưu bản vẽ V2 (Multipart/JSON)** | `POST /api/internal/v2/user-files` | ✅ | ✅ | ✅ | ❌ (401) |
+| **Danh sách bản lưu V2** | `GET /api/internal/v2/user-files` | ✅ | ✅ | ✅ | ❌ (401) |
+| **Chi tiết bản lưu V2** | `GET /api/internal/v2/user-files/{id}` | ✅ | ✅ | ✅ | ❌ (401) |
+| **Xem trước bản vẽ V2 (Preview)** | `GET /api/internal/v2/user-files/{id}/preview` | ✅ | ✅ | ✅ | ❌ (401) |
+| **Tải xuống bản vẽ V2 (Download)** | `GET /api/internal/v2/user-files/{id}/download` | ✅ | ✅ | ✅ | ❌ (401) |
+| **Cập nhật / Ghi đè bản lưu V2** | `PUT /api/internal/v2/user-files/{id}` | ✅ | ✅ | ✅ | ❌ (401) |
+| **Xóa bản lưu V2** | `DELETE /api/internal/v2/user-files/{id}` | ✅ | ✅ | ✅ | ❌ (401) |
+| **Chia sẻ bản vẽ V2** | `POST /api/internal/v2/user-files/{id}/shares` | ✅ | ✅ | ✅ | ❌ (401) |
+| **Thu hồi chia sẻ V2** | `DELETE /api/internal/v2/user-files/{id}/shares/{targetUserId}` | ✅ | ✅ | ✅ | ❌ (401) |
+| **Danh sách Audit Log V2** | `GET /api/admin/audit/v2` | ✅ | ❌ (403) | ❌ (403) | ❌ (401) |
+| **Chi tiết Audit Record V2** | `GET /api/admin/audit/v2/{id}` | ✅ | ❌ (403) | ❌ (403) | ❌ (401) |
+| **Thống kê Audit Log V2** | `GET /api/admin/audit/v2/stats` | ✅ | ❌ (403) | ❌ (403) | ❌ (401) |
+| **Xuất CSV Audit Log V2** | `GET /api/admin/audit/v2/export` | ✅ | ❌ (403) | ❌ (403) | ❌ (401) |
+
+
+### 🔐 Phân hệ Internal API V2 & Audit Log Tự Động (Data Center V2)
+
+Phân hệ Internal API V2 (`/api/internal/v2/**`) được thiết kế riêng cho các ứng dụng client bên ngoài (phần mềm máy cắt decal/PPF, app tablet):
+- **Bảo mật mã hóa:** Mã hóa đầu-cuối AES-256-GCM (Envelope Encryption) độc lập hoàn toàn với V1, giải mã on-the-fly trong bộ nhớ RAM, chống XXE/XSS/XML-Bomb.
+- **Định danh 3 lớp:** Tách bạch Client (từ verified JWT claim `azp`/`client_id`), User (`sub`/`preferred_username`), và Dealer (`dealer_id`/`dealer_name` từ CSDL).
+- **Truy vết Request ID:** Tiếp nhận hoặc tự sinh header `X-Request-ID` (regex `^[a-zA-Z0-9_-]{8,64}$`), luôn trả về trong HTTP Response Header để hỗ trợ kỹ thuật nhanh chóng.
+- **Zero-Intrusive Audit Log:** Tự động ghi nhận 100% cuộc gọi API V2 với O(1) memory (`CountingResponseWrapper` không đệm RAM), cô lập lỗi (fault-tolerant).
+- **Web Admin Portal:** Màn hình **Quản trị → Audit Log** (`/audit`) cung cấp Dashboard thống kê, bộ lọc đa tiêu chí, drawer chi tiết 3 lớp và xuất báo cáo CSV an toàn.
+
+> 📄 **Tài liệu chi tiết gửi Client tích hợp:**
+> > - [Tài liệu đặc tả tích hợp toàn bộ hệ thống API (Word Document)](./Tai_Lieu_Tich_Hop_API_He_Thong.docx)
 
 ### 🚗 Cây xe 4 cấp (Data Center v2 — V14)
 

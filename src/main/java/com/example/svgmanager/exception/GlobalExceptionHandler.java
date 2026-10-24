@@ -1,6 +1,7 @@
 package com.example.svgmanager.exception;
 
 import com.example.svgmanager.dto.response.ErrorResponse;
+import com.example.svgmanager.security.InternalApiV2AuditFilter;
 import com.example.svgmanager.svg.SvgImportException;
 import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
@@ -26,12 +27,20 @@ public class GlobalExceptionHandler {
 
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
+    private void setAuditErrorCode(HttpServletRequest request, String code) {
+        if (request != null && code != null) {
+            request.setAttribute(InternalApiV2AuditFilter.AUDIT_ERROR_CODE_ATTR, code);
+        }
+    }
+
     @ExceptionHandler(ResourceNotFoundException.class)
     public ResponseEntity<ErrorResponse> handleResourceNotFoundException(
             ResourceNotFoundException ex,
             HttpServletRequest request
     ) {
         log.warn("Resource not found: {}", ex.getMessage());
+        String code = ex.getCode() != null ? ex.getCode() : "NOT_FOUND";
+        setAuditErrorCode(request, code);
         ErrorResponse errorResponse = ErrorResponse.builder()
                 .timestamp(LocalDateTime.now())
                 .status(HttpStatus.NOT_FOUND.value())
@@ -49,6 +58,7 @@ public class GlobalExceptionHandler {
             HttpServletRequest request
     ) {
         log.warn("Unsupported media type on {}: {}", request.getRequestURI(), ex.getMessage());
+        setAuditErrorCode(request, "UNSUPPORTED_MEDIA_TYPE");
         ErrorResponse errorResponse = ErrorResponse.builder()
                 .timestamp(LocalDateTime.now())
                 .status(HttpStatus.UNSUPPORTED_MEDIA_TYPE.value())
@@ -65,6 +75,8 @@ public class GlobalExceptionHandler {
             HttpServletRequest request
     ) {
         log.warn("Bad request: {}", ex.getMessage());
+        String code = ex.getCode() != null ? ex.getCode() : "BAD_REQUEST";
+        setAuditErrorCode(request, code);
         ErrorResponse errorResponse = ErrorResponse.builder()
                 .timestamp(LocalDateTime.now())
                 .status(HttpStatus.BAD_REQUEST.value())
@@ -85,6 +97,7 @@ public class GlobalExceptionHandler {
             HttpServletRequest request
     ) {
         log.warn("Missing or invalid parameter on {}: {}", request.getRequestURI(), ex.getMessage());
+        setAuditErrorCode(request, "BAD_REQUEST");
         ErrorResponse errorResponse = ErrorResponse.builder()
                 .timestamp(LocalDateTime.now())
                 .status(HttpStatus.BAD_REQUEST.value())
@@ -101,6 +114,8 @@ public class GlobalExceptionHandler {
             HttpServletRequest request
     ) {
         log.warn("Conflict: {}", ex.getMessage());
+        String code = ex.getCode() != null ? ex.getCode() : "CONFLICT";
+        setAuditErrorCode(request, code);
         ErrorResponse errorResponse = ErrorResponse.builder()
                 .timestamp(LocalDateTime.now())
                 .status(HttpStatus.CONFLICT.value())
@@ -118,13 +133,15 @@ public class GlobalExceptionHandler {
             HttpServletRequest request
     ) {
         log.warn("User account expired: {}", ex.getMessage());
+        String code = ex.getCode() != null ? ex.getCode() : ErrorCodes.USER_ACCOUNT_EXPIRED;
+        setAuditErrorCode(request, code);
         ErrorResponse errorResponse = ErrorResponse.builder()
                 .timestamp(LocalDateTime.now())
                 .status(HttpStatus.UNAUTHORIZED.value())
                 .error(HttpStatus.UNAUTHORIZED.getReasonPhrase())
                 .message(ex.getMessage())
                 .path(request.getRequestURI())
-                .code(ex.getCode() != null ? ex.getCode() : ErrorCodes.USER_ACCOUNT_EXPIRED)
+                .code(code)
                 .build();
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(errorResponse);
     }
@@ -135,6 +152,8 @@ public class GlobalExceptionHandler {
             HttpServletRequest request
     ) {
         log.warn("Unauthorized: {}", ex.getMessage());
+        String code = ex.getCode() != null ? ex.getCode() : "UNAUTHORIZED";
+        setAuditErrorCode(request, code);
         ErrorResponse errorResponse = ErrorResponse.builder()
                 .timestamp(LocalDateTime.now())
                 .status(HttpStatus.UNAUTHORIZED.value())
@@ -152,6 +171,8 @@ public class GlobalExceptionHandler {
             HttpServletRequest request
     ) {
         log.warn("Forbidden: {}", ex.getMessage());
+        String code = ex.getCode() != null ? ex.getCode() : "FORBIDDEN";
+        setAuditErrorCode(request, code);
         ErrorResponse errorResponse = ErrorResponse.builder()
                 .timestamp(LocalDateTime.now())
                 .status(HttpStatus.FORBIDDEN.value())
@@ -169,6 +190,8 @@ public class GlobalExceptionHandler {
             HttpServletRequest request
     ) {
         log.error("Dependent service unavailable: {}", ex.getMessage());
+        String code = ex.getCode() != null ? ex.getCode() : "SERVICE_UNAVAILABLE";
+        setAuditErrorCode(request, code);
         ErrorResponse errorResponse = ErrorResponse.builder()
                 .timestamp(LocalDateTime.now())
                 .status(HttpStatus.SERVICE_UNAVAILABLE.value())
@@ -186,6 +209,7 @@ public class GlobalExceptionHandler {
             HttpServletRequest request
     ) {
         log.warn("SVG upload rejected at part-extraction: {}", ex.getMessage());
+        setAuditErrorCode(request, ex.getKind());
         ErrorResponse errorResponse = ErrorResponse.builder()
                 .timestamp(LocalDateTime.now())
                 .status(HttpStatus.BAD_REQUEST.value())
@@ -203,6 +227,7 @@ public class GlobalExceptionHandler {
             HttpServletRequest request
     ) {
         log.warn("Invalid or malicious SVG rejected: {}", ex.getMessage());
+        setAuditErrorCode(request, "INVALID_SVG");
         ErrorResponse errorResponse = ErrorResponse.builder()
                 .timestamp(LocalDateTime.now())
                 .status(HttpStatus.BAD_REQUEST.value())
@@ -219,6 +244,7 @@ public class GlobalExceptionHandler {
             HttpServletRequest request
     ) {
         log.error("File storage error: {}", ex.getMessage(), ex);
+        setAuditErrorCode(request, "FILE_STORAGE_ERROR");
         ErrorResponse errorResponse = ErrorResponse.builder()
                 .timestamp(LocalDateTime.now())
                 .status(HttpStatus.INTERNAL_SERVER_ERROR.value())
@@ -235,6 +261,7 @@ public class GlobalExceptionHandler {
             HttpServletRequest request
     ) {
         log.warn("Bad credentials: {}", ex.getMessage());
+        setAuditErrorCode(request, "BAD_CREDENTIALS");
         ErrorResponse errorResponse = ErrorResponse.builder()
                 .timestamp(LocalDateTime.now())
                 .status(HttpStatus.UNAUTHORIZED.value())
@@ -251,6 +278,7 @@ public class GlobalExceptionHandler {
             HttpServletRequest request
     ) {
         log.warn("Account is disabled: {}", ex.getMessage());
+        setAuditErrorCode(request, "ACCOUNT_DISABLED");
         ErrorResponse errorResponse = ErrorResponse.builder()
                 .timestamp(LocalDateTime.now())
                 .status(HttpStatus.UNAUTHORIZED.value())
@@ -267,6 +295,7 @@ public class GlobalExceptionHandler {
             HttpServletRequest request
     ) {
         log.warn("Access denied: {}", ex.getMessage());
+        setAuditErrorCode(request, "FORBIDDEN");
         ErrorResponse errorResponse = ErrorResponse.builder()
                 .timestamp(LocalDateTime.now())
                 .status(HttpStatus.FORBIDDEN.value())
@@ -287,6 +316,7 @@ public class GlobalExceptionHandler {
                 .collect(Collectors.joining("; "));
 
         log.warn("Validation error on {}: {}", request.getRequestURI(), errorMessage);
+        setAuditErrorCode(request, "VALIDATION_ERROR");
 
         ErrorResponse errorResponse = ErrorResponse.builder()
                 .timestamp(LocalDateTime.now())
@@ -304,6 +334,7 @@ public class GlobalExceptionHandler {
             HttpServletRequest request
     ) {
         log.warn("Upload size limit exceeded: {}", ex.getMessage());
+        setAuditErrorCode(request, ErrorCodes.SVG_SIZE_LIMIT_EXCEEDED);
         ErrorResponse errorResponse = ErrorResponse.builder()
                 .timestamp(LocalDateTime.now())
                 .status(HttpStatus.PAYLOAD_TOO_LARGE.value())
@@ -323,6 +354,7 @@ public class GlobalExceptionHandler {
         log.warn("Message not readable on {}: {}", request.getRequestURI(), ex.getMessage());
         String msg = ex.getMessage();
         if (msg != null && (msg.contains("StreamReadConstraints") || msg.contains("exceeds the maximum allowed") || msg.contains("max-string-length"))) {
+            setAuditErrorCode(request, ErrorCodes.DESIGN_TOO_LARGE);
             ErrorResponse errorResponse = ErrorResponse.builder()
                     .timestamp(LocalDateTime.now())
                     .status(HttpStatus.PAYLOAD_TOO_LARGE.value())
@@ -334,6 +366,7 @@ public class GlobalExceptionHandler {
             return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE).body(errorResponse);
         }
 
+        setAuditErrorCode(request, ErrorCodes.DESIGN_INVALID);
         ErrorResponse errorResponse = ErrorResponse.builder()
                 .timestamp(LocalDateTime.now())
                 .status(HttpStatus.BAD_REQUEST.value())
@@ -351,6 +384,8 @@ public class GlobalExceptionHandler {
             HttpServletRequest request
     ) {
         log.warn("Payload too large: {}", ex.getMessage());
+        String code = ex.getCode() != null ? ex.getCode() : "PAYLOAD_TOO_LARGE";
+        setAuditErrorCode(request, code);
         ErrorResponse errorResponse = ErrorResponse.builder()
                 .timestamp(LocalDateTime.now())
                 .status(HttpStatus.PAYLOAD_TOO_LARGE.value())
@@ -368,6 +403,8 @@ public class GlobalExceptionHandler {
             HttpServletRequest request
     ) {
         log.warn("[SVG_SECURITY_REJECTED] {}: {}", request.getRequestURI(), ex.getMessage());
+        String code = ex.getCode() != null ? ex.getCode() : "SVG_SECURITY_REJECTED";
+        setAuditErrorCode(request, code);
         ErrorResponse errorResponse = ErrorResponse.builder()
                 .timestamp(LocalDateTime.now())
                 .status(HttpStatus.BAD_REQUEST.value())
@@ -385,6 +422,8 @@ public class GlobalExceptionHandler {
             HttpServletRequest request
     ) {
         log.warn("[RATE_LIMIT_EXCEEDED] {}: {}", request.getRequestURI(), ex.getMessage());
+        String code = ex.getCode() != null ? ex.getCode() : "RATE_LIMIT_EXCEEDED";
+        setAuditErrorCode(request, code);
         ErrorResponse errorResponse = ErrorResponse.builder()
                 .timestamp(LocalDateTime.now())
                 .status(HttpStatus.TOO_MANY_REQUESTS.value())
@@ -402,6 +441,7 @@ public class GlobalExceptionHandler {
             HttpServletRequest request
     ) {
         log.error("Unhandled exception occurred on {}", request.getRequestURI(), ex);
+        setAuditErrorCode(request, "INTERNAL_SERVER_ERROR");
         ErrorResponse errorResponse = ErrorResponse.builder()
                 .timestamp(LocalDateTime.now())
                 .status(HttpStatus.INTERNAL_SERVER_ERROR.value())

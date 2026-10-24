@@ -35,6 +35,10 @@ public class JwtAuthenticationEntryPoint implements AuthenticationEntryPoint {
     ) throws IOException {
         log.error("Responding with unauthorized error. Message - {}", authException.getMessage());
 
+        boolean expired = isExpiredToken(authException);
+        String code = expired ? ErrorCodes.TOKEN_EXPIRED : "UNAUTHORIZED";
+        request.setAttribute(InternalApiV2AuditFilter.AUDIT_ERROR_CODE_ATTR, code);
+
         response.setContentType(MediaType.APPLICATION_JSON_VALUE);
         response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
 
@@ -46,7 +50,7 @@ public class JwtAuthenticationEntryPoint implements AuthenticationEntryPoint {
                 .path(request.getRequestURI())
                 // PCU-6: token hết hạn thì gắn mã để app cắt biết chỉ cần refresh,
                 // các lỗi 401 khác (thiếu token, sai chữ ký) giữ nguyên không code.
-                .code(isExpiredToken(authException) ? ErrorCodes.TOKEN_EXPIRED : null)
+                .code(expired ? ErrorCodes.TOKEN_EXPIRED : null)
                 .build();
 
         objectMapper.writeValue(response.getOutputStream(), errorResponse);

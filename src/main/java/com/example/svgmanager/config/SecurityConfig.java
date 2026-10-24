@@ -1,6 +1,7 @@
 package com.example.svgmanager.config;
 
 import com.example.svgmanager.security.DeviceSessionFilter;
+import com.example.svgmanager.security.InternalApiV2AuditFilter;
 import com.example.svgmanager.security.JwtAccessDeniedHandler;
 import com.example.svgmanager.security.JwtAuthenticationEntryPoint;
 import com.example.svgmanager.security.KeycloakJwtAuthenticationConverter;
@@ -85,7 +86,8 @@ public class SecurityConfig {
 
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http, UserDeviceService userDeviceService,
-                                           ObjectMapper objectMapper) throws Exception {
+                                           ObjectMapper objectMapper,
+                                           InternalApiV2AuditFilter internalApiV2AuditFilter) throws Exception {
         http
                 .csrf(AbstractHttpConfigurer::disable)
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
@@ -123,8 +125,8 @@ public class SecurityConfig {
                         // Bản đã lưu của User — toàn bộ chỉ ADMIN
                         .requestMatchers("/api/admin/user-files/**", "/api/admin/v2/user-files/**").hasRole("ADMIN")
                         .requestMatchers("/api/agent/user-files/**").hasRole("AGENT")
-                        // Audit Logs (ADMIN only)
-                        .requestMatchers("/api/audit-logs/**").hasRole("ADMIN")
+                        // Audit Logs V1 & V2 (ADMIN only)
+                        .requestMatchers("/api/audit-logs/**", "/api/admin/audit/v2/**", "/api/admin/v2/audit-logs/**").hasRole("ADMIN")
                         // Thương hiệu đại lý (NGO-165)
                         .requestMatchers("/api/v1/branding").hasAnyRole("ADMIN", "AGENT", "USER")
                         .requestMatchers("/api/v1/profile").hasAnyRole("ADMIN", "AGENT", "USER")
@@ -141,6 +143,7 @@ public class SecurityConfig {
                         // All other endpoints require authentication
                         .anyRequest().authenticated()
                 )
+                .addFilterBefore(internalApiV2AuditFilter, BearerTokenAuthenticationFilter.class)
                 .addFilterAfter(new DeviceSessionFilter(userDeviceService, objectMapper), BearerTokenAuthenticationFilter.class)
                 .oauth2ResourceServer(oauth2 -> oauth2
                         .jwt(jwt -> jwt.jwtAuthenticationConverter(keycloakJwtAuthenticationConverter))
@@ -160,7 +163,7 @@ public class SecurityConfig {
         configuration.setAllowedOriginPatterns(List.of("*"));
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         configuration.setAllowedHeaders(List.of("*"));
-        configuration.setExposedHeaders(List.of("Authorization", "Content-Disposition"));
+        configuration.setExposedHeaders(List.of("Authorization", "Content-Disposition", "X-Request-ID", "X-Trace-ID"));
         configuration.setAllowCredentials(true);
         configuration.setMaxAge(3600L);
 

@@ -33,6 +33,8 @@ public class JwtAccessDeniedHandler implements AccessDeniedHandler {
     ) throws IOException {
         log.error("Responding with forbidden error. Message - {}", accessDeniedException.getMessage());
 
+        request.setAttribute(InternalApiV2AuditFilter.AUDIT_ERROR_CODE_ATTR, "FORBIDDEN");
+
         response.setContentType(MediaType.APPLICATION_JSON_VALUE);
         response.setStatus(HttpServletResponse.SC_FORBIDDEN);
 

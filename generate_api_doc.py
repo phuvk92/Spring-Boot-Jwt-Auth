@@ -736,6 +736,26 @@ def create_document():
 
     doc.add_page_break()
 
+
+    add_header_styled(doc, "3.4. Cơ Chế Audit Log Tự Động & Hướng Dẫn Truy Vết Client (Request Tracing & Audit Log)", level=2)
+    add_callout(
+        doc,
+        "1. Định danh 3 lớp tin cậy (Client · User · Dealer):\n"
+        "   • Client/App: Nhận diện tự động từ JWT claim 'azp' hoặc 'client_id' đã được Keycloak xác thực chữ ký số (ví dụ: 'cutting-client'). Hệ thống KHÔNG sử dụng và KHÔNG tin cậy các header tự khai báo như X-Client-Name.\n"
+        "   • User: Nhận diện từ Principal xác thực ('sub', 'preferred_username'), tự động ánh xạ userId nội bộ và vai trò (role).\n"
+        "   • Dealer: Tự động liên kết đại lý (dealerId, dealerName) từ thông tin quản lý đại lý của người dùng trong cơ sở dữ liệu.\n\n"
+        "2. Header Truy Vết 'X-Request-ID':\n"
+        "   • Client được khuyến nghị chủ động tạo và truyền header 'X-Request-ID' (chuỗi ký tự [a-zA-Z0-9_-], độ dài 8-64 ký tự, ví dụ: 'req-cut-20261024-abc12345').\n"
+        "   • Nếu client không truyền hoặc truyền định dạng không an toàn, Backend tự động sinh UUID v4 mới.\n"
+        "   • Backend LUÔN TRẢ VỀ header 'X-Request-ID' trong mọi HTTP Response. Client nên lưu lại mã này vào local log và hiển thị trên màn hình lỗi của máy cắt để tiện truy vết khi yêu cầu hỗ trợ.\n\n"
+        "3. Ghi log tự động 100% không đệm RAM (Zero-Intrusive, O(1) Memory):\n"
+        "   • Mọi request gọi vào /api/internal/v2/** đều được tự động lưu vết (thành công 2xx, lỗi 400 validation, 401 unauth, 403 forbidden, 404 not found, 500 server error).\n"
+        "   • Đo lường dung lượng response theo thời gian thực mà không giữ bytes vào bộ nhớ RAM, bảo đảm không gây tràn bộ nhớ khi download file SVG lớn.\n"
+        "   • Tuyệt đối không lưu Access Token, mật khẩu, payload body hay nội dung file SVG trong cơ sở dữ liệu audit.\n"
+        "   • Cô lập lỗi (Fault Isolation): Sự cố lưu trữ audit log không bao giờ làm gián đoạn hoặc thất bại request nghiệp vụ của client.",
+        title="QUY TẮC TRUY VẾT & AUDIT LOG DÀNH CHO CLIENT TÍCH HỢP"
+    )
+
     # ==================== CHƯƠNG 4: NHÓM API CẤU HÌNH XE ====================
     add_header_styled(doc, "4. Nhóm API Quản lý Cấu hình Xe (Vehicle Configurations)", level=1)
     
@@ -1017,6 +1037,26 @@ def create_document():
 
     doc.add_page_break()
 
+
+    add_header_styled(doc, "7.4. Nhóm API Quản trị Audit Log Internal API V2 (/api/admin/audit/v2)", level=2)
+    add_callout(
+        doc,
+        "1. Quyền truy cập: Chỉ tài khoản có vai trò ADMIN mới được phép truy xuất các API quản trị Audit Log V2.\n"
+        "2. Tra cứu & Phân tích chuyên sâu: Hỗ trợ tìm kiếm từ khóa, lọc theo Client ID, Username, Role, Dealer ID, Endpoint, HTTP Method, HTTP Status, Kết quả (SUCCESS/FAIL), Request ID và khoảng thời gian (from/to).\n"
+        "3. Dashboard Thống kê: Cung cấp API tổng hợp thống kê thời gian thực (tổng request, số lượng thành công, số lượng thất bại, tỷ lệ %, top endpoints, top clients, top users).\n"
+        "4. Xuất Báo Cáo CSV: Hỗ trợ xuất dữ liệu audit theo bộ lọc ra file CSV an toàn (RFC 4180, chống CSV Injection).",
+        title="QUẢN TRỊ AUDIT LOG INTERNAL API V2"
+    )
+
+    audit_v2_headers = ["Phương thức", "Endpoint", "Vai trò", "Chức năng"]
+    audit_v2_data = [
+        ["GET", "/api/admin/audit/v2", "ADMIN", "Lấy danh sách Audit Log V2 phân trang, lọc đa tiêu chí (keyword, client, user, dealer, endpoint, status, result, date)"],
+        ["GET", "/api/admin/audit/v2/{id}", "ADMIN", "Xem chi tiết một bản ghi Audit Log V2 (định danh 3 lớp, latency, bytes, IP, user-agent)"],
+        ["GET", "/api/admin/audit/v2/stats", "ADMIN", "Lấy số liệu thống kê tổng hợp (tổng số, thành công/thất bại, top endpoints/clients/users)"],
+        ["GET", "/api/admin/audit/v2/export", "ADMIN", "Xuất toàn bộ dữ liệu audit log thỏa bộ lọc ra file CSV (RFC 4180, chống CSV Injection)"]
+    ]
+    add_custom_table(doc, audit_v2_headers, audit_v2_data, [1.1, 2.5, 1.1, 1.8])
+
     # ==================== CHƯƠNG 8: BẢNG MÃ LỖI & BEST PRACTICES ====================
     add_header_styled(doc, "8. Bảng Mã Lỗi Nghiệp Vụ & Khuyến Nghị Tích Hợp", level=1)
 
@@ -1067,8 +1107,114 @@ def create_document():
         "3. Luôn truyền Định danh Thiết bị & IP Client:\n"
         "   • Luôn cung cấp tên máy cắt và IP client trong các payload POST, hoặc gửi kèm trong HTTP Headers (`X-Device` và `X-Forwarded-For`). Điều này giúp theo dõi lịch sử cắt và hỗ trợ kỹ thuật kịp thời khi có sự cố.\n\n"
         "4. Phân Biệt Rõ Ràng Hai Loại Danh Mục:\n"
-        "   • Không nhầm lẫn giữa 'Danh mục cấu hình xe' và 'Danh mục kho mẫu & part' (`/api/part-library-categories`). Khi xây dựng bộ lọc mẫu part trên ứng dụng client, luôn gọi endpoint `/api/part-library-categories/active`."
+        "   • Không nhầm lẫn giữa 'Danh mục cấu hình xe' và 'Danh mục kho mẫu & part' (`/api/part-library-categories`). Khi xây dựng bộ lọc mẫu part trên ứng dụng client, luôn gọi endpoint `/api/part-library-categories/active`.\n\n"
+        "5. Bổ sung Header 'X-Request-ID' và Hiển Thị Khi Báo Lỗi:\n"
+        "   • Cấu hình HTTP Client tự động tạo và gửi header 'X-Request-ID: <unique_id>' trong mỗi request (chuỗi 8-64 ký tự an toàn [a-zA-Z0-9_-]).\n"
+        "   • Bắt header 'X-Request-ID' từ response của Backend (kể cả khi nhận mã lỗi HTTP 4xx hoặc 5xx).\n"
+        "   • Trong giao diện thông báo lỗi của phần mềm máy cắt, hiển thị mã này: 'Mã truy vết: [X-Request-ID]'. Khi thợ cắt hoặc đại lý liên hệ kỹ thuật, chỉ cần đọc mã này để kỹ thuật viên tra cứu chính xác nguyên nhân lỗi trong vài giây trên Web Admin."
     )
+
+
+    add_header_styled(doc, "8.3. Code Mẫu Tích Hợp Client Máy Cắt (C# / .NET & TypeScript / Axios)", level=2)
+    p_intro = doc.add_paragraph()
+    p_intro.add_run(
+        "Nhằm hỗ trợ lập trình viên tích hợp nhanh chóng và chính xác với hệ thống Internal API V2, "
+        "dưới đây là code mẫu chuẩn mực minh họa cách cấu hình Bearer Token, tự động phát sinh Header 'X-Request-ID', "
+        "tải file SVG mã hóa và bắt mã Request ID khi xử lý lỗi."
+    )
+
+    p_csharp = doc.add_paragraph()
+    p_csharp.add_run("1. Code mẫu C# / .NET (Phần mềm điều khiển máy cắt WPF / WinForms):").bold = True
+    csharp_code = """using System;
+using System.IO;
+using System.Net.Http;
+using System.Net.Http.Headers;
+using System.Threading.Tasks;
+
+public class CuttingClientV2
+{
+    private readonly HttpClient _httpClient;
+
+    public CuttingClientV2(string baseUrl, string jwtToken)
+    {
+        _httpClient = new HttpClient { BaseAddress = new Uri(baseUrl) };
+        _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", jwtToken);
+    }
+
+    public async Task<string> UploadSvgFileAsync(string filePath, string vehiclePath, string notes)
+    {
+        // 1. Tự động sinh Request ID truy vết độc nhất
+        string requestId = "req-cut-" + Guid.NewGuid().ToString("N").Substring(0, 16);
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/api/internal/v2/user-files");
+        request.Headers.Add("X-Request-ID", requestId);
+
+        using var form = new MultipartFormDataContent();
+        using var fileStream = File.OpenRead(filePath);
+        using var streamContent = new StreamContent(fileStream);
+        streamContent.Headers.ContentType = new MediaTypeHeaderValue("image/svg+xml");
+
+        form.Add(streamContent, "file", Path.GetFileName(filePath));
+        form.Add(new StringContent(Path.GetFileName(filePath)), "fileName");
+        if (!string.IsNullOrEmpty(vehiclePath)) form.Add(new StringContent(vehiclePath), "vehiclePath");
+        if (!string.IsNullOrEmpty(notes)) form.Add(new StringContent(notes), "notes");
+
+        request.Content = form;
+
+        var response = await _httpClient.SendAsync(request);
+
+        // 2. Thu thập Request ID từ response header do Backend trả về
+        if (response.Headers.TryGetValues("X-Request-ID", out var reqIds))
+        {
+            requestId = string.Join(",", reqIds);
+        }
+
+        if (!response.IsSuccessStatusCode)
+        {
+            string errBody = await response.Content.ReadAsStringAsync();
+            // 3. Hiển thị thông báo thân thiện cho thợ cắt kèm Request ID để hỗ trợ kỹ thuật
+            throw new Exception($"[Lỗi {(int)response.StatusCode}] Mã truy vết: {requestId}\nChi tiết: {errBody}");
+        }
+
+        return await response.Content.ReadAsStringAsync();
+    }
+}"""
+    add_code_block(doc, csharp_code)
+
+    p_ts = doc.add_paragraph()
+    p_ts.add_run("2. Code mẫu TypeScript / JavaScript (Axios Client Interceptors):").bold = True
+    ts_code = """import axios, { AxiosInstance } from 'axios';
+
+export function createCuttingApiClient(baseUrl: string, token: string): AxiosInstance {
+  const client = axios.create({
+    baseURL: baseUrl,
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  // Tự động gắn X-Request-ID trước khi gửi request
+  client.interceptors.request.use((config) => {
+    if (!config.headers['X-Request-ID']) {
+      config.headers['X-Request-ID'] = `req-web-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+    }
+    return config;
+  });
+
+  // Bắt X-Request-ID từ response để ghi log và hỗ trợ tra cứu lỗi
+  client.interceptors.response.use(
+    (response) => response,
+    (error) => {
+      const requestId = error.response?.headers['x-request-id'] || 'N/A';
+      console.error(`[API ERROR] Status: ${error.response?.status} | Request ID: ${requestId}`, error.response?.data);
+      error.requestId = requestId;
+      return Promise.reject(error);
+    }
+  );
+
+  return client;
+}"""
+    add_code_block(doc, ts_code)
 
     output_path = "/Users/phuvk/IdeaProjects/cutting-admin/Tai_Lieu_Tich_Hop_API_He_Thong.docx"
     doc.save(output_path)

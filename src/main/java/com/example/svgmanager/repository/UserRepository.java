@@ -25,6 +25,12 @@ public interface UserRepository extends JpaRepository<User, Long>, JpaSpecificat
 
     Optional<User> findByKeycloakUserId(String keycloakUserId);
 
+    @Query("SELECT u FROM User u LEFT JOIN FETCH u.dealer WHERE u.keycloakUserId = :keycloakUserId")
+    Optional<User> findByKeycloakUserIdWithDealer(@Param("keycloakUserId") String keycloakUserId);
+
+    @Query("SELECT u FROM User u LEFT JOIN FETCH u.dealer WHERE u.username = :username")
+    Optional<User> findByUsernameWithDealer(@Param("username") String username);
+
     Optional<User> findByIdAndAgentId(Long id, Long agentId);
 
     /**
