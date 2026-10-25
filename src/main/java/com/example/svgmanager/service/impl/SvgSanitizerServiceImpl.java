@@ -25,15 +25,17 @@ public class SvgSanitizerServiceImpl implements SvgSanitizerService {
     private static final Logger log = LoggerFactory.getLogger(SvgSanitizerServiceImpl.class);
 
     private static final Set<String> FORBIDDEN_TAGS = new HashSet<>(Arrays.asList(
-            "script", "iframe", "object", "embed", "applet", "frame", "frameset",
-            "meta", "link", "base", "form", "input", "button", "textarea", "select"
+            "script", "foreignobject", "iframe", "object", "embed", "applet", "frame", "frameset",
+            "meta", "link", "base", "form", "input", "button", "textarea", "select",
+            "audio", "video", "animate", "set", "animatemotion", "animatetransform",
+            "handler", "listener", "html", "body"
     ));
 
-    private static final Pattern JAVASCRIPT_PROTOCOL_PATTERN =
-            Pattern.compile("(?i)^\\s*(javascript|data|vbscript)\\s*:.*");
+    private static final Pattern DANGEROUS_URI_PATTERN =
+            Pattern.compile("(?i)^\\s*(javascript|data|vbscript|file|http|https|ftp|php|expect|blob):.*");
 
     private static final Pattern CSS_EXPRESSION_PATTERN =
-            Pattern.compile("(?i)(expression|url\\s*\\(\\s*['\"]?\\s*javascript|behavior|vbscript)");
+            Pattern.compile("(?i)(expression\\s*\\(|url\\s*\\(\\s*['\"]?\\s*(javascript|data|http|https|file|vbscript):|behavior\\s*:|@import|vbscript)");
 
     private static final Pattern MALICIOUS_XXE_PATTERNS = Pattern.compile(
             "(?i)(" +
@@ -42,7 +44,8 @@ public class SvgSanitizerServiceImpl implements SvgSanitizerService {
             "<!ENTITY\\s+%|" +
             "<!DOCTYPE\\s+[^>]*\\bSYSTEM\\b|" +
             "%[a-zA-Z0-9_\\-\\.]+;|" +
-            "\\bSYSTEM\\s+[\"'](file:|http:|https:|ftp:|gopher:|php:|expect:)" +
+            "\\bSYSTEM\\s+[\"'](file:|http:|https:|ftp:|gopher:|php:|expect:)|" +
+            "<\\?xml-stylesheet" +
             ")"
     );
 
@@ -129,6 +132,18 @@ public class SvgSanitizerServiceImpl implements SvgSanitizerService {
             return;
         }
 
+        if ("style".equals(tagName)) {
+            String styleText = element.wholeText();
+            if (styleText == null || styleText.isBlank()) {
+                styleText = element.data();
+            }
+            if (styleText != null && CSS_EXPRESSION_PATTERN.matcher(styleText).find()) {
+                log.warn("Removing dangerous CSS content from <style> tag");
+                element.remove();
+                return;
+            }
+        }
+
         Set<String> attributesToRemove = new HashSet<>();
         for (Attribute attr : element.attributes()) {
             String key = attr.getKey().toLowerCase(Locale.ROOT);
@@ -141,8 +156,9 @@ public class SvgSanitizerServiceImpl implements SvgSanitizerService {
             }
 
             if (key.endsWith("href") || key.equals("src") || key.equals("action")) {
-                if (JAVASCRIPT_PROTOCOL_PATTERN.matcher(val).find()) {
-                    log.warn("Removing unsafe protocol in attribute '{}': {}", key, val);
+                String trimmed = val != null ? val.trim() : "";
+                if (DANGEROUS_URI_PATTERN.matcher(trimmed).find() || (trimmed.contains(":") && !trimmed.startsWith("#"))) {
+                    log.warn("Removing unsafe protocol/URI in attribute '{}': {}", key, val);
                     attributesToRemove.add(attr.getKey());
                     continue;
                 }

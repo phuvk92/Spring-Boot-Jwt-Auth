@@ -55,7 +55,7 @@ public class DealerController {
 
     @GetMapping("/stats")
     @Operation(summary = "Thống kê số lượng đại lý theo trạng thái")
-    @PreAuthorize("hasRole('ADMIN') or hasRole('AGENT')")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<DealerStatsResponse> getDealerStats() {
         return ResponseEntity.ok(dealerService.getDealerStats());
     }

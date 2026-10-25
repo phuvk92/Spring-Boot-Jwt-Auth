@@ -205,4 +205,71 @@ class SvgSanitizerServiceTest {
         assertDecodedCorelSvg(withBom(new byte[]{(byte) 0xEF, (byte) 0xBB, (byte) 0xBF},
                 COREL_SVG.replace("UTF-16", "UTF-8").getBytes(StandardCharsets.UTF_8)));
     }
+
+    @Test
+    @DisplayName("Should strip foreignObject and nested dangerous active elements")
+    void sanitize_RemoveForeignObject() {
+        String svgWithForeignObject = "<svg width=\"100\" height=\"100\" xmlns=\"http://www.w3.org/2000/svg\">" +
+                "<foreignObject width=\"100\" height=\"50\">" +
+                "<body xmlns=\"http://www.w3.org/1999/xhtml\"><div><script>alert(1)</script>Unsafe Content</div></body>" +
+                "</foreignObject>" +
+                "<rect width=\"50\" height=\"50\" fill=\"red\"/>" +
+                "</svg>";
+
+        byte[] result = sanitizerService.sanitizeAndValidateSvg(svgWithForeignObject.getBytes(StandardCharsets.UTF_8));
+        String resultStr = new String(result, StandardCharsets.UTF_8);
+
+        assertThat(resultStr).doesNotContain("<foreignObject");
+        assertThat(resultStr).doesNotContain("<script");
+        assertThat(resultStr).doesNotContain("alert(1)");
+        assertThat(resultStr).contains("<rect");
+    }
+
+    @Test
+    @DisplayName("Should strip dangerous CSS expressions and @import from <style> blocks")
+    void sanitize_RemoveDangerousStyleBlock() {
+        String svgWithEvilStyle = "<svg width=\"100\" height=\"100\" xmlns=\"http://www.w3.org/2000/svg\">" +
+                "<style>@import url('https://evil.com/xss.css'); body { background: expression(alert(1)); }</style>" +
+                "<circle cx=\"50\" cy=\"50\" r=\"20\" fill=\"blue\"/>" +
+                "</svg>";
+
+        byte[] result = sanitizerService.sanitizeAndValidateSvg(svgWithEvilStyle.getBytes(StandardCharsets.UTF_8));
+        String resultStr = new String(result, StandardCharsets.UTF_8);
+
+        assertThat(resultStr).doesNotContain("<style");
+        assertThat(resultStr).doesNotContain("@import");
+        assertThat(resultStr).doesNotContain("expression");
+        assertThat(resultStr).contains("<circle");
+    }
+
+    @Test
+    @DisplayName("Should strip animation elements (animate, set, animatemotion)")
+    void sanitize_RemoveAnimationTags() {
+        String svgWithAnimate = "<svg width=\"100\" height=\"100\" xmlns=\"http://www.w3.org/2000/svg\">" +
+                "<rect width=\"10\" height=\"10\"><animate attributeName=\"width\" values=\"10;20;10\"/></rect>" +
+                "<set attributeName=\"fill\" to=\"red\"/>" +
+                "</svg>";
+
+        byte[] result = sanitizerService.sanitizeAndValidateSvg(svgWithAnimate.getBytes(StandardCharsets.UTF_8));
+        String resultStr = new String(result, StandardCharsets.UTF_8);
+
+        assertThat(resultStr).doesNotContain("<animate");
+        assertThat(resultStr).doesNotContain("<set");
+        assertThat(resultStr).contains("<rect");
+    }
+
+    @Test
+    @DisplayName("Should strip external URL protocol references in href")
+    void sanitize_RemoveExternalHrefs() {
+        String svgWithExternalHrefs = "<svg width=\"100\" height=\"100\" xmlns=\"http://www.w3.org/2000/svg\">" +
+                "<a href=\"https://attacker.com/malicious\"><text>External Link</text></a>" +
+                "<a href=\"#internal-id\"><text>Internal Link</text></a>" +
+                "</svg>";
+
+        byte[] result = sanitizerService.sanitizeAndValidateSvg(svgWithExternalHrefs.getBytes(StandardCharsets.UTF_8));
+        String resultStr = new String(result, StandardCharsets.UTF_8);
+
+        assertThat(resultStr).doesNotContain("https://attacker.com");
+        assertThat(resultStr).contains("href=\"#internal-id\"");
+    }
 }

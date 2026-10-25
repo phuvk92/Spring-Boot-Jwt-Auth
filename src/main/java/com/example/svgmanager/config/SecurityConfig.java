@@ -87,17 +87,28 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http, UserDeviceService userDeviceService,
                                            ObjectMapper objectMapper,
-                                           InternalApiV2AuditFilter internalApiV2AuditFilter) throws Exception {
+                                           InternalApiV2AuditFilter internalApiV2AuditFilter,
+                                           CorsConfigurationSource corsConfigurationSource) throws Exception {
         http
                 .csrf(AbstractHttpConfigurer::disable)
-                .cors(cors -> cors.configurationSource(corsConfigurationSource()))
+                .cors(cors -> cors.configurationSource(corsConfigurationSource))
+                .headers(headers -> headers
+                        .frameOptions(frame -> frame.sameOrigin())
+                        .contentTypeOptions(contentType -> {})
+                        .xssProtection(xss -> {})
+                        .referrerPolicy(referrer -> referrer.policy(
+                                org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter.ReferrerPolicy.STRICT_ORIGIN_WHEN_CROSS_ORIGIN
+                        ))
+                )
                 .sessionManagement(session -> session
                         .sessionCreationPolicy(SessionCreationPolicy.STATELESS)
                 )
                 .authorizeHttpRequests(auth -> auth
                         // Public Auth endpoints
                         .requestMatchers(
-                                "/api/auth/**",
+                                "/api/auth/login",
+                                "/api/auth/refresh",
+                                "/api/auth/refresh-token",
                                 "/api/internal/auth/login",
                                 "/api/internal/auth/refresh-token",
                                 "/api/internal/auth/refresh",
@@ -130,6 +141,13 @@ public class SecurityConfig {
                         // Thương hiệu đại lý (NGO-165)
                         .requestMatchers("/api/v1/branding").hasAnyRole("ADMIN", "AGENT", "USER")
                         .requestMatchers("/api/v1/profile").hasAnyRole("ADMIN", "AGENT", "USER")
+                        // Dealer endpoints (ADMIN and AGENT)
+                        .requestMatchers("/api/dealers/stats", "/api/dealers/generate-code").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.POST, "/api/dealers/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.PUT, "/api/dealers/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.PATCH, "/api/dealers/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.DELETE, "/api/dealers/**").hasRole("ADMIN")
+                        .requestMatchers("/api/dealers/**").hasAnyRole("ADMIN", "AGENT")
                         // User management endpoints (ADMIN and AGENT)
                         .requestMatchers("/api/users/**").hasAnyRole("ADMIN", "AGENT")
                         // SVG endpoints
@@ -158,9 +176,11 @@ public class SecurityConfig {
     }
 
     @Bean
-    public CorsConfigurationSource corsConfigurationSource() {
+    public CorsConfigurationSource corsConfigurationSource(
+            @Value("${app.cors.allowed-origins:http://localhost:3000,http://localhost:8080,http://localhost:5173,http://127.0.0.1:3000,http://127.0.0.1:5173}") List<String> allowedOrigins
+    ) {
         CorsConfiguration configuration = new CorsConfiguration();
-        configuration.setAllowedOriginPatterns(List.of("*"));
+        configuration.setAllowedOrigins(allowedOrigins);
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         configuration.setAllowedHeaders(List.of("*"));
         configuration.setExposedHeaders(List.of("Authorization", "Content-Disposition", "X-Request-ID", "X-Trace-ID"));

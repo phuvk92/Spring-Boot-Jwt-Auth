@@ -245,7 +245,7 @@ class InternalUserFilesV2SecurityTest {
                 .andExpect(status().isOk())
                 .andExpect(header().string("Content-Type", startsWith("image/svg+xml")))
                 .andExpect(header().string("X-Content-Type-Options", is("nosniff")))
-                .andExpect(header().string("Content-Security-Policy", is("default-src 'none'; img-src 'self' data:;")))
+                .andExpect(header().string("Content-Security-Policy", is("default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; sandbox")))
                 .andExpect(header().string("Cache-Control", is("private, no-store")))
                 .andReturn().getResponse().getContentAsByteArray();
 

@@ -133,7 +133,7 @@ public class AdminUserFilesV2Controller {
         headers.setContentType(MediaType.parseMediaType("image/svg+xml;charset=UTF-8"));
         headers.setContentDisposition(ContentDisposition.inline().build());
         headers.add("X-Content-Type-Options", "nosniff");
-        headers.add("Content-Security-Policy", "default-src 'none'; img-src 'self' data:;");
+        headers.add("Content-Security-Policy", "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; sandbox");
         headers.add("Cache-Control", "private, no-store");
 
         return ResponseEntity.ok().headers(headers).body(bytes);

@@ -127,6 +127,13 @@ public class DealerServiceImpl implements DealerService {
             List<Predicate> predicates = new ArrayList<>();
             predicates.add(cb.isFalse(root.get("deleted")));
 
+            // Data scope isolation: AGENT only sees their own dealer
+            if (!currentUserService.isAdmin()) {
+                User currentUser = currentUserService.getCurrentUser();
+                Long agentDealerId = currentUser.getDealer() != null ? currentUser.getDealer().getId() : -1L;
+                predicates.add(cb.equal(root.get("id"), agentDealerId));
+            }
+
             if (cleanStatus != null) {
                 predicates.add(cb.equal(cb.upper(root.get("status")), cleanStatus.toUpperCase()));
             }
@@ -169,6 +176,13 @@ public class DealerServiceImpl implements DealerService {
     @Override
     @Transactional(readOnly = true)
     public List<DealerResponse> getAllDealers() {
+        if (!currentUserService.isAdmin()) {
+            User currentUser = currentUserService.getCurrentUser();
+            if (currentUser.getDealer() != null) {
+                return List.of(mapToResponse(currentUser.getDealer()));
+            }
+            return List.of();
+        }
         return dealerRepository.findAllByDeletedFalseOrderByCreatedAtDesc().stream()
                 .map(this::mapToResponse)
                 .collect(Collectors.toList());
@@ -179,6 +193,14 @@ public class DealerServiceImpl implements DealerService {
     public DealerResponse getDealerById(Long id) {
         Dealer dealer = dealerRepository.findByIdAndDeletedFalse(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Đại lý không tồn tại với ID: " + id));
+
+        if (!currentUserService.isAdmin()) {
+            User currentUser = currentUserService.getCurrentUser();
+            if (currentUser.getDealer() == null || !currentUser.getDealer().getId().equals(id)) {
+                throw new ForbiddenException("Không có quyền xem thông tin của đại lý khác");
+            }
+        }
+
         return mapToResponse(dealer);
     }
 

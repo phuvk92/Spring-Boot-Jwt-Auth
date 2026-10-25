@@ -188,6 +188,7 @@ class InternalUserFilesV2IntegrationTest {
                         .with(asUser(ownerUser)))
                 .andExpect(status().isOk())
                 .andExpect(header().string("Content-Type", startsWith("image/svg+xml")))
+                .andExpect(header().string("Content-Security-Policy", containsString("sandbox")))
                 .andReturn().getResponse().getContentAsByteArray();
 
         String previewStr = new String(previewBytes, StandardCharsets.UTF_8);

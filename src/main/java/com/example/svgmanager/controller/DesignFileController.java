@@ -97,6 +97,8 @@ public class DesignFileController {
                                              @RequestParam(required = false) String layout) {
         return ResponseEntity.ok()
                 .contentType(org.springframework.http.MediaType.valueOf("image/svg+xml;charset=UTF-8"))
+                .header("X-Content-Type-Options", "nosniff")
+                .header("Content-Security-Policy", "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; sandbox")
                 .header("Cache-Control", "no-store")
                 .body(designFileService.getFileSvg(fileKey, layout));
     }

@@ -41,6 +41,7 @@ public class InternalApiV2AuditFilter extends OncePerRequestFilter {
     private static final String REQUEST_ID_HEADER = "X-Request-ID";
     private static final String TRACE_ID_HEADER = "X-Trace-ID";
     private static final Pattern REQUEST_ID_PATTERN = Pattern.compile("^[a-zA-Z0-9_-]{8,64}$");
+    private static final Pattern SAFE_IP_PATTERN = Pattern.compile("^[a-fA-F0-9:.]+$");
 
     private static final Map<String, String> KNOWN_CLIENT_NAMES = Map.of(
             "cutting-client", "Cutting Machine Client",
@@ -308,8 +309,8 @@ public class InternalApiV2AuditFilter extends OncePerRequestFilter {
         String xForwardedFor = request.getHeader("X-Forwarded-For");
         if (StringUtils.hasText(xForwardedFor)) {
             String firstIp = xForwardedFor.split(",")[0].trim();
-            // Basic sanitization
-            if (firstIp.length() <= 50) {
+            // Validate IP structure to prevent log injection
+            if (firstIp.length() <= 50 && SAFE_IP_PATTERN.matcher(firstIp).matches()) {
                 return firstIp;
             }
         }

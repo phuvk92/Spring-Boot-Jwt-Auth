@@ -300,6 +300,7 @@ public class InternalUserSvgFileController {
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.parseMediaType("image/svg+xml;charset=UTF-8"));
         headers.add("X-Content-Type-Options", "nosniff");
+        headers.add("Content-Security-Policy", "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; sandbox");
         headers.add("Cache-Control", "no-cache, no-store, must-revalidate");
 
         return ResponseEntity.ok().headers(headers).body(bytes);

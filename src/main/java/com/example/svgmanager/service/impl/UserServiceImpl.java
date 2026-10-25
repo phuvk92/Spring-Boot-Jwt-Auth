@@ -713,6 +713,9 @@ public class UserServiceImpl implements UserService {
         if (StringUtils.hasText(user.getKeycloakUserId())) {
             keycloakUserService.updateUser(user.getKeycloakUserId(), normalizedEmail, request.getEnabled(), user.getFullName());
             if (StringUtils.hasText(request.getPassword())) {
+                if (!currentUserService.isAdmin() && !currentUser.getId().equals(id)) {
+                    throw new ForbiddenException("Chỉ ADMIN mới có quyền đặt lại mật khẩu cho người dùng khác");
+                }
                 keycloakUserService.resetPassword(user.getKeycloakUserId(), request.getPassword());
             }
         }

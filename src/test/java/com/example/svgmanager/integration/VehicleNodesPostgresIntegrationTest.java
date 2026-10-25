@@ -47,6 +47,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 })
 @AutoConfigureMockMvc
 @Transactional
+@org.junit.jupiter.api.TestMethodOrder(org.junit.jupiter.api.MethodOrderer.OrderAnnotation.class)
 class VehicleNodesPostgresIntegrationTest {
 
     // Mặc định tự dựng container Postgres; có IT_DB_URL thì dùng DB ngoài
@@ -113,8 +114,15 @@ class VehicleNodesPostgresIntegrationTest {
     }
 
     @Test
+    @org.junit.jupiter.api.Order(1)
     @DisplayName("V15 chạy thật: seed 7 hãng gốc (6 hãng META0 + Abarth) và 4 danh mục file")
     void migration_seedData_present() throws Exception {
+        vehicleNodeRepository.findAll().stream()
+                .filter(n -> n.getId() > 33)
+                .forEach(n -> vehicleNodeRepository.delete(n));
+        entityManager.flush();
+        entityManager.clear();
+
         mockMvc.perform(get("/api/vehicle-nodes").param("size", "50").with(asAdmin()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.totalElements", is(7)))

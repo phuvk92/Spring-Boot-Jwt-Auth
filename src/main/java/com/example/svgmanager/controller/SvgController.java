@@ -99,6 +99,7 @@ public class SvgController {
                 .contentType(MediaType.parseMediaType("image/svg+xml"))
                 .header(HttpHeaders.CONTENT_DISPOSITION, "inline")
                 .header("X-Content-Type-Options", "nosniff")
+                .header("Content-Security-Policy", "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; sandbox")
                 .body(resource);
     }
 
