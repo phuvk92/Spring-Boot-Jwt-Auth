@@ -30,6 +30,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.verify;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -277,5 +278,100 @@ class UserManagementIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isNotFound());
+    }
+
+    @Test
+    @DisplayName("Tìm kiếm user theo user đại lý: trả về tất cả users thuộc đại lý đó")
+    void searchUsers_ByAgentUsername_ReturnsAllUsersBelongingToDealer() throws Exception {
+        mockMvc.perform(get("/api/users")
+                        .param("search", "agent_test_manager")
+                        .with(jwtAdmin()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[?(@.username == 'agent_test_manager')]").exists())
+                .andExpect(jsonPath("$.content[?(@.username == 'target_cutter_user')]").exists())
+                .andExpect(jsonPath("$.content[?(@.username == 'another_user')]").doesNotExist());
+    }
+
+    @Test
+    @DisplayName("Tìm kiếm user theo mã hoặc tên đại lý: trả về tất cả users thuộc đại lý đó")
+    void searchUsers_ByDealerCodeOrName_ReturnsAllUsersBelongingToDealer() throws Exception {
+        mockMvc.perform(get("/api/users")
+                        .param("search", "DL-HN-TEST")
+                        .with(jwtAdmin()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[?(@.username == 'agent_test_manager')]").exists())
+                .andExpect(jsonPath("$.content[?(@.username == 'target_cutter_user')]").exists())
+                .andExpect(jsonPath("$.content[?(@.username == 'another_user')]").doesNotExist());
+    }
+
+    @Test
+    @DisplayName("Lọc user theo dealerId: trả về tất cả users thuộc đại lý đó")
+    void filterUsers_ByDealerId_ReturnsAllUsersBelongingToDealer() throws Exception {
+        mockMvc.perform(get("/api/users")
+                        .param("dealerId", String.valueOf(dealer.getId()))
+                        .with(jwtAdmin()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[?(@.username == 'agent_test_manager')]").exists())
+                .andExpect(jsonPath("$.content[?(@.username == 'target_cutter_user')]").exists())
+                .andExpect(jsonPath("$.content[?(@.username == 'another_user')]").doesNotExist());
+    }
+
+    @Test
+    @DisplayName("Tìm kiếm user theo tên riêng của user: chỉ trả về user đó")
+    void searchUsers_BySpecificUsername_ReturnsOnlyMatchingUser() throws Exception {
+        mockMvc.perform(get("/api/users")
+                        .param("search", "target_cutter_user")
+                        .with(jwtAdmin()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[?(@.username == 'target_cutter_user')]").exists())
+                .andExpect(jsonPath("$.content[?(@.username == 'agent_test_manager')]").doesNotExist())
+                .andExpect(jsonPath("$.content[?(@.username == 'another_user')]").doesNotExist());
+    }
+
+    @Test
+    @DisplayName("Admin tạo người dùng mới không cần agentId (chỉ chọn dealerId): tự động liên kết với agent của dealer")
+    void admin_CreateUser_WithoutAgentId_Success() throws Exception {
+        org.mockito.Mockito.when(keycloakUserService.createUser(any(), any(), any(), any(), anyBoolean(), any()))
+                .thenReturn("kc-new-cutter-uuid");
+
+        com.example.svgmanager.dto.request.CreateUserRequest request = com.example.svgmanager.dto.request.CreateUserRequest.builder()
+                .username("new_cutter_no_agent")
+                .email("new_cutter_no_agent@example.com")
+                .password("StrongPass123!@#")
+                .fullName("Thợ Cắt Mới")
+                .role(Role.USER)
+                .dealerId(dealer.getId())
+                .enabled(true)
+                .allocatedDays(360)
+                .build();
+
+        mockMvc.perform(post("/api/users")
+                        .with(jwtAdmin())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.username").value("new_cutter_no_agent"))
+                .andExpect(jsonPath("$.dealerId").value(dealer.getId()))
+                .andExpect(jsonPath("$.agentId").value(agent.getId()));
+    }
+
+    @Test
+    @DisplayName("Admin cập nhật người dùng không truyền agentId: agent tự động đồng bộ theo dealerId")
+    void admin_UpdateUser_WithoutAgentId_SyncsAgentFromDealer() throws Exception {
+        UpdateUserRequest request = UpdateUserRequest.builder()
+                .email(targetUser.getEmail())
+                .fullName("Thợ Cắt Cập Nhật")
+                .role(Role.USER)
+                .dealerId(dealer.getId())
+                .enabled(true)
+                .build();
+
+        mockMvc.perform(put("/api/users/" + targetUser.getId())
+                        .with(jwtAdmin())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.dealerId").value(dealer.getId()))
+                .andExpect(jsonPath("$.agentId").value(agent.getId()));
     }
 }

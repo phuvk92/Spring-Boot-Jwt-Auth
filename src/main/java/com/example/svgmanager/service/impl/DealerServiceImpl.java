@@ -18,6 +18,8 @@ import com.example.svgmanager.exception.ResourceNotFoundException;
 import com.example.svgmanager.mapper.UserMapper;
 import com.example.svgmanager.repository.DealerPackageHistoryRepository;
 import com.example.svgmanager.repository.DealerRepository;
+import com.example.svgmanager.repository.SvgFileRepository;
+import com.example.svgmanager.repository.UserPartCategoryPermissionRepository;
 import com.example.svgmanager.repository.UserRepository;
 import com.example.svgmanager.security.CurrentUserService;
 import com.example.svgmanager.service.DealerService;
@@ -25,6 +27,7 @@ import com.example.svgmanager.service.KeycloakUserService;
 import jakarta.persistence.criteria.Predicate;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -62,6 +65,8 @@ public class DealerServiceImpl implements DealerService {
     private final UserRepository userRepository;
     private final KeycloakUserService keycloakUserService;
     private final UserMapper userMapper;
+    private final SvgFileRepository svgFileRepository;
+    private final UserPartCategoryPermissionRepository userPartCategoryPermissionRepository;
 
     public DealerServiceImpl(DealerRepository dealerRepository,
                              DealerPackageHistoryRepository dealerPackageHistoryRepository,
@@ -69,12 +74,26 @@ public class DealerServiceImpl implements DealerService {
                              UserRepository userRepository,
                              KeycloakUserService keycloakUserService,
                              UserMapper userMapper) {
+        this(dealerRepository, dealerPackageHistoryRepository, currentUserService, userRepository, keycloakUserService, userMapper, null, null);
+    }
+
+    @Autowired
+    public DealerServiceImpl(DealerRepository dealerRepository,
+                             DealerPackageHistoryRepository dealerPackageHistoryRepository,
+                             CurrentUserService currentUserService,
+                             UserRepository userRepository,
+                             KeycloakUserService keycloakUserService,
+                             UserMapper userMapper,
+                             @Autowired(required = false) SvgFileRepository svgFileRepository,
+                             @Autowired(required = false) UserPartCategoryPermissionRepository userPartCategoryPermissionRepository) {
         this.dealerRepository = dealerRepository;
         this.dealerPackageHistoryRepository = dealerPackageHistoryRepository;
         this.currentUserService = currentUserService;
         this.userRepository = userRepository;
         this.keycloakUserService = keycloakUserService;
         this.userMapper = userMapper;
+        this.svgFileRepository = svgFileRepository;
+        this.userPartCategoryPermissionRepository = userPartCategoryPermissionRepository;
     }
 
     @Override
@@ -500,29 +519,85 @@ public class DealerServiceImpl implements DealerService {
         Dealer dealer = dealerRepository.findByIdAndDeletedFalse(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Đại lý không tồn tại với ID: " + id));
 
+        // 1. Unlink agentUser from dealer first so foreign key doesn't block user deletion
+        User agentUser = dealer.getAgentUser();
+        dealer.setAgentUser(null);
+
+        // 2. Archive dealer code to prevent unique constraint conflicts if re-creating
+        long ts = System.currentTimeMillis();
+        dealer.setCode(appendDeletedSuffix(dealer.getCode(), ts, 50));
         dealer.setDeleted(true);
         dealerRepository.save(dealer);
 
-        // Soft delete and disable linked AGENT user
-        User agentUser = dealer.getAgentUser();
+        // 3. Delete or archive agent user (releases username & email in Keycloak and DB)
         if (agentUser != null) {
-            agentUser.setEnabled(false);
-            agentUser.setDeleted(true);
-            userRepository.save(agentUser);
-            if (StringUtils.hasText(agentUser.getKeycloakUserId())) {
-                try {
-                    keycloakUserService.disableUser(agentUser.getKeycloakUserId());
-                } catch (Exception e) {
-                    log.error("Failed to disable Keycloak user {} on dealer deletion", agentUser.getKeycloakUserId(), e);
-                }
+            deleteOrArchiveUser(agentUser);
+        }
+
+        // 4. Also handle any remaining users belonging to this dealer
+        List<User> dealerUsers = userRepository.findAllByDealerIdAndDeletedFalseOrderByCreatedAtDesc(dealer.getId());
+        for (User u : dealerUsers) {
+            if (agentUser != null && u.getId().equals(agentUser.getId())) {
+                continue;
             }
+            deleteOrArchiveUser(u);
         }
 
         String actor = currentUserService.getCurrentJwt()
                 .map(j -> j.getClaimAsString("preferred_username"))
                 .orElse("system");
-        log.info("[DEALER_DELETED] Dealer soft-deleted: id={}, code='{}', name='{}', actor='{}'",
+        log.info("[DEALER_DELETED] Dealer deleted: id={}, code='{}', name='{}', actor='{}'",
                 dealer.getId(), dealer.getCode(), dealer.getName(), actor);
+    }
+
+    private void deleteOrArchiveUser(User user) {
+        if (user == null) return;
+        String originalUsername = user.getUsername();
+        String keycloakUserId = user.getKeycloakUserId();
+
+        // 1. Delete from Keycloak to release login username and email
+        if (StringUtils.hasText(keycloakUserId)) {
+            try {
+                keycloakUserService.deleteUser(keycloakUserId);
+            } catch (Exception e) {
+                log.error("Failed to delete Keycloak user {} during dealer cleanup", keycloakUserId, e);
+            }
+        }
+
+        // 2. Check if user has business references (SVGs, child users)
+        boolean hasSvg = svgFileRepository != null && svgFileRepository.existsByUploadedBy(user);
+        boolean hasChildUsers = userRepository != null && userRepository.existsByAgent(user);
+
+        if (!hasSvg && !hasChildUsers) {
+            try {
+                if (userPartCategoryPermissionRepository != null) {
+                    userPartCategoryPermissionRepository.deleteByUserId(user.getId());
+                }
+                userRepository.delete(user);
+                log.info("[DEALER_USER_DELETED] Hard deleted user: id={}, username='{}'", user.getId(), originalUsername);
+                return;
+            } catch (Exception e) {
+                log.warn("Failed to hard delete user {}, falling back to archive and soft delete", user.getId(), e);
+            }
+        }
+
+        // 3. Fallback: archive username and email to release unique constraints
+        long ts = System.currentTimeMillis();
+        user.setEnabled(false);
+        user.setDeleted(true);
+        user.setUsername(appendDeletedSuffix(user.getUsername(), ts, 255));
+        user.setEmail(appendDeletedSuffix(user.getEmail(), ts, 255));
+        userRepository.save(user);
+        log.info("[DEALER_USER_ARCHIVED] Soft deleted and archived user: id={}, originalUsername='{}'", user.getId(), originalUsername);
+    }
+
+    private static String appendDeletedSuffix(String value, long ts, int maxLength) {
+        if (value == null) return null;
+        String suffix = "_deleted_" + ts;
+        if (value.length() + suffix.length() > maxLength) {
+            return value.substring(0, maxLength - suffix.length()) + suffix;
+        }
+        return value + suffix;
     }
 
     @Override

@@ -1,0 +1,69 @@
+@startuml flow-auth-security
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam defaultFontName "Helvetica", "Arial", sans-serif
+skinparam roundCorner 8
+skinparam shadowing false
+autonumber "<b>[00]</b>"
+
+actor "Người dùng / Thợ cắt\n(Admin / Agent / User)" as Client
+participant "Frontend Web / Desktop App\n(cutting-manager-web / DesignModule)" as App
+participant "Spring Security Filter Chain\n(DeviceSessionFilter / JwtConverter)" as Gateway
+participant "Backend Auth Service\n(cutting-admin)" as Backend
+participant "Keycloak IAM\n(Port 8180 / Realm 'cutting')" as Keycloak
+database "PostgreSQL DB\n(users, devices, audit)" as DB
+
+== 1. ĐĂNG NHẬP & CẤP PHÁT TOKEN (AUTHENTICATION) ==
+
+Client -> App : Nhập username/email + password\n(Option: Remember Me / Offline Token)
+App -> Keycloak : POST /realms/cutting/protocol/openid-connect/token\n(grant_type=password, client_id, scope=openid offline_access)
+Keycloak -> Keycloak : Xác thực credentials & đối soát Realm Roles (ADMIN, AGENT, USER)
+Keycloak --> App : Trả về: Access Token (JWT 1h), Refresh Token (7d / Offline Token)
+
+App -> Backend : POST /api/auth/me (kèm Bearer Access Token)
+Gateway -> Keycloak : GET /certs (JWK Set) để xác thực chữ ký số (Cacheable)
+Gateway -> Gateway : Verify JWT signature & parse Claims (sub, roles, client_id)
+Gateway -> Backend : Chuyển tiếp Request đã xác thực
+Backend -> DB : Đồng bộ thông tin User, lấy Dealer & Quyền hệ thống
+Backend --> App : Trả về Profile DTO (User details, Roles, Dealer info)
+
+== 2. QUẢN LÝ THIẾT BỊ & PHIÊN HOẠT ĐỘNG (DEVICE SESSION TRACKING) ==
+
+App -> Backend : POST /api/devices/register\nHeader: User-Agent, Client-Fingerprint, MAC/Hardware-ID
+Backend -> DB : Kiểm tra thiết bị đã đăng ký hoặc đang bị khóa (REVOKED)
+alt Thiết bị hợp lệ
+    Backend -> DB : Cập nhật last_active, IP, session_id
+    Backend --> App : 200 OK (Device session active)
+else Thiết bị đã bị Admin thu hồi quyền
+    Backend --> App : 403 Forbidden (DEVICE_REVOKED)
+end
+
+== 3. BẢO VỆ API BẰNG ROLE-BASED ACCESS CONTROL (RBAC) ==
+
+Client -> App : Thao tác chức năng (vd: Quản lý cây xe / Upload file mẫu)
+App -> Backend : GET/POST /api/... (Header: Authorization: Bearer <JWT>)
+Gateway -> Gateway : DeviceSessionFilter: Kiểm tra session còn hiệu lực
+Gateway -> Gateway : KeycloakJwtAuthenticationConverter: Trích xuất ROLE_<ADMIN|AGENT|USER>
+Gateway -> Gateway : @PreAuthorize("hasRole('ADMIN')") kiểm tra quyền
+alt Quyền hợp lệ
+    Gateway -> Backend : Tiếp tục xử lý nghiệp vụ
+    Backend -> DB : Thao tác dữ liệu
+    Backend --> App : Kết quả nghiệp vụ (200 / 201)
+else Quyền không hợp lệ
+    Gateway --> App : 403 Access Denied (INSUFFICIENT_PERMISSIONS)
+end
+
+== 4. LÀM MỚI TOKEN (REFRESH TOKEN / REMEMBER ME) ==
+
+App -> App : Access Token hết hạn (401 TOKEN_EXPIRED)
+App -> Keycloak : POST /protocol/openid-connect/token (grant_type=refresh_token)
+Keycloak -> Keycloak : Kiểm tra Refresh Token / Offline Token
+alt Refresh Token hợp lệ
+    Keycloak --> App : Cấp Access Token mới (kèm Refresh Token xoay vòng)
+    App -> Backend : Thử lại API ban đầu với Token mới
+else Refresh Token hết hạn / bị thu hồi
+    Keycloak --> App : 401 REFRESH_EXPIRED
+    App -> Client : Yêu cầu đăng nhập lại
+end
+
+@enduml

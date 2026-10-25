@@ -1,0 +1,78 @@
+@startuml flow-cutter-catalog-v1
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam defaultFontName "Helvetica", "Arial", sans-serif
+skinparam roundCorner 8
+skinparam shadowing false
+autonumber "<b>[00]</b>"
+
+actor "Thợ cắt / Kỹ thuật viên" as Cutter
+participant "App Máy Cắt PPF / Decal\n(DesignModule)" as App
+participant "CatalogController & DesignFileController\n/api/v1/*" as Api
+participant "CatalogService & DesignFileService\n(Data Center Core)" as Service
+database "PostgreSQL DB\n(vehicle_nodes, svg_files, parts, geometries)" as DB
+
+== 1. TẢI DANH MỤC & CÂY XE 4 CẤP (CATALOG HIERARCHY) ==
+
+Cutter -> App : Mở màn hình chọn mẫu xe cần dán PPF
+App -> Api : GET /api/v1/file-categories
+Api -> DB : SELECT * FROM file_categories WHERE is_active=true ORDER BY display_order
+DB --> Api : Danh mục: [Ngoại thất, Nội thất, Window film, Đèn & kính]
+Api --> App : 200 OK: [{ value, label }]
+
+App -> Api : GET /api/v1/catalog/brand
+Api -> DB : SELECT * FROM vehicle_nodes WHERE level='BRAND' AND status='ACTIVE'
+DB --> Api : Danh sách Hãng: [Toyota, VinFast, Ford, Hyundai, Mazda, Kia...]
+Api --> App : 200 OK (Danh sách Hãng)
+
+Cutter -> App : Chọn Hãng "Toyota"
+App -> Api : GET /api/v1/catalog/series?brandId={toyota_id}
+Api -> DB : SELECT * FROM vehicle_nodes WHERE parent_id={toyota_id} AND level='SERIES'
+DB --> Api : Danh sách Dòng xe: [Camry, Corolla Cross, Vios, Fortuner...]
+Api --> App : 200 OK
+
+Cutter -> App : Chọn Dòng "Camry"
+App -> Api : GET /api/v1/catalog/model?seriesId={camry_id}
+Api -> DB : SELECT * FROM vehicle_nodes WHERE parent_id={camry_id} AND level='MODEL'
+DB --> Api : Danh sách Model: [Camry 2.0G, Camry 2.5Q, Camry HEV...]
+Api --> App : 200 OK
+
+Cutter -> App : Chọn Model "Camry 2.5Q"
+App -> Api : GET /api/v1/catalog/subtype?modelId={camry_25q_id}
+Api -> DB : SELECT * FROM vehicle_nodes WHERE parent_id={camry_25q_id} AND level='SUBTYPE'
+DB --> Api : Danh sách Phiên bản: [Bản nhập Thái, Bản tiêu chuẩn...]
+Api --> App : 200 OK
+
+== 2. TRA CỨU DANH SÁCH FILE KHỚP BỘ LỌC (SEARCH & FILTER FILES) ==
+
+App -> Api : GET /api/v1/files?categoryId={ngoai_that_id}&brandId={toyota_id}\n       &seriesId={camry_id}&modelId={camry_25q_id}&year=2024&page=0&size=20
+Api -> Service : searchFiles(filterParams)
+note over Service
+  Quy tắc khớp bộ lọc Data Center V2:
+  - File gắn Model được tự động áp dụng cho mọi Subtype con
+  - File model_year = NULL được dùng cho mọi đời xe
+  - Chỉ trả về file có status = 'ACTIVE'
+  - Không lọc theo quyền đại lý (áp dụng toàn hệ thống)
+end note
+Service -> DB : Dynamic Query JPA Specification:\n- Khớp vehicle_nodes (node hoặc node con)\n- Khớp file_category_id\n- Khớp model_year IS NULL OR model_year = 2024\nORDER BY updated_at DESC
+DB --> Service : Page<SvgFile>
+Service --> Api : PageResponse<DesignFileDto>\n(Kèm vehiclePath: "Toyota › Camry › Camry 2.5Q", category, year)
+Api --> App : 200 OK
+
+== 3. LẤY CHI TIẾT PART & TOÀN BỘ TỌA ĐỘ HÌNH HỌC ĐỂ CẮT (GEOMETRY & PARTS) ==
+
+Cutter -> App : Chọn bản vẽ "Ngoại thất full body Camry 2.5Q"
+App -> Api : GET /api/v1/files/{fileId}/parts
+Api -> DB : SELECT * FROM svg_parts WHERE svg_file_id = {fileId}
+DB --> Api : Danh sách part: Cản trước, Nắp capo, Cánh cửa, Gương chiếu hậu...
+Api --> App : 200 OK (Chi tiết part + bounding box mm/pixel)
+
+Cutter -> App : Bấm "Xuất lệnh cắt dao máy cắt"
+App -> Api : GET /api/v1/files/{fileId}/geometry
+Api -> DB : SELECT g.path_data, g.stroke_color, g.stroke_width\nFROM svg_part_geometries g\nJOIN svg_parts p ON g.part_id = p.id\nWHERE p.svg_file_id = {fileId}
+DB --> Api : Toàn bộ dữ liệu vector path SVG
+Api --> App : 200 OK (Vector Geometry Data)
+
+App -> App : Engine máy cắt tính toán tối ưu đường chạy dao (Toolpath Optimization)\nvà điều khiển dao cắt vật liệu PPF chuẩn xác theo mẫu xe
+
+@enduml

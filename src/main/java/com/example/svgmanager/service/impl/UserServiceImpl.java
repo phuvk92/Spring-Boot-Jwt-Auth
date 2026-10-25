@@ -30,6 +30,8 @@ import com.example.svgmanager.service.AuditLogService;
 import com.example.svgmanager.service.KeycloakUserService;
 import com.example.svgmanager.service.UserDeviceService;
 import com.example.svgmanager.service.UserService;
+import jakarta.persistence.criteria.Join;
+import jakarta.persistence.criteria.JoinType;
 import jakarta.persistence.criteria.Predicate;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -139,6 +141,7 @@ public class UserServiceImpl implements UserService {
             Role role,
             Boolean enabled,
             String expirationStatus,
+            Long dealerId,
             int page,
             int size,
             String sortBy,
@@ -171,11 +174,39 @@ public class UserServiceImpl implements UserService {
                 }
             }
 
+            Join<User, Dealer> dealerJoin = null;
+            Join<User, User> agentJoin = null;
+
+            if (dealerId != null) {
+                dealerJoin = root.join("dealer", JoinType.LEFT);
+                agentJoin = root.join("agent", JoinType.LEFT);
+                Join<User, Dealer> agentDealerJoin = agentJoin.join("dealer", JoinType.LEFT);
+                predicates.add(cb.or(
+                        cb.equal(dealerJoin.get("id"), dealerId),
+                        cb.equal(agentDealerJoin.get("id"), dealerId)
+                ));
+            }
+
             if (StringUtils.hasText(username)) {
                 String pattern = "%" + username.trim().toLowerCase() + "%";
+                if (dealerJoin == null) {
+                    dealerJoin = root.join("dealer", JoinType.LEFT);
+                }
+                if (agentJoin == null) {
+                    agentJoin = root.join("agent", JoinType.LEFT);
+                }
+                Join<Dealer, User> dealerAgentJoin = dealerJoin.join("agentUser", JoinType.LEFT);
+
                 predicates.add(cb.or(
                         cb.like(cb.lower(root.get("username")), pattern),
-                        cb.like(cb.lower(root.get("fullName")), pattern)
+                        cb.like(cb.lower(root.get("fullName")), pattern),
+                        cb.like(cb.lower(root.get("email")), pattern),
+                        cb.like(cb.lower(agentJoin.get("username")), pattern),
+                        cb.like(cb.lower(agentJoin.get("fullName")), pattern),
+                        cb.like(cb.lower(dealerJoin.get("name")), pattern),
+                        cb.like(cb.lower(dealerJoin.get("code")), pattern),
+                        cb.like(cb.lower(dealerAgentJoin.get("username")), pattern),
+                        cb.like(cb.lower(dealerAgentJoin.get("fullName")), pattern)
                 ));
             }
             if (StringUtils.hasText(email)) {
@@ -317,11 +348,6 @@ public class UserServiceImpl implements UserService {
         } else {
             // ADMIN can create any role
             assignedRole = request.getRole() != null ? request.getRole() : Role.USER;
-            if (request.getAgentId() != null) {
-                assignedAgent = userRepository.findById(request.getAgentId())
-                        .filter(u -> u.getRole() == Role.AGENT && !u.isDeleted())
-                        .orElseThrow(() -> new BadRequestException("Assigned agent not found with id: " + request.getAgentId()));
-            }
 
             if (assignedRole == Role.AGENT) {
                 // Rule: Mỗi đại lý chỉ có duy nhất một tài khoản role AGENT
@@ -337,6 +363,7 @@ public class UserServiceImpl implements UserService {
                 // Tài khoản AGENT không tính vào gói account và không tiêu thụ Quỹ ngày
                 allocatedDays = 0;
                 effectiveExpirationDate = null;
+                assignedAgent = null;
             } else if (assignedRole == Role.USER) {
                 if (request.getDealerId() != null && request.getDealerId() > 0) {
                     targetDealer = dealerRepository.findByIdForUpdate(request.getDealerId())
@@ -369,12 +396,21 @@ public class UserServiceImpl implements UserService {
                     if (targetDealer.getPackageExpiryDate() != null && effectiveExpirationDate.isAfter(targetDealer.getPackageExpiryDate())) {
                         throw new BadRequestException("Thời hạn tài khoản vượt quá ngày hết hạn của gói đại lý (" + targetDealer.getPackageExpiryDate() + ")");
                     }
+                    assignedAgent = resolveDealerAgentUser(targetDealer);
                 } else {
                     targetDealer = null;
+                    if (request.getAgentId() != null && request.getAgentId() > 0) {
+                        assignedAgent = userRepository.findById(request.getAgentId())
+                                .filter(u -> u.getRole() == Role.AGENT && !u.isDeleted())
+                                .orElse(null);
+                    } else {
+                        assignedAgent = null;
+                    }
                 }
             } else {
                 // ADMIN role
                 targetDealer = null;
+                assignedAgent = null;
                 allocatedDays = 0;
                 effectiveExpirationDate = null;
             }
@@ -628,16 +664,6 @@ public class UserServiceImpl implements UserService {
                     keycloakUserService.updateRole(user.getKeycloakUserId(), oldRole, request.getRole());
                 }
             }
-            if (request.getAgentId() != null) {
-                if (request.getAgentId() > 0) {
-                    User agent = userRepository.findById(request.getAgentId())
-                            .filter(u -> u.getRole() == Role.AGENT && !u.isDeleted())
-                            .orElseThrow(() -> new BadRequestException("Assigned agent not found with id: " + request.getAgentId()));
-                    user.setAgent(agent);
-                } else {
-                    user.setAgent(null);
-                }
-            }
             if (request.getDealerId() != null) {
                 // If user is AGENT and dealer changed, manage agentUser linkage
                 if (user.getRole() == Role.AGENT) {
@@ -651,11 +677,22 @@ public class UserServiceImpl implements UserService {
                         targetDealer.setAgentUser(user);
                         dealerRepository.save(targetDealer);
                     }
+                } else if (user.getRole() == Role.USER) {
+                    user.setAgent(resolveDealerAgentUser(targetDealer));
                 }
                 user.setDealer(targetDealer);
             } else if (newRole == Role.AGENT && targetDealer != null) {
                 targetDealer.setAgentUser(user);
                 dealerRepository.save(targetDealer);
+            } else if (request.getAgentId() != null) {
+                if (request.getAgentId() > 0) {
+                    User agent = userRepository.findById(request.getAgentId())
+                            .filter(u -> u.getRole() == Role.AGENT && !u.isDeleted())
+                            .orElseThrow(() -> new BadRequestException("Assigned agent not found with id: " + request.getAgentId()));
+                    user.setAgent(agent);
+                } else {
+                    user.setAgent(null);
+                }
             }
         }
 
@@ -838,14 +875,22 @@ public class UserServiceImpl implements UserService {
 
         // Soft-delete if user has business references (SVGs, child users) to preserve audit/history
         if (hasSvg || hasChildUsers) {
+            long ts = System.currentTimeMillis();
+            String originalUsername = user.getUsername();
+            user.setUsername(appendDeletedSuffix(user.getUsername(), ts, 255));
+            user.setEmail(appendDeletedSuffix(user.getEmail(), ts, 255));
             user.setDeleted(true);
             user.setEnabled(false);
             userRepository.save(user);
 
             if (StringUtils.hasText(user.getKeycloakUserId())) {
-                keycloakUserService.disableUser(user.getKeycloakUserId());
+                try {
+                    keycloakUserService.deleteUser(user.getKeycloakUserId());
+                } catch (Exception e) {
+                    log.error("Failed to delete Keycloak user {} on soft delete", user.getKeycloakUserId(), e);
+                }
             }
-            log.info("[USER_SOFT_DELETED] User soft-deleted to maintain business history: id={}, username='{}', hasSvg={}, hasChildUsers={}", user.getId(), user.getUsername(), hasSvg, hasChildUsers);
+            log.info("[USER_SOFT_DELETED] User soft-deleted to maintain business history: id={}, originalUsername='{}', hasSvg={}, hasChildUsers={}", user.getId(), originalUsername, hasSvg, hasChildUsers);
             return;
         }
 
@@ -898,5 +943,24 @@ public class UserServiceImpl implements UserService {
         }
 
         return user;
+    }
+
+    private User resolveDealerAgentUser(Dealer dealer) {
+        if (dealer == null) {
+            return null;
+        }
+        if (dealer.getAgentUser() != null) {
+            return dealer.getAgentUser();
+        }
+        return userRepository.findByDealerIdAndRoleAndDeletedFalse(dealer.getId(), Role.AGENT).orElse(null);
+    }
+
+    private static String appendDeletedSuffix(String value, long ts, int maxLength) {
+        if (value == null) return null;
+        String suffix = "_deleted_" + ts;
+        if (value.length() + suffix.length() > maxLength) {
+            return value.substring(0, maxLength - suffix.length()) + suffix;
+        }
+        return value + suffix;
     }
 }

@@ -45,7 +45,8 @@ public class CreateUserRequest {
     @Schema(example = "AGENT", description = "User role (ADMIN, AGENT, USER)")
     private Role role;
 
-    @Schema(example = "2", description = "Managing Agent ID when role is USER (optional, for Admin)")
+    @Deprecated
+    @Schema(example = "2", description = "Không dùng nữa — Đại lý được quản lý qua dealerId", deprecated = true)
     private Long agentId;
 
     @Schema(example = "1", description = "ID của đại lý / chi nhánh trực thuộc")

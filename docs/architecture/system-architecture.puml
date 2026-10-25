@@ -1,0 +1,142 @@
+@startuml system-architecture
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam defaultFontName "Helvetica", "Arial", sans-serif
+skinparam defaultFontSize 12
+skinparam roundCorner 8
+skinparam shadowing false
+skinparam handwritten false
+
+skinparam node {
+    BackgroundColor #F8F9FA
+    BorderColor #6C757D
+}
+
+skinparam component {
+    BackgroundColor #E9ECEF
+    BorderColor #495057
+}
+
+skinparam database {
+    BackgroundColor #E3F2FD
+    BorderColor #1976D2
+}
+
+skinparam interface {
+    BackgroundColor #FFF3CD
+    BorderColor #856404
+}
+
+title **KIẾN TRÚC TỔNG THỂ HỆ THỐNG PCUT (CUTTING SYSTEM ARCHITECTURE)**\n//Backend (Spring Boot 3.3.5 / Java 21) - Frontend (React/Nginx) - Keycloak 25 - PostgreSQL 16//
+
+package "Presentation / Client Tier" {
+    actor "Quản trị viên / Đại lý\n(Admin & Agent)" as UserAdmin #E3F2FD
+    actor "Kỹ thuật viên / Thợ cắt\n(Cutter / Operator)" as UserCutter #E8F5E9
+
+    component "Web Admin Portal\n(cutting-manager-web)\n[React 18 + Vite + Tailwind]\nPort: 3000" as WebAdmin #D1ECF1
+    component "Cutter Desktop App / Máy cắt PPF\n(DesignModule - C# .NET / Avalonia)\nClient tích hợp" as CutterApp #D4EDDA
+}
+
+package "Edge / Ingress & Security Provider" {
+    component "Nginx Reverse Proxy\n(cutting-manager-web)\nPort: 3000 -> 80" as Nginx #E2E3E5
+
+    node "Identity & Access Management (IAM)\n(quay.io/keycloak/keycloak:25.0.2)\nPort: 8180 (Internal 8080)" as KeycloakNode {
+        component "Keycloak Realm: 'cutting'\n- OAuth2 / OpenID Connect\n- Realm Roles: ADMIN, AGENT, USER\n- Clients: cutting-manager-web, cutting-admin, desktop\n- Offline Token / Refresh Token (Remember Me)" as Keycloak #FFF3CD
+    }
+}
+
+package "Backend Core Application (cutting-admin:8080)" {
+    component "Spring Security & Filter Chain" as SecurityChain #FFE8D6 {
+        portin "HTTP Requests" as HttpIn
+        component "InternalApiV2AuditFilter\n(X-Request-ID, 3-layer identity, O(1) audit)" as AuditFilter
+        component "DeviceSessionFilter\n(Device tracking & Revocation)" as DeviceFilter
+        component "KeycloakJwtAuthenticationConverter\n(OAuth2 Bearer Token Validation)" as JwtFilter
+    }
+
+    package "Controllers (REST API Layer)" {
+        component "Auth & User APIs\n(/api/auth, /api/users,\n/api/dealers, /api/devices)" as AuthCtrl
+        component "Vehicle Node APIs\n(/api/vehicle-nodes)\nCây xe 4 cấp: Brand > Series > Model > Subtype" as VehicleCtrl
+        component "SVG & Admin File APIs\n(/api/svg, /api/admin/files)\nUpload, list, download, soft-delete" as SvgCtrl
+        component "Cutter Catalog APIs\n(/api/v1/catalog, /api/v1/files,\n/api/v1/file-categories)\nPhục vụ app thợ" as CutterCtrl
+        component "Internal API V2\n(/api/internal/v2/user-files)\nBản vẽ riêng, mã hóa, chia sẻ" as InternalV2Ctrl
+        component "Admin Audit APIs\n(/api/admin/audit/v2)\nDashboard thống kê, CSV export" as AuditCtrl
+    }
+
+    package "Service & Processing Engines" {
+        component "Auth & Device Service\n(AuthService, UserService,\nDealerService, KeycloakUserService)" as UserSvc
+        component "Vehicle Hierarchy Service\n(VehicleNodeService, Impact Analysis)" as VehicleSvc
+        component "SVG Sanitizer Engine\n(Jsoup DOM Sanitizer\nXXE Blocker & Stored XSS Cleaner)" as SanitizerEngine #F8D7DA
+        component "SVG Geometry Engine\n(SvgImport, SvgPath, SvgGeom\nTách Part & bóc tách tọa độ vector)" as GeomEngine #FFF3CD
+        component "Envelope Encryption V2 Service\n(MasterKeyEncryptionKeyV2Service\nDEK/KEK AES-256-GCM, Key version v1)" as EncryptSvc #D1C4E9
+        component "Audit Logging Service\n(AuditLogService - V1 & V2)" as AuditSvc
+    }
+}
+
+package "Data & Storage Tier" {
+    database "PostgreSQL 16 (svg-postgres)\nPort: 5432 / DB: svg_manager" as Postgres {
+        folder "Tables (Flyway Migrations v1..v33)" {
+            [users & user_roles]
+            [dealers & dealer_branches]
+            [vehicle_nodes (4 levels)]
+            [file_categories & svg_files]
+            [svg_parts & svg_part_geometries]
+            [user_svg_files (V2 encrypted metadata)]
+            [user_file_shares (Chia sẻ bản vẽ)]
+            [audit_logs_v2 (Truy vết request)]
+        }
+    }
+
+    storage "Persistent Storage Volume\n(cutting-admin_svg-data)" as StorageVolume #E8EAF6 {
+        folder "/data/svg" {
+            folder "/YYYY/MM/<uuid>.svg\n(File SVG mẫu gốc & thumbnail)" as MasterFiles
+            folder "/v2/user-files/<uuid>.enc\n(Bản vẽ người dùng mã hoá AES-GCM)" as EncryptedFiles
+        }
+    }
+}
+
+' =================== FLOW CONNECTIONS ===================
+
+UserAdmin --> WebAdmin : Truy cập quản trị qua Browser
+WebAdmin --> Nginx : HTTP Port 3000
+Nginx --> Keycloak : 1. Xác thực đăng nhập (OAuth2 Authorization Code / Password)
+Nginx --> HttpIn : 2. Gọi REST API kèm Bearer JWT Token (:8080)
+
+UserCutter --> CutterApp : Thao tác cắt & quản lý bản vẽ
+CutterApp --> Keycloak : 1. Xác thực login / lấy Offline Token (:8180)
+CutterApp --> HttpIn : 2. Gọi /api/v1/* & /api/internal/v2/* kèm JWT
+
+' Security filter connections
+HttpIn --> AuditFilter
+AuditFilter --> DeviceFilter
+DeviceFilter --> JwtFilter
+JwtFilter ..> Keycloak : Xác thực JWT & lấy Public Keys (/certs)
+
+' Routing to controllers
+JwtFilter --> AuthCtrl
+JwtFilter --> VehicleCtrl
+JwtFilter --> SvgCtrl
+JwtFilter --> CutterCtrl
+JwtFilter --> InternalV2Ctrl
+JwtFilter --> AuditCtrl
+
+' Controller to service connections
+AuthCtrl --> UserSvc
+UserSvc --> Keycloak : Quản lý tài khoản (Admin Client)
+VehicleCtrl --> VehicleSvc
+SvgCtrl --> SanitizerEngine : 1. Khử độc XSS/XXE
+SanitizerEngine --> GeomEngine : 2. Bóc tách Part & Path
+CutterCtrl --> VehicleSvc
+CutterCtrl --> GeomEngine
+InternalV2Ctrl --> EncryptSvc : Mã hóa / Giải mã bản vẽ
+AuditCtrl --> AuditSvc
+AuditFilter ..> AuditSvc : Ghi vết tự động (Zero-Intrusive)
+
+' Service to Persistence
+UserSvc --> Postgres : JPA / Hibernate
+VehicleSvc --> Postgres : JPA / Hibernate
+GeomEngine --> Postgres : Lưu parts, metadata
+AuditSvc --> Postgres : Ghi log audit
+EncryptSvc --> StorageVolume : Đọc / ghi file .enc
+SvgCtrl --> StorageVolume : Lưu file .svg / thumbnail
+
+@enduml

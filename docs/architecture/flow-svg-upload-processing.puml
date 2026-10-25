@@ -1,0 +1,72 @@
+@startuml flow-svg-upload-processing
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam defaultFontName "Helvetica", "Arial", sans-serif
+skinparam roundCorner 8
+skinparam shadowing false
+autonumber "<b>[00]</b>"
+
+actor "Quản trị viên (Admin)" as Admin
+participant "Web Admin Portal\n(React UI)" as Web
+participant "AdminFileController\n/api/admin/files" as Controller
+participant "SvgSanitizerService\n(Jsoup DOM Sanitizer)" as Sanitizer #F8D7DA
+participant "SvgImport Engine\n(SvgPath / SvgGeom)" as SvgParser #FFF3CD
+participant "FileStorageService\n(Disk Manager)" as Storage
+database "PostgreSQL\n(svg_files, parts, vehicle_nodes)" as DB
+storage "Storage Volume\n(/data/svg)" as Disk #E8EAF6
+
+== LUỒNG NẠP FILE MẪU SVG, KHỬ ĐỘC & BÓC TÁCH PART HÌNH HỌC ==
+
+Admin -> Web : Chọn file .svg, chọn danh mục (Ngoại thất, Nội thất...)\nvà gắn các node mẫu xe (Hãng › Dòng › Model › Phiên bản)
+Web -> Controller : POST /api/admin/files\n(Multipart/form-data: file, metadata, vehicleNodeIds)
+
+Controller -> Controller : Kiểm tra quyền: @PreAuthorize("hasRole('ADMIN')")\nKiểm tra định dạng .svg & dung lượng (< 10MB)
+
+== BƯỚC 1: KHỬ ĐỘC SVG (SANITIZATION CHỐNG XXE & STORED XSS) ==
+
+Controller -> Sanitizer : sanitizeSvg(inputStream)
+Sanitizer -> Sanitizer : 1. Vô hiệu hóa DTDs & External Entities (Chống XXE Attack)
+Sanitizer -> Sanitizer : 2. Jsoup DOM Clean: Loại bỏ các thẻ độc hại\n(<script>, <iframe>, <object>, <embed>, <meta>, <link>)
+Sanitizer -> Sanitizer : 3. Loại bỏ 100% thuộc tính sự kiện (onload, onclick, onmouseover...)
+Sanitizer -> Sanitizer : 4. Chặn URL giao thức nguy hiểm (javascript:, vbscript:, data:text/html)
+Sanitizer -> Sanitizer : 5. Lọc biểu thức CSS expression(...)
+Sanitizer --> Controller : Trả về chuỗi SVG sạch & an toàn (Sanitized SVG Content)
+
+== BƯỚC 2: BÓC TÁCH PART & TỌA ĐỘ HÌNH HỌC (GEOMETRY PARSING) ==
+
+Controller -> SvgParser : importSvg(sanitizedContent)
+note right of SvgParser
+  Port chuẩn Java tương thích 100%
+  với thuật toán C# SvgImport.cs của máy cắt
+end note
+SvgParser -> SvgParser : Đọc viewBox, width, height của bản vẽ gốc
+SvgParser -> SvgParser : Duyệt từng thẻ <path>, <rect>, <circle>, <polygon>
+SvgParser -> SvgParser : Phân rã theo nhóm (Group) thành danh sách Part (Chi tiết cắt)
+SvgParser -> SvgParser : Tính toán Bounding Box (MinX, MinY, Width, Height)
+SvgParser -> SvgParser : Chuẩn hóa chuỗi Path Data (Tọa độ vector d="M... Z")
+SvgParser --> Controller : Trả về danh sách PartDTO + BoundingBoxes + Geometries
+
+== BƯỚC 3: LƯU TRỮ TẬP TIN & THUMBNAIL XUỐNG DISK ==
+
+Controller -> Storage : storeFile(sanitizedBytes, fileName)
+Storage -> Storage : Chặn Path Traversal (loại bỏ ../, \0)
+Storage -> Storage : Sinh đường dẫn phân cấp thời gian: /data/svg/YYYY/MM/<uuid>.svg
+Storage -> Disk : Ghi file SVG đã làm sạch xuống volume
+Storage -> Storage : Tính toán mã băm SHA-256 xác thực toàn vẹn
+Storage -> Storage : Tạo thumbnail preview an toàn
+Storage -> Disk : Ghi thumbnail preview
+Storage --> Controller : Trả về: storedPath, thumbnailPath, sha256Checksum
+
+== BƯỚC 4: LƯU METADATA & LIÊN KẾT CÂY XE VÀO CSDL ==
+
+Controller -> DB : BEGIN TRANSACTION
+Controller -> DB : INSERT INTO svg_files (file_key, file_name, file_path, sha256, category_id, model_year, status='ACTIVE')
+Controller -> DB : INSERT INTO svg_parts (svg_file_id, part_name, bounding_box_x, bounding_box_y, width, height)
+Controller -> DB : INSERT INTO svg_part_geometries (part_id, path_data, stroke_color, fill_color)
+Controller -> DB : INSERT INTO svg_file_vehicle_nodes (svg_file_id, vehicle_node_id)\n(Gắn file vào các phiên bản/dòng xe được chọn)
+Controller -> DB : COMMIT TRANSACTION
+
+Controller --> Web : 201 Created (File ID, file_key, danh sách parts, thumbnail URL)
+Web --> Admin : Hiển thị thông báo thành công và preview các chi tiết part vừa nạp
+
+@enduml

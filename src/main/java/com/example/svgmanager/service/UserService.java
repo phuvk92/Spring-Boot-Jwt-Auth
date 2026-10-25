@@ -21,7 +21,21 @@ public interface UserService {
             String sortBy,
             String sortDirection
     ) {
-        return getUsers(username, email, role, enabled, null, page, size, sortBy, sortDirection);
+        return getUsers(username, email, role, enabled, null, null, page, size, sortBy, sortDirection);
+    }
+
+    default PageResponse<UserResponse> getUsers(
+            String username,
+            String email,
+            Role role,
+            Boolean enabled,
+            String expirationStatus,
+            int page,
+            int size,
+            String sortBy,
+            String sortDirection
+    ) {
+        return getUsers(username, email, role, enabled, expirationStatus, null, page, size, sortBy, sortDirection);
     }
 
     PageResponse<UserResponse> getUsers(
@@ -30,6 +44,7 @@ public interface UserService {
             Role role,
             Boolean enabled,
             String expirationStatus,
+            Long dealerId,
             int page,
             int size,
             String sortBy,

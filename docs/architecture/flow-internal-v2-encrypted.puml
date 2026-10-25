@@ -1,0 +1,77 @@
+@startuml flow-internal-v2-encrypted
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam defaultFontName "Helvetica", "Arial", sans-serif
+skinparam roundCorner 8
+skinparam shadowing false
+autonumber "<b>[00]</b>"
+
+actor "Thợ cắt / Kỹ thuật viên" as Cutter
+participant "Client App Máy cắt\n(DesignModule)" as ClientApp
+participant "InternalApiV2AuditFilter\n(Audit & Trace Filter)" as AuditFilter #FFE8D6
+participant "CountingResponseWrapper\n(O(1) Stream Wrapper)" as Wrapper
+participant "InternalUserFilesV2Controller\n/api/internal/v2/user-files" as Controller
+participant "MasterKeyEncryptionV2Service\n(KEK/DEK Key Manager)" as KeyManager #D1C4E9
+participant "FileStorageV2Service\n(Storage Manager)" as Storage
+database "PostgreSQL DB\n(user_svg_files, shares, audit_logs_v2)" as DB
+storage "Storage Volume\n(/data/svg/v2/user-files)" as Disk #E8EAF6
+
+== 1. TẢI LÊN & LƯU BẢN VẼ NGƯỜI DÙNG V2 (ENVELOPE ENCRYPTION AES-256-GCM) ==
+
+Cutter -> ClientApp : Lưu bản vẽ đã tùy biến trên máy cắt
+ClientApp -> AuditFilter : POST /api/internal/v2/user-files\nHeader: Authorization: Bearer <JWT>\nHeader: X-Request-ID (optional: [a-zA-Z0-9_-]{8,64})\nBody: Multipart/form-data (file .svg, metadata, tags)
+
+AuditFilter -> AuditFilter : 1. Tiếp nhận hoặc tự sinh UUID cho X-Request-ID\n2. Thiết lập MDC logging context
+AuditFilter -> AuditFilter : 3. Xác thực định danh 3 lớp:\n   - Client ID (từ claim 'azp'/'client_id')\n   - User ID (từ claim 'sub'/'preferred_username')\n   - Dealer ID (truy vấn theo user trong DB)
+AuditFilter -> Wrapper : Bọc HttpServletResponse bằng CountingResponseWrapper\n(Đo lường bytes written, không đệm RAM - O(1) memory)
+
+Wrapper -> Controller : Chuyển tiếp Request vào Controller xử lý
+
+Controller -> KeyManager : generateDataEncryptionKey()
+KeyManager -> KeyManager : Sinh DEK ngẫu nhiên 256-bit (CSPRNG)
+KeyManager -> KeyManager : Mã hóa DEK bằng Master KEK (Key version 'v1')
+KeyManager --> Controller : Trả về: raw DEK, encrypted DEK, IV, Key Version
+
+Controller -> Controller : Mã hóa nội dung bản vẽ bằng AES-256-GCM với raw DEK\n(Sinh Authentication Tag 128-bit chống giả mạo)
+Controller -> Storage : storeEncryptedFile(encryptedBytes, userFileUuid)
+Storage -> Disk : Ghi file mã hóa: /data/svg/v2/user-files/<uuid>.enc
+Storage --> Controller : Trả về: storedFilePath
+
+Controller -> DB : BEGIN TRANSACTION
+Controller -> DB : INSERT INTO user_svg_files (\n  id, user_id, dealer_id, file_name, file_path,\n  encrypted_dek, dek_iv, key_version, auth_tag,\n  file_size, is_encrypted=true, created_at\n)
+Controller -> DB : COMMIT TRANSACTION
+
+Controller --> Wrapper : 201 Created (File ID, file_name, metadata)
+Wrapper --> AuditFilter : Hoàn tất response
+
+AuditFilter -> DB : Async / Zero-Intrusive Ghi log:\nINSERT INTO audit_logs_v2 (\n  request_id, client_id, user_id, dealer_id,\n  endpoint, http_method, http_status=201,\n  response_time_ms, bytes_sent\n)
+AuditFilter --> ClientApp : 201 Created (Header: X-Request-ID: <id>, Body: DTO)
+
+== 2. TẢI XUỐNG & GIẢI MÃ ON-THE-FLY TRONG BỘ NHỚ RAM ==
+
+Cutter -> ClientApp : Mở lại bản vẽ đã lưu để cắt
+ClientApp -> Controller : GET /api/internal/v2/user-files/{id}/download\n(Header: Authorization: Bearer <JWT>)
+Controller -> DB : SELECT * FROM user_svg_files WHERE id = ?
+Controller -> Controller : Kiểm tra quyền sở hữu hoặc quyền được chia sẻ
+Controller -> KeyManager : decryptDataEncryptionKey(encryptedDEK, dekIV, keyVersion)
+KeyManager --> Controller : Trả về raw DEK trong bộ nhớ RAM
+Controller -> Storage : readEncryptedFile(filePath)
+Storage -> Disk : Đọc file .enc
+Storage --> Controller : Trả về encrypted bytes
+Controller -> Controller : Giải mã AES-256-GCM on-the-fly (Kiểm tra Auth Tag xác thực toàn vẹn)
+Controller --> ClientApp : Streaming decrypted SVG payload (200 OK)
+note right of Controller
+  Bản vẽ chỉ tồn tại dạng giải mã
+  tạm thời trong bộ nhớ RAM của luồng,
+  không bao giờ ghi file giải mã ra đĩa cứng.
+end note
+
+== 3. CHIA SẺ BẢN VẼ GIỮA CÁC THỢ / ĐẠI LÝ (FILE SHARING) ==
+
+Cutter -> ClientApp : Chia sẻ bản vẽ cho thợ khác trong hệ thống
+ClientApp -> Controller : POST /api/internal/v2/user-files/{id}/shares\nBody: { targetUserId: "uuid", permission: "READ_ONLY" }
+Controller -> DB : Kiểm tra người gọi là chủ sở hữu (Owner)
+Controller -> DB : INSERT INTO user_file_shares (user_file_id, shared_with_user_id, permission, shared_at)
+Controller --> ClientApp : 200 OK (Share created)
+
+@enduml
