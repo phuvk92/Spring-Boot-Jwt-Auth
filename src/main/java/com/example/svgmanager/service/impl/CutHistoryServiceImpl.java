@@ -10,12 +10,14 @@ import com.example.svgmanager.entity.User;
 import com.example.svgmanager.entity.UserDevice;
 import com.example.svgmanager.entity.WorkDesign;
 import com.example.svgmanager.exception.ErrorCodes;
+import com.example.svgmanager.exception.ResourceNotFoundException;
 import com.example.svgmanager.exception.UnauthorizedException;
 import com.example.svgmanager.repository.CutJobRepository;
 import com.example.svgmanager.repository.UserDeviceRepository;
 import com.example.svgmanager.repository.UserSvgFileRepository;
 import com.example.svgmanager.repository.WorkDesignRepository;
 import com.example.svgmanager.security.CurrentUserService;
+import com.example.svgmanager.service.AuditLogService;
 import com.example.svgmanager.service.CutHistoryService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -44,6 +46,7 @@ public class CutHistoryServiceImpl implements CutHistoryService {
     private final WorkDesignRepository workDesignRepository;
     private final UserSvgFileRepository userSvgFileRepository;
     private final CurrentUserService currentUserService;
+    private final AuditLogService auditLogService;
 
     private final Map<String, IdempotentRecord> idempotencyCache = new ConcurrentHashMap<>();
 
@@ -54,12 +57,14 @@ public class CutHistoryServiceImpl implements CutHistoryService {
                                  UserDeviceRepository userDeviceRepository,
                                  WorkDesignRepository workDesignRepository,
                                  UserSvgFileRepository userSvgFileRepository,
-                                 CurrentUserService currentUserService) {
+                                 CurrentUserService currentUserService,
+                                 AuditLogService auditLogService) {
         this.cutJobRepository = cutJobRepository;
         this.userDeviceRepository = userDeviceRepository;
         this.workDesignRepository = workDesignRepository;
         this.userSvgFileRepository = userSvgFileRepository;
         this.currentUserService = currentUserService;
+        this.auditLogService = auditLogService;
     }
 
     @Override
@@ -84,6 +89,25 @@ public class CutHistoryServiceImpl implements CutHistoryService {
 
         List<CutJobResponse> jobs = rows.stream().map(this::toDto).toList();
         return new CutHistoryResponse(toStats(rows), jobs);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public CutJobResponse getJobForCurrentDevice(Long id) {
+        String sessionId = currentUserService.getCurrentJwt()
+                .map(jwt -> jwt.getClaimAsString("sid"))
+                .orElse(null);
+
+        UserDevice device = (sessionId == null || sessionId.isBlank())
+                ? null
+                : userDeviceRepository.findByKeycloakSessionId(sessionId).orElse(null);
+
+        // Cùng scope "trên máy này" với danh sách: job của máy khác (kể cả cùng tài khoản)
+        // trả 404 như job không tồn tại — không để lộ id hợp lệ của máy khác.
+        return (device == null ? java.util.Optional.<CutJob>empty()
+                : cutJobRepository.findByIdAndUserDeviceId(id, device.getId()))
+                .map(this::toDto)
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy lượt cắt trên máy này.", "CUT_NOT_FOUND"));
     }
 
     private CutJobResponse toDto(CutJob j) {
@@ -261,11 +285,43 @@ public class CutHistoryServiceImpl implements CutHistoryService {
         CutJob saved = cutJobRepository.save(job);
         CutJobResponse response = toDto(saved);
 
+        // Audit nghiệp vụ: interceptor chỉ ghi "POST /api/v1/cuts" + HTTP status, nên ghi thêm
+        // một dòng mang nội dung lượt cắt để admin tra ở trang Audit. Lượt gửi lại cùng
+        // Idempotency-Key đã return ở trên nên không ghi đôi.
+        auditLogService.log(currentUser.getUsername(),
+                currentUser.getRole() != null ? currentUser.getRole().name() : "USER",
+                "CUT_RECORDED", "CutJob", saved.getId(), auditDetails(saved, device));
+
         if (cacheKey != null) {
             idempotencyCache.put(cacheKey, new IdempotentRecord(response, System.currentTimeMillis() + IDEMPOTENCY_TTL_MILLIS));
         }
 
         return response;
+    }
+
+    /**
+     * Chi tiết lượt cắt cho cột audit_logs.details — chỉ số liệu như DTO, KHÔNG hình học (F-38 · RB-01).
+     * Trường thiếu ghi "-" để các dòng audit cùng một khuôn, dễ đọc và dễ tìm theo từ khoá.
+     */
+    private static String auditDetails(CutJob j, UserDevice device) {
+        String meters = j.getFilmUsageMeters() != null
+                ? " (" + j.getFilmUsageMeters().stripTrailingZeros().toPlainString() + " m)"
+                : "";
+        String design = StringUtils.hasText(j.getDesignId())
+                ? j.getDesignId() + (j.getDesignVersion() != null ? " v" + j.getDesignVersion() : "")
+                : "-";
+        return "Xe: " + orDash(j.getVehicleLabel())
+                + " | Chi tiết: " + orDash(j.getPartLabel())
+                + " | Phim: " + orDash(j.getFilmUsage()) + meters
+                + " | Thời lượng: " + orDash(j.getDuration())
+                + " | Kết quả: " + j.getOutcome().name()
+                + " | Bản thiết kế: " + design
+                + " | Máy: " + orDash(device.getDeviceName()) + " [" + device.getDeviceId() + "]"
+                + " | Cắt lúc: " + j.getCutAt();
+    }
+
+    private static String orDash(String s) {
+        return StringUtils.hasText(s) ? s : "-";
     }
 }
 

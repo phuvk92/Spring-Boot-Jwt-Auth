@@ -1,10 +1,12 @@
 package com.example.svgmanager.integration;
 
+import com.example.svgmanager.entity.AuditLog;
 import com.example.svgmanager.entity.CutJob;
 import com.example.svgmanager.entity.CutOutcome;
 import com.example.svgmanager.entity.Role;
 import com.example.svgmanager.entity.User;
 import com.example.svgmanager.entity.UserDevice;
+import com.example.svgmanager.repository.AuditLogRepository;
 import com.example.svgmanager.repository.CutJobRepository;
 import com.example.svgmanager.repository.UserDeviceRepository;
 import com.example.svgmanager.repository.UserRepository;
@@ -61,6 +63,9 @@ class CutHistoryIntegrationTest {
 
     @Autowired
     private com.example.svgmanager.repository.UserSvgFileRepository userSvgFileRepository;
+
+    @Autowired
+    private AuditLogRepository auditLogRepository;
 
     private User userA;
     private User userB;
@@ -225,6 +230,92 @@ class CutHistoryIntegrationTest {
                 .andExpect(jsonPath("$.jobs[0].vehicleLabel", is("Mazda CX-5")))
                 .andExpect(jsonPath("$.stats.jobCount", is(1)))
                 .andExpect(jsonPath("$.stats.filmUsed", is("0,9 m")));
+    }
+
+    // ── GET /api/v1/cuts/{id} ────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("Đọc một lượt cắt của máy mình → 200 đủ trường, không hình học")
+    void getCutJob_OwnDevice() throws Exception {
+        CutJob j = job(deviceA, LocalDateTime.of(2026, 10, 25, 9, 15), "Mazda CX-5", CutOutcome.RECUT, new BigDecimal("0.9"));
+
+        mockMvc.perform(get("/api/v1/cuts/" + j.getId()).with(jwtAs("kc-cut-a", "cut_user_a", "sid-A")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id", is(j.getId().intValue())))
+                .andExpect(jsonPath("$.at", is("2026-10-25T09:15:00")))
+                .andExpect(jsonPath("$.deviceName", is("Máy A")))
+                .andExpect(jsonPath("$.partLabel", is("Nắp capo")))
+                .andExpect(jsonPath("$.vehicleLabel", is("Mazda CX-5")))
+                .andExpect(jsonPath("$.filmUsage", is("0,9 m")))
+                .andExpect(jsonPath("$.outcome", is("recut")))
+                .andExpect(jsonPath("$.designAvailable", nullValue()));
+    }
+
+    @Test
+    @DisplayName("Lượt cắt của máy khác (kể cả cùng tài khoản) hoặc id không có → 404 như nhau")
+    void getCutJob_OtherDeviceOrMissing_404() throws Exception {
+        CutJob sameUserOtherDevice = job(deviceA2, LocalDateTime.now(), "VinFast VF3", CutOutcome.COMPLETED, null);
+        CutJob otherUser = job(deviceB, LocalDateTime.now(), "Toyota Vios", CutOutcome.COMPLETED, null);
+
+        for (Long id : List.of(sameUserOtherDevice.getId(), otherUser.getId(), 987654321L)) {
+            mockMvc.perform(get("/api/v1/cuts/" + id).with(jwtAs("kc-cut-a", "cut_user_a", "sid-A")))
+                    .andExpect(status().isNotFound());
+        }
+    }
+
+    @Test
+    @DisplayName("Đọc chi tiết không token → 401")
+    void getCutJob_NoToken_401() throws Exception {
+        CutJob j = job(deviceA, LocalDateTime.now(), "Mazda CX-5", CutOutcome.COMPLETED, null);
+        mockMvc.perform(get("/api/v1/cuts/" + j.getId()))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    @DisplayName("Ghi lượt cắt → một dòng audit CUT_RECORDED mang chi tiết; gửi lại cùng Idempotency-Key không ghi đôi")
+    void recordCut_WritesAuditDetails() throws Exception {
+        String json = """
+                {
+                    "cutAt": "2026-10-25T08:00:00",
+                    "partLabel": "Nắp capo",
+                    "vehicleLabel": "Toyota Vios 2024",
+                    "filmUsage": "1,2 m",
+                    "filmUsageMeters": 1.200,
+                    "duration": "3′ 05″"
+                }
+                """;
+
+        Long jobId = null;
+        for (int i = 0; i < 2; i++) {
+            MvcResult res = mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/api/v1/cuts")
+                            .with(jwtAs("kc-cut-a", "cut_user_a", "sid-A"))
+                            .header("Idempotency-Key", "audit-key-1")
+                            .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                            .content(json))
+                    .andExpect(status().isCreated())
+                    .andReturn();
+            jobId = com.jayway.jsonpath.JsonPath.<Number>read(res.getResponse().getContentAsString(), "$.id").longValue();
+        }
+
+        final Long id = jobId;
+        List<AuditLog> rows = auditLogRepository.findAll().stream()
+                .filter(a -> "CUT_RECORDED".equals(a.getAction()) && id.equals(a.getEntityId()))
+                .toList();
+
+        assertThat(rows).hasSize(1);
+        AuditLog a = rows.get(0);
+        assertThat(a.getActor()).isEqualTo("cut_user_a");
+        assertThat(a.getActorRole()).isEqualTo("USER");
+        assertThat(a.getEntity()).isEqualTo("CutJob");
+        assertThat(a.getDetails())
+                .contains("Xe: Toyota Vios 2024")
+                .contains("Chi tiết: Nắp capo")
+                .contains("Phim: 1,2 m (1.2 m)")
+                .contains("Thời lượng: 3′ 05″")
+                .contains("Kết quả: COMPLETED")
+                .contains("Bản thiết kế: -")
+                .contains("Máy: Máy A [dev-a]")
+                .contains("Cắt lúc: 2026-10-25T08:00");
     }
 
     @Test

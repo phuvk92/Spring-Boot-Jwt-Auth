@@ -15,6 +15,13 @@ public interface CutHistoryService {
     CutHistoryResponse getHistoryForCurrentDevice();
 
     /**
+     * Một lượt cắt của MÁY đang gọi (GET /api/v1/cuts/{id}) — cùng scope với danh sách.
+     * Không có, hoặc thuộc máy khác → ResourceNotFoundException (404), không phân biệt
+     * hai trường hợp để không lộ id của máy khác.
+     */
+    com.example.svgmanager.dto.response.CutJobResponse getJobForCurrentDevice(Long id);
+
+    /**
      * Ghi một lượt cắt đã xong trên máy của phiên hiện tại (POST /api/v1/cuts).
      *
      * @param request        dữ liệu thống kê lượt cắt

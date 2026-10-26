@@ -19,6 +19,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
@@ -52,6 +53,22 @@ public class CutHistoryController {
     })
     public ResponseEntity<CutHistoryResponse> getCutHistory() {
         return ResponseEntity.ok(cutHistoryService.getHistoryForCurrentDevice());
+    }
+
+    @GetMapping("/api/v1/cuts/{id}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'AGENT', 'USER')")
+    @Operation(summary = "Chi tiết một lượt cắt trên máy này (F-38)",
+            description = "Cùng scope với danh sách: lượt của máy khác (kể cả cùng tài khoản) trả 404 như không tồn tại.")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Một lượt cắt — chỉ số liệu, không hình học",
+                    content = @Content(schema = @Schema(implementation = CutJobResponse.class))),
+            @ApiResponse(responseCode = "401", description = "Không có phiên còn hiệu lực",
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+            @ApiResponse(responseCode = "404", description = "Không có lượt cắt này trên máy này",
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    })
+    public ResponseEntity<CutJobResponse> getCutJob(@PathVariable Long id) {
+        return ResponseEntity.ok(cutHistoryService.getJobForCurrentDevice(id));
     }
 
     @PostMapping("/api/v1/cuts")
