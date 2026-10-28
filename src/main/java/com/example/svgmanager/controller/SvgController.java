@@ -88,7 +88,7 @@ public class SvgController {
     }
 
     @GetMapping(value = {"/{id}/preview", "/{id}/content"})
-    @PreAuthorize("hasAnyRole('ADMIN', 'AGENT')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'AGENT', 'USER')")
     @Operation(summary = "Preview SVG file content", description = "Streams SVG content for browser inline preview.")
     public ResponseEntity<Resource> previewSvg(
             @PathVariable Long id,
@@ -120,7 +120,7 @@ public class SvgController {
     }
 
     @GetMapping("/{id}/thumbnail")
-    @PreAuthorize("hasAnyRole('ADMIN', 'AGENT')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'AGENT', 'USER')")
     @Operation(summary = "Ảnh xem trước của file", description = "Trả thumbnail nếu file có; 404 khi chưa gắn.")
     public ResponseEntity<Resource> thumbnailSvg(@PathVariable Long id) {
         Resource resource = svgService.thumbnailSvg(id);
