@@ -1,10 +1,11 @@
 package com.example.svgmanager.service.impl;
 
 import com.example.svgmanager.dto.response.CatalogOptionDto;
+import com.example.svgmanager.entity.PartLibraryCategory;
 import com.example.svgmanager.entity.VehicleNode;
 import com.example.svgmanager.entity.VehicleNodeLevel;
 import com.example.svgmanager.exception.BadRequestException;
-import com.example.svgmanager.repository.FileCategoryRepository;
+import com.example.svgmanager.repository.PartLibraryCategoryRepository;
 import com.example.svgmanager.repository.SvgFileRepository;
 import com.example.svgmanager.repository.VehicleNodeRepository;
 import com.example.svgmanager.service.CatalogService;
@@ -23,23 +24,31 @@ import java.util.List;
 @Service
 public class CatalogServiceImpl implements CatalogService {
 
-    private final FileCategoryRepository fileCategoryRepository;
     private final VehicleNodeRepository vehicleNodeRepository;
     private final SvgFileRepository svgFileRepository;
+    private final PartLibraryCategoryRepository partLibraryCategoryRepository;
+    private final PartCategoryScope partCategoryScope;
 
-    public CatalogServiceImpl(FileCategoryRepository fileCategoryRepository,
-                              VehicleNodeRepository vehicleNodeRepository,
-                              SvgFileRepository svgFileRepository) {
-        this.fileCategoryRepository = fileCategoryRepository;
+    public CatalogServiceImpl(VehicleNodeRepository vehicleNodeRepository,
+                              SvgFileRepository svgFileRepository,
+                              PartLibraryCategoryRepository partLibraryCategoryRepository,
+                              PartCategoryScope partCategoryScope) {
         this.vehicleNodeRepository = vehicleNodeRepository;
         this.svgFileRepository = svgFileRepository;
+        this.partLibraryCategoryRepository = partLibraryCategoryRepository;
+        this.partCategoryScope = partCategoryScope;
     }
 
     @Override
     @Transactional(readOnly = true)
     public List<CatalogOptionDto> getFileCategories() {
-        return fileCategoryRepository.findByActiveTrueOrderByDisplayOrderAscIdAsc()
-                .stream()
+        // Danh mục kho mẫu — đúng thứ admin gán cho thợ, không phải file_categories (bug #21).
+        List<PartLibraryCategory> categories = partCategoryScope.permittedCategoryIds()
+                .map(ids -> ids.isEmpty() ? List.<PartLibraryCategory>of()
+                        : partLibraryCategoryRepository.findByIdInAndStatus(ids, "ACTIVE"))
+                .orElseGet(() -> partLibraryCategoryRepository.findByStatusOrderByNameAsc("ACTIVE"));
+        return categories.stream()
+                .sorted(java.util.Comparator.comparing(PartLibraryCategory::getName, String.CASE_INSENSITIVE_ORDER))
                 .map(c -> CatalogOptionDto.of(c.getId(), c.getName()))
                 .toList();
     }

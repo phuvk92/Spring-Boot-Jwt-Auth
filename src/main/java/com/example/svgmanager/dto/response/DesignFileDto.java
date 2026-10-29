@@ -18,7 +18,7 @@ public class DesignFileDto {
     @Schema(description = "Tên do đội nội dung đặt", example = "Ngoại thất — full body 7 mảnh")
     private String name;
 
-    @Schema(description = "Nhóm chi tiết — cấp 1 của bộ lọc, từ file_categories")
+    @Schema(description = "Nhóm chi tiết — cấp 1 của bộ lọc, từ part_library_categories (danh mục kho mẫu)")
     private CatalogOptionDto category;
 
     @Schema(description = "Năm xe của file — null = mọi năm (Q3)", example = "2024", nullable = true)

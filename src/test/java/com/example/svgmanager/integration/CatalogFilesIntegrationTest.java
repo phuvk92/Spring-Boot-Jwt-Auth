@@ -1,15 +1,19 @@
 package com.example.svgmanager.integration;
 
 import com.example.svgmanager.entity.FileCategory;
+import com.example.svgmanager.entity.PartLibraryCategory;
 import com.example.svgmanager.entity.Role;
 import com.example.svgmanager.entity.SvgFile;
 import com.example.svgmanager.entity.SvgFileVehicleNode;
 import com.example.svgmanager.entity.User;
+import com.example.svgmanager.entity.UserPartCategoryPermission;
 import com.example.svgmanager.entity.VehicleNode;
 import com.example.svgmanager.entity.VehicleNodeLevel;
 import com.example.svgmanager.repository.FileCategoryRepository;
+import com.example.svgmanager.repository.PartLibraryCategoryRepository;
 import com.example.svgmanager.repository.SvgFileRepository;
 import com.example.svgmanager.repository.SvgFileVehicleNodeRepository;
+import com.example.svgmanager.repository.UserPartCategoryPermissionRepository;
 import com.example.svgmanager.repository.UserRepository;
 import com.example.svgmanager.repository.VehicleNodeRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -20,6 +24,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
@@ -36,6 +41,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * (có/không subtype × có/không năm) và thiếu tham số → 400.
  *
  * Cây fixture: Toyota(BRAND) › Camry(SERIES) › Camry 2.5Q(MODEL) › {Bản Q, Bản H}(SUBTYPE).
+ * Danh mục là danh mục KHO MẪU (part_library_categories) — thứ admin gán cho thợ (bug client
+ * #21/#30); thợ "kc-worker" được gán Ngoại thất + Nội thất, không được gán Phim cách nhiệt.
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -48,6 +55,12 @@ class CatalogFilesIntegrationTest {
 
     @Autowired
     private FileCategoryRepository fileCategoryRepository;
+
+    @Autowired
+    private PartLibraryCategoryRepository partLibraryCategoryRepository;
+
+    @Autowired
+    private UserPartCategoryPermissionRepository permissionRepository;
 
     @Autowired
     private VehicleNodeRepository vehicleNodeRepository;
@@ -64,8 +77,9 @@ class CatalogFilesIntegrationTest {
     @Autowired
     private PasswordEncoder passwordEncoder;
 
-    private FileCategory ngoaiThat;
-    private FileCategory noiThat;
+    private PartLibraryCategory ngoaiThat;
+    private PartLibraryCategory noiThat;
+    private PartLibraryCategory phimCachNhiet;   // không gán cho thợ
     private VehicleNode toyota;
     private VehicleNode camry;      // SERIES
     private VehicleNode camry25q;   // MODEL
@@ -86,8 +100,22 @@ class CatalogFilesIntegrationTest {
                 .deleted(false)
                 .build());
 
-        ngoaiThat = fileCategoryRepository.save(new FileCategory("Ngoại thất", 1));
-        noiThat = fileCategoryRepository.save(new FileCategory("Nội thất", 2));
+        ngoaiThat = partLibraryCategoryRepository.save(new PartLibraryCategory("IT-NGOAI", "Ngoại thất", "ACTIVE"));
+        noiThat = partLibraryCategoryRepository.save(new PartLibraryCategory("IT-NOI", "Nội thất", "ACTIVE"));
+        phimCachNhiet = partLibraryCategoryRepository.save(new PartLibraryCategory("IT-PHIM", "Phim cách nhiệt", "ACTIVE"));
+
+        User worker = userRepository.save(User.builder()
+                .username("worker")
+                .email("worker@test.local")
+                .fullName("Thợ")
+                .keycloakUserId("kc-worker")
+                .password(passwordEncoder.encode("x"))
+                .role(Role.USER)
+                .enabled(true)
+                .deleted(false)
+                .build());
+        permissionRepository.save(new UserPartCategoryPermission(worker, ngoaiThat, "test"));
+        permissionRepository.save(new UserPartCategoryPermission(worker, noiThat, "test"));
 
         toyota = vehicleNodeRepository.save(new VehicleNode(null, VehicleNodeLevel.BRAND, "Toyota", 0));
         camry = vehicleNodeRepository.save(new VehicleNode(toyota, VehicleNodeLevel.SERIES, "Camry", 0));
@@ -96,7 +124,13 @@ class CatalogFilesIntegrationTest {
         banH = vehicleNodeRepository.save(new VehicleNode(camry25q, VehicleNodeLevel.SUBTYPE, "Bản H", 1));
     }
 
-    private SvgFile saveFile(String key, FileCategory category, Integer year, String status) {
+    /** Thợ đã gán Ngoại thất + Nội thất. */
+    private static SecurityMockMvcRequestPostProcessors.JwtRequestPostProcessor asWorker() {
+        return jwt().jwt(j -> j.subject("kc-worker"))
+                .authorities(new SimpleGrantedAuthority("ROLE_USER"));
+    }
+
+    private SvgFile saveFile(String key, PartLibraryCategory category, Integer year, String status) {
         SvgFile file = SvgFile.builder()
                 .originalFilename(key + ".svg")
                 .storedFilename("stored-" + key + ".svg")
@@ -110,7 +144,7 @@ class CatalogFilesIntegrationTest {
         file.setDisplayName(key);
         file.setFilmUsage("1,00 m");
         file.setNote("");
-        file.setFileCategory(category);
+        file.setPartLibraryCategory(category);
         file.setModelYear(year);
         return svgFileRepository.save(file);
     }
@@ -123,11 +157,12 @@ class CatalogFilesIntegrationTest {
     // ---------- file-categories & catalog ----------
 
     @Test
-    @DisplayName("file-categories: trả danh mục đang hiệu lực {value,label} theo display_order")
-    void fileCategories_returnsActiveOptions() throws Exception {
+    @DisplayName("file-categories: thợ chỉ thấy danh mục kho mẫu được gán, theo tên (bug #21)")
+    void fileCategories_workerSeesOnlyAssigned() throws Exception {
+        partLibraryCategoryRepository.save(new PartLibraryCategory("IT-OLD", "Đèn cũ", "INACTIVE"));
+
         mockMvc.perform(get("/api/v1/file-categories")
-                        .with(jwt().jwt(j -> j.subject("kc-user"))
-                                .authorities(new SimpleGrantedAuthority("ROLE_USER"))))
+                        .with(asWorker()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$", hasSize(2)))
                 .andExpect(jsonPath("$[0].value", is(String.valueOf(ngoaiThat.getId()))))
@@ -136,30 +171,52 @@ class CatalogFilesIntegrationTest {
     }
 
     @Test
+    @DisplayName("file-categories: admin thấy mọi danh mục kho mẫu đang hiệu lực")
+    void fileCategories_adminSeesAllActive() throws Exception {
+        partLibraryCategoryRepository.save(new PartLibraryCategory("IT-OLD", "Đèn cũ", "INACTIVE"));
+
+        mockMvc.perform(get("/api/v1/file-categories")
+                        .with(jwt().jwt(j -> j.subject("kc-content-team"))
+                                .authorities(new SimpleGrantedAuthority("ROLE_ADMIN"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[*].label", hasItems("Ngoại thất", "Nội thất", "Phim cách nhiệt")))
+                .andExpect(jsonPath("$[*].label", not(hasItem("Đèn cũ"))));
+    }
+
+    @Test
+    @DisplayName("file-categories: user chưa có trong hệ thống → danh sách rỗng")
+    void fileCategories_unknownUser_empty() throws Exception {
+        mockMvc.perform(get("/api/v1/file-categories")
+                        .with(jwt().jwt(j -> j.subject("kc-nobody"))
+                                .authorities(new SimpleGrantedAuthority("ROLE_USER"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(0)));
+    }
+
+    @Test
     @DisplayName("catalog: brand → con theo id cha → subtype")
     void catalog_filtersByParentId() throws Exception {
         mockMvc.perform(get("/api/v1/catalog/brand")
-                        .with(jwt().jwt(j -> j.subject("kc-user"))
-                                .authorities(new SimpleGrantedAuthority("ROLE_USER"))))
+                        .with(asWorker()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$", hasSize(1)))
                 .andExpect(jsonPath("$[0].value", is(String.valueOf(toyota.getId()))))
                 .andExpect(jsonPath("$[0].label", is("Toyota")));
 
         mockMvc.perform(get("/api/v1/catalog/series").param("brandId", String.valueOf(toyota.getId()))
-                        .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_USER"))))
+                        .with(asWorker()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$", hasSize(1)))
                 .andExpect(jsonPath("$[0].label", is("Camry")));
 
         mockMvc.perform(get("/api/v1/catalog/model").param("seriesId", String.valueOf(camry.getId()))
-                        .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_USER"))))
+                        .with(asWorker()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$", hasSize(1)))
                 .andExpect(jsonPath("$[0].label", is("Camry 2.5Q")));
 
         mockMvc.perform(get("/api/v1/catalog/subtype").param("modelId", String.valueOf(camry25q.getId()))
-                        .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_USER"))))
+                        .with(asWorker()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$", hasSize(2)))
                 .andExpect(jsonPath("$[0].label", is("Bản Q")))
@@ -170,13 +227,13 @@ class CatalogFilesIntegrationTest {
     @DisplayName("catalog: thiếu id của cấp cha → 400, không tự điền giá trị mẫu")
     void catalog_missingParentId_returns400() throws Exception {
         mockMvc.perform(get("/api/v1/catalog/series")
-                        .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_USER"))))
+                        .with(asWorker()))
                 .andExpect(status().isBadRequest());
         mockMvc.perform(get("/api/v1/catalog/model")
-                        .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_USER"))))
+                        .with(asWorker()))
                 .andExpect(status().isBadRequest());
         mockMvc.perform(get("/api/v1/catalog/subtype")
-                        .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_USER"))))
+                        .with(asWorker()))
                 .andExpect(status().isBadRequest());
     }
 
@@ -184,7 +241,7 @@ class CatalogFilesIntegrationTest {
     @DisplayName("catalog: id cha trỏ sai cấp (brandId là một SERIES) → 400")
     void catalog_wrongParentLevel_returns400() throws Exception {
         mockMvc.perform(get("/api/v1/catalog/series").param("brandId", String.valueOf(camry.getId()))
-                        .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_USER"))))
+                        .with(asWorker()))
                 .andExpect(status().isBadRequest());
     }
 
@@ -202,7 +259,7 @@ class CatalogFilesIntegrationTest {
                         .param("modelId", String.valueOf(camry25q.getId()))
                         .param("subtypeId", String.valueOf(banQ.getId()))
                         .param("year", "2024")
-                        .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_USER"))))
+                        .with(asWorker()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.content", hasSize(2)))
                 .andExpect(jsonPath("$.totalElements", is(2)))
@@ -228,7 +285,7 @@ class CatalogFilesIntegrationTest {
                         .param("categoryId", String.valueOf(ngoaiThat.getId()))
                         .param("modelId", String.valueOf(camry25q.getId()))
                         .param("subtypeId", String.valueOf(banQ.getId()))
-                        .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_USER"))))
+                        .with(asWorker()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.content", hasSize(2)))
                 .andExpect(jsonPath("$.totalElements", is(2)))
@@ -248,7 +305,7 @@ class CatalogFilesIntegrationTest {
                         .param("categoryId", String.valueOf(ngoaiThat.getId()))
                         .param("modelId", String.valueOf(camry25q.getId()))
                         .param("year", "2024")
-                        .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_USER"))))
+                        .with(asWorker()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.content", hasSize(3)))
                 .andExpect(jsonPath("$.totalElements", is(3)))
@@ -269,7 +326,7 @@ class CatalogFilesIntegrationTest {
         mockMvc.perform(get("/api/v1/files")
                         .param("categoryId", String.valueOf(ngoaiThat.getId()))
                         .param("modelId", String.valueOf(camry25q.getId()))
-                        .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_USER"))))
+                        .with(asWorker()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.content", hasSize(3)))
                 .andExpect(jsonPath("$.totalElements", is(3)));
@@ -284,7 +341,7 @@ class CatalogFilesIntegrationTest {
         link(saveFile("f-deleted", ngoaiThat, 2024, "DELETED"), camry25q);
 
         mockMvc.perform(get("/api/v1/files")
-                        .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_USER"))))
+                        .with(asWorker()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.totalElements", is(3)))
                 .andExpect(jsonPath("$.content", hasSize(3)))
@@ -299,10 +356,52 @@ class CatalogFilesIntegrationTest {
 
         mockMvc.perform(get("/api/v1/files")
                         .param("categoryId", String.valueOf(ngoaiThat.getId()))
-                        .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_USER"))))
+                        .with(asWorker()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.totalElements", is(1)))
                 .andExpect(jsonPath("$.content[0].id", is("f-ngoai")));
+    }
+
+    @Test
+    @DisplayName("files: thợ không thấy file thuộc danh mục chưa được gán; file chưa gắn danh mục vẫn thấy")
+    void files_workerScopedToAssignedCategories() throws Exception {
+        link(saveFile("f-ngoai", ngoaiThat, 2024, "ACTIVE"), camry25q);
+        link(saveFile("f-phim", phimCachNhiet, 2024, "ACTIVE"), camry25q);
+        link(saveFile("f-none", null, 2024, "ACTIVE"), camry25q);
+
+        mockMvc.perform(get("/api/v1/files")
+                        .with(asWorker()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements", is(2)))
+                .andExpect(jsonPath("$.content[*].id", containsInAnyOrder("f-ngoai", "f-none")));
+
+        // Cố tình lọc theo danh mục không được gán → không lộ file nào.
+        mockMvc.perform(get("/api/v1/files")
+                        .param("categoryId", String.valueOf(phimCachNhiet.getId()))
+                        .with(asWorker()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements", is(0)));
+
+        mockMvc.perform(get("/api/v1/files")
+                        .with(jwt().jwt(j -> j.subject("kc-content-team"))
+                                .authorities(new SimpleGrantedAuthority("ROLE_ADMIN"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements", is(3)));
+    }
+
+    @Test
+    @DisplayName("files: file cũ chỉ có file_categories vẫn hiện tên danh mục, không mang id (bug #30)")
+    void files_legacyFileCategory_labelOnly() throws Exception {
+        SvgFile legacy = saveFile("f-legacy", null, 2024, "ACTIVE");
+        legacy.setFileCategory(fileCategoryRepository.save(new FileCategory("Window film", 9)));
+        link(svgFileRepository.save(legacy), camry25q);
+
+        mockMvc.perform(get("/api/v1/files")
+                        .with(asWorker()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[0].id", is("f-legacy")))
+                .andExpect(jsonPath("$.content[0].category.value", is("")))
+                .andExpect(jsonPath("$.content[0].category.label", is("Window film")));
     }
 
     @Test
@@ -311,7 +410,7 @@ class CatalogFilesIntegrationTest {
         mockMvc.perform(get("/api/v1/files")
                         .param("categoryId", "abc")
                         .param("modelId", String.valueOf(camry25q.getId()))
-                        .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_USER"))))
+                        .with(asWorker()))
                 .andExpect(status().isBadRequest());
     }
 
@@ -326,7 +425,7 @@ class CatalogFilesIntegrationTest {
         mockMvc.perform(get("/api/v1/catalog/year")
                         .param("categoryId", String.valueOf(ngoaiThat.getId()))
                         .param("modelId", String.valueOf(camry25q.getId()))
-                        .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_USER"))))
+                        .with(asWorker()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$", hasSize(2)))
                 .andExpect(jsonPath("$[0].value", is("2024")))

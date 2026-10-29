@@ -1,14 +1,18 @@
 package com.example.svgmanager.integration;
 
 import com.example.svgmanager.entity.FileCategory;
+import com.example.svgmanager.entity.PartLibraryCategory;
 import com.example.svgmanager.entity.Role;
 import com.example.svgmanager.entity.SvgFile;
 import com.example.svgmanager.entity.SvgFileVehicleNode;
 import com.example.svgmanager.entity.User;
+import com.example.svgmanager.entity.UserPartCategoryPermission;
 import com.example.svgmanager.entity.VehicleNode;
 import com.example.svgmanager.repository.FileCategoryRepository;
+import com.example.svgmanager.repository.PartLibraryCategoryRepository;
 import com.example.svgmanager.repository.SvgFileRepository;
 import com.example.svgmanager.repository.SvgFileVehicleNodeRepository;
+import com.example.svgmanager.repository.UserPartCategoryPermissionRepository;
 import com.example.svgmanager.repository.UserRepository;
 import com.example.svgmanager.repository.VehicleNodeRepository;
 import org.junit.jupiter.api.AfterAll;
@@ -98,6 +102,12 @@ class DesignFilesPostgresIntegrationTest {
     private FileCategoryRepository fileCategoryRepository;
 
     @Autowired
+    private PartLibraryCategoryRepository partLibraryCategoryRepository;
+
+    @Autowired
+    private UserPartCategoryPermissionRepository permissionRepository;
+
+    @Autowired
     private UserRepository userRepository;
 
     @Autowired
@@ -112,6 +122,8 @@ class DesignFilesPostgresIntegrationTest {
 
     private User uploader;
     private FileCategory ngoaiThat;
+    /** Danh mục kho mẫu seed V26 cùng tên — Data Center lọc theo bảng này (bug client #21). */
+    private PartLibraryCategory ngoaiThatPart;
 
     @BeforeEach
     void setUp() {
@@ -128,6 +140,22 @@ class DesignFilesPostgresIntegrationTest {
                         .build()));
 
         ngoaiThat = fileCategoryRepository.findById(CATEGORY_NGOAI_THAT).orElseThrow();
+        ngoaiThatPart = partLibraryCategoryRepository.findById(CATEGORY_NGOAI_THAT).orElseThrow();
+
+        // Thợ "kc-user" được admin gán danh mục Ngoại thất — không có thì /files ẩn mọi file có danh mục.
+        User worker = userRepository.findByUsername("worker").orElseGet(() -> userRepository.save(User.builder()
+                .username("worker")
+                .email("worker@test.local")
+                .fullName("Worker")
+                .keycloakUserId("kc-user")
+                .password(passwordEncoder.encode("secret"))
+                .role(Role.USER)
+                .enabled(true)
+                .deleted(false)
+                .build()));
+        if (!permissionRepository.existsByUserIdAndPartLibraryCategoryId(worker.getId(), ngoaiThatPart.getId())) {
+            permissionRepository.save(new UserPartCategoryPermission(worker, ngoaiThatPart, "test"));
+        }
     }
 
     private SecurityMockMvcRequestPostProcessors.JwtRequestPostProcessor asUser() {
@@ -151,6 +179,7 @@ class DesignFilesPostgresIntegrationTest {
         file.setFilmUsage("2,50 m");
         file.setNote("Note for " + key);
         file.setFileCategory(category);
+        if (category == ngoaiThat) file.setPartLibraryCategory(ngoaiThatPart);
         file.setModelYear(year);
         return svgFileRepository.save(file);
     }

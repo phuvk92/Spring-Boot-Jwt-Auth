@@ -1,9 +1,16 @@
 package com.example.svgmanager.integration;
 
+import com.example.svgmanager.entity.Role;
 import com.example.svgmanager.entity.SvgFile;
+import com.example.svgmanager.entity.User;
+import com.example.svgmanager.entity.UserPartCategoryPermission;
+import com.example.svgmanager.repository.PartLibraryCategoryRepository;
 import com.example.svgmanager.repository.SvgFileRepository;
+import com.example.svgmanager.repository.UserPartCategoryPermissionRepository;
+import com.example.svgmanager.repository.UserRepository;
 import com.example.svgmanager.repository.VehicleNodeRepository;
 import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -86,12 +93,43 @@ class AdminFilesPostgresIntegrationTest {
     @Autowired
     private VehicleNodeRepository vehicleNodeRepository;
 
+    @Autowired
+    private UserRepository userRepository;
+
+    @Autowired
+    private PartLibraryCategoryRepository partLibraryCategoryRepository;
+
+    @Autowired
+    private UserPartCategoryPermissionRepository permissionRepository;
+
     /** Seed V15: Toyota›Camry›Camry 2.5Q (MODEL id=3), VinFast›VF 8›VF 8 Plus (MODEL id=11). */
     private static final long MODEL_CAMRY_25Q = 3;
     private static final long MODEL_VF8_PLUS = 11;
     private static final long BRAND_TOYOTA = 1;
     private static final long BRAND_VINFAST = 9;
     private static final long CATEGORY_NGOAI_THAT = 1;
+
+    /**
+     * Thợ "kc-user" được admin gán danh mục kho mẫu Ngoại thất (id=1, seed V26) — /api/v1/files
+     * chỉ trả file thuộc danh mục thợ được gán (bug client #21).
+     */
+    @BeforeEach
+    void grantWorkerCategory() {
+        User worker = userRepository.findByKeycloakUserId("kc-user").orElseGet(() -> userRepository.save(User.builder()
+                .username("user")
+                .email("user@test.local")
+                .fullName("Worker")
+                .keycloakUserId("kc-user")
+                .password("x")
+                .role(Role.USER)
+                .enabled(true)
+                .deleted(false)
+                .build()));
+        if (!permissionRepository.existsByUserIdAndPartLibraryCategoryId(worker.getId(), CATEGORY_NGOAI_THAT)) {
+            permissionRepository.save(new UserPartCategoryPermission(worker,
+                    partLibraryCategoryRepository.findById(CATEGORY_NGOAI_THAT).orElseThrow(), "test"));
+        }
+    }
 
     private SecurityMockMvcRequestPostProcessors.JwtRequestPostProcessor asAdmin() {
         return jwt().jwt(j -> j.subject("kc-admin").claim("preferred_username", "admin"))

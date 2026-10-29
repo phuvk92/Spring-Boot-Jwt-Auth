@@ -38,7 +38,7 @@ public class CatalogController {
     @GetMapping("/api/v1/file-categories")
     @PreAuthorize("hasAnyRole('ADMIN', 'AGENT', 'USER')")
     @Operation(summary = "Danh mục file (Ngoại thất · Nội thất · Window film · Đèn & kính)",
-            description = "Danh mục do Admin quản, client không hard-code. value là id của file_categories.")
+            description = "Danh mục kho mẫu (part_library_categories) đang hiệu lực mà người gọi được gán — ROLE_USER chỉ thấy danh mục admin gán cho mình. value là id danh mục kho mẫu.")
     @ApiResponses(value = {
             @ApiResponse(responseCode = "200", description = "Danh mục đang hiệu lực, theo display_order",
                     content = @Content(array = @ArraySchema(schema = @Schema(implementation = CatalogOptionDto.class)))),

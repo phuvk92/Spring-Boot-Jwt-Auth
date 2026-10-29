@@ -67,7 +67,7 @@ public interface SvgFileRepository extends JpaRepository<SvgFile, Long>, JpaSpec
      */
     @Query("SELECT DISTINCT f.modelYear FROM SvgFile f LEFT JOIN f.vehicleNodes l "
             + "WHERE f.status = 'ACTIVE' AND f.modelYear IS NOT NULL "
-            + "AND (:categoryId IS NULL OR f.fileCategory.id = :categoryId) "
+            + "AND (:categoryId IS NULL OR f.partLibraryCategory.id = :categoryId) "
             + "AND (:noNodeFilter = true OR l.vehicleNode.id IN :nodeIds) "
             + "ORDER BY f.modelYear DESC")
     List<Integer> findCatalogYears(@Param("categoryId") Long categoryId,

@@ -5,6 +5,7 @@ import com.example.svgmanager.dto.response.CutAreaDto;
 import com.example.svgmanager.dto.response.DesignFileDto;
 import com.example.svgmanager.dto.response.PageResponse;
 import com.example.svgmanager.entity.FileCategory;
+import com.example.svgmanager.entity.PartLibraryCategory;
 import com.example.svgmanager.entity.SvgFile;
 import com.example.svgmanager.entity.SvgFileVehicleNode;
 import com.example.svgmanager.entity.VehicleNode;
@@ -40,13 +41,16 @@ public class DesignFileServiceImpl implements DesignFileService {
     private final SvgFileRepository svgFileRepository;
     private final VehicleNodeRepository vehicleNodeRepository;
     private final FileStorageService fileStorageService;
+    private final PartCategoryScope partCategoryScope;
 
     public DesignFileServiceImpl(SvgFileRepository svgFileRepository,
                                  VehicleNodeRepository vehicleNodeRepository,
-                                 FileStorageService fileStorageService) {
+                                 FileStorageService fileStorageService,
+                                 PartCategoryScope partCategoryScope) {
         this.svgFileRepository = svgFileRepository;
         this.vehicleNodeRepository = vehicleNodeRepository;
         this.fileStorageService = fileStorageService;
+        this.partCategoryScope = partCategoryScope;
     }
 
     @Override
@@ -56,6 +60,10 @@ public class DesignFileServiceImpl implements DesignFileService {
                                                 int page, int size) {
         Pageable pageable = PageRequest.of(Math.max(0, page), Math.max(1, size),
                 Sort.by("updatedAt").descending().and(Sort.by("id").descending()));
+
+        // Thợ chỉ thấy file thuộc danh mục kho mẫu admin gán cho mình (bug #21/#30) — cùng luật
+        // với InternalSvgServiceImpl: file chưa gắn danh mục thì ai cũng thấy.
+        java.util.Optional<List<Long>> permitted = partCategoryScope.permittedCategoryIds();
 
         Specification<SvgFile> spec = (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
@@ -68,7 +76,12 @@ public class DesignFileServiceImpl implements DesignFileService {
                         cb.like(cb.lower(root.get("displayName")), like)));
             }
             if (categoryId != null) {
-                predicates.add(cb.equal(root.get("fileCategory").get("id"), categoryId));
+                predicates.add(cb.equal(root.get("partLibraryCategory").get("id"), categoryId));
+            }
+            if (permitted.isPresent()) {
+                Predicate uncategorized = cb.isNull(root.get("partLibraryCategory"));
+                predicates.add(permitted.get().isEmpty() ? uncategorized
+                        : cb.or(uncategorized, root.get("partLibraryCategory").get("id").in(permitted.get())));
             }
             if (year != null) {
                 // Q3 — file không ghi năm hiện với mọi năm khi lọc.
@@ -121,10 +134,13 @@ public class DesignFileServiceImpl implements DesignFileService {
     }
 
     private DesignFileDto toDesignFileDto(SvgFile file) {
-        FileCategory category = file.getFileCategory();
-        CatalogOptionDto categoryDto = category != null
-                ? CatalogOptionDto.of(category.getId(), category.getName())
-                : new CatalogOptionDto("", "");
+        // Danh mục kho mẫu là thứ admin web hiện và lọc theo (bug #30). File cũ chỉ có
+        // file_categories thì vẫn hiện tên, nhưng không mang id — id đó không thuộc bộ lọc.
+        PartLibraryCategory partCategory = file.getPartLibraryCategory();
+        FileCategory legacy = file.getFileCategory();
+        CatalogOptionDto categoryDto = partCategory != null
+                ? CatalogOptionDto.of(partCategory.getId(), partCategory.getName())
+                : new CatalogOptionDto("", legacy != null ? legacy.getName() : "");
 
         String path = null;
         if (file.getVehicleNodes() != null && !file.getVehicleNodes().isEmpty()) {
