@@ -219,7 +219,7 @@ public class AuthServiceImpl implements AuthService {
             throw new UnauthorizedException("Invalid credentials or authentication failed");
         } catch (HttpClientErrorException.Unauthorized | HttpClientErrorException.BadRequest e) {
             log.warn("Keycloak authentication rejected: {}", e.getMessage());
-            throw new UnauthorizedException("Invalid username or password");
+            throw new UnauthorizedException("Invalid username or password", "BAD_CREDENTIALS");
         } catch (UnauthorizedException | ForbiddenException e) {
             throw e;
         } catch (Exception e) {
