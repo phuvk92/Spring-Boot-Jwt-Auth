@@ -29,6 +29,14 @@ public class ErrorResponse {
     @Schema(description = "Mã lỗi máy đọc được — chỉ có khi client cần phân nhánh", example = "SESSION_LIMIT")
     private String code;
 
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    @Schema(description = "Trường dữ liệu gây ra lỗi (nếu có, vd username, email, password)", example = "username")
+    private String field;
+
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    @Schema(description = "Tham số bổ sung cho lỗi")
+    private java.util.Map<String, Object> params;
+
     public ErrorResponse() {
     }
 
@@ -45,6 +53,16 @@ public class ErrorResponse {
         this.code = code;
     }
 
+    public ErrorResponse(LocalDateTime timestamp, int status, String error, String message, String path, String code, String field) {
+        this(timestamp, status, error, message, path, code);
+        this.field = field;
+    }
+
+    public ErrorResponse(LocalDateTime timestamp, int status, String error, String message, String path, String code, String field, java.util.Map<String, Object> params) {
+        this(timestamp, status, error, message, path, code, field);
+        this.params = params;
+    }
+
     public static Builder builder() {
         return new Builder();
     }
@@ -56,6 +74,8 @@ public class ErrorResponse {
         private String message;
         private String path;
         private String code;
+        private String field;
+        private java.util.Map<String, Object> params;
 
         public Builder timestamp(LocalDateTime timestamp) {
             this.timestamp = timestamp;
@@ -87,8 +107,18 @@ public class ErrorResponse {
             return this;
         }
 
+        public Builder field(String field) {
+            this.field = field;
+            return this;
+        }
+
+        public Builder params(java.util.Map<String, Object> params) {
+            this.params = params;
+            return this;
+        }
+
         public ErrorResponse build() {
-            return new ErrorResponse(timestamp, status, error, message, path, code);
+            return new ErrorResponse(timestamp, status, error, message, path, code, field, params);
         }
     }
 
@@ -138,5 +168,21 @@ public class ErrorResponse {
 
     public void setCode(String code) {
         this.code = code;
+    }
+
+    public String getField() {
+        return field;
+    }
+
+    public void setField(String field) {
+        this.field = field;
+    }
+
+    public java.util.Map<String, Object> getParams() {
+        return params;
+    }
+
+    public void setParams(java.util.Map<String, Object> params) {
+        this.params = params;
     }
 }

@@ -110,6 +110,7 @@ public class GlobalExceptionHandler {
                 .message(message)
                 .path(request.getRequestURI())
                 .code(ex.getCode())
+                .field(ex.getField())
                 .build();
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(errorResponse);
     }
@@ -151,6 +152,7 @@ public class GlobalExceptionHandler {
                 .message(message)
                 .path(request.getRequestURI())
                 .code(ex.getCode())
+                .field(ex.getField())
                 .build();
         return ResponseEntity.status(HttpStatus.CONFLICT).body(errorResponse);
     }
@@ -351,6 +353,11 @@ public class GlobalExceptionHandler {
                 .map(FieldError::getDefaultMessage)
                 .collect(Collectors.joining("; "));
 
+        String firstField = ex.getBindingResult().getFieldErrors().stream()
+                .map(FieldError::getField)
+                .findFirst()
+                .orElse(null);
+
         log.warn("Validation error on {}: {}", request.getRequestURI(), errorMessage);
         setAuditErrorCode(request, "VALIDATION_ERROR");
 
@@ -361,6 +368,7 @@ public class GlobalExceptionHandler {
                 .message(errorMessage.isEmpty() ? resolveMessage("VALIDATION_ERROR", "Validation failed for request") : errorMessage)
                 .path(request.getRequestURI())
                 .code("VALIDATION_ERROR")
+                .field(firstField)
                 .build();
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(errorResponse);
     }
@@ -473,6 +481,27 @@ public class GlobalExceptionHandler {
                 .code(ex.getCode())
                 .build();
         return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).body(errorResponse);
+    }
+
+    @ExceptionHandler({
+            org.springframework.dao.DataAccessException.class,
+            java.sql.SQLException.class
+    })
+    public ResponseEntity<ErrorResponse> handleDatabaseException(
+            Exception ex,
+            HttpServletRequest request
+    ) {
+        log.error("Database error occurred on {}: {}", request.getRequestURI(), ex.getMessage(), ex);
+        setAuditErrorCode(request, ErrorCodes.DATABASE_ERROR);
+        ErrorResponse errorResponse = ErrorResponse.builder()
+                .timestamp(LocalDateTime.now())
+                .status(HttpStatus.INTERNAL_SERVER_ERROR.value())
+                .error(HttpStatus.INTERNAL_SERVER_ERROR.getReasonPhrase())
+                .message(resolveMessage(ErrorCodes.DATABASE_ERROR, "Đã xảy ra lỗi cơ sở dữ liệu. Vui lòng thử lại sau."))
+                .path(request.getRequestURI())
+                .code(ErrorCodes.DATABASE_ERROR)
+                .build();
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorResponse);
     }
 
     @ExceptionHandler(Exception.class)

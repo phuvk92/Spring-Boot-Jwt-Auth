@@ -1,5 +1,7 @@
 package com.example.svgmanager.service.impl;
 
+import com.example.svgmanager.util.PasswordUtils;
+
 import com.example.svgmanager.dto.request.ChangePasswordRequest;
 import com.example.svgmanager.dto.request.LoginRequest;
 import com.example.svgmanager.dto.request.RefreshTokenRequest;
@@ -143,7 +145,7 @@ public class AuthServiceImpl implements AuthService {
         formData.add("grant_type", "password");
         formData.add("client_id", clientId);
         formData.add("username", request.getUsername());
-        formData.add("password", request.getPassword());
+        formData.add("password", PasswordUtils.trimPassword(request.getPassword()));
 
         return exchangeToken(formData);
     }
@@ -354,14 +356,18 @@ public class AuthServiceImpl implements AuthService {
     @Override
     @Transactional
     public MessageResponse changePassword(ChangePasswordRequest request) {
-        if (request.getCurrentPassword() == null || request.getCurrentPassword().isBlank()) {
+        String currentPassword = PasswordUtils.trimPassword(request.getCurrentPassword());
+        String newPassword = PasswordUtils.trimPassword(request.getNewPassword());
+        String confirmPassword = PasswordUtils.trimPassword(request.getConfirmPassword());
+
+        if (currentPassword == null || currentPassword.isBlank()) {
             throw new BadRequestException("Current password cannot be blank");
         }
-        if (request.getNewPassword() == null || request.getNewPassword().isBlank()) {
+        if (newPassword == null || newPassword.isBlank()) {
             throw new BadRequestException("New password cannot be blank");
         }
-        if (request.getConfirmPassword() != null && !request.getConfirmPassword().isBlank()) {
-            if (!request.getConfirmPassword().equals(request.getNewPassword())) {
+        if (confirmPassword != null && !confirmPassword.isBlank()) {
+            if (!confirmPassword.equals(newPassword)) {
                 throw new BadRequestException("Confirm password does not match new password");
             }
         }
@@ -374,7 +380,7 @@ public class AuthServiceImpl implements AuthService {
         verifyData.add("grant_type", "password");
         verifyData.add("client_id", clientId);
         verifyData.add("username", username);
-        verifyData.add("password", request.getCurrentPassword());
+        verifyData.add("password", currentPassword);
 
         try {
             ResponseEntity<Map> verifyResponse = restClient.post()
@@ -431,7 +437,7 @@ public class AuthServiceImpl implements AuthService {
         String resetPasswordUri = getBaseKeycloakUrl() + "/admin/realms/" + realm + "/users/" + keycloakUserId + "/reset-password";
         Map<String, Object> passwordPayload = Map.of(
                 "type", "password",
-                "value", request.getNewPassword(),
+                "value", newPassword,
                 "temporary", false
         );
 

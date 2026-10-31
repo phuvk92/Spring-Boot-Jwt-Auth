@@ -1,5 +1,8 @@
 package com.example.svgmanager.service.impl;
 
+import com.example.svgmanager.util.PasswordUtils;
+import com.example.svgmanager.util.UsernameUtils;
+
 import com.example.svgmanager.dto.request.CreateDealerRequest;
 import com.example.svgmanager.dto.request.UpdateDealerRequest;
 import com.example.svgmanager.dto.response.DealerPackageResponse;
@@ -13,6 +16,7 @@ import com.example.svgmanager.entity.Role;
 import com.example.svgmanager.entity.User;
 import com.example.svgmanager.exception.BadRequestException;
 import com.example.svgmanager.exception.ConflictException;
+import com.example.svgmanager.exception.ErrorCodes;
 import com.example.svgmanager.exception.ForbiddenException;
 import com.example.svgmanager.exception.ResourceNotFoundException;
 import com.example.svgmanager.mapper.UserMapper;
@@ -39,6 +43,7 @@ import org.springframework.util.StringUtils;
 
 import java.security.SecureRandom;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
@@ -49,6 +54,7 @@ import java.util.stream.Collectors;
 @Service
 public class DealerServiceImpl implements DealerService {
 
+    public static final ZoneId BUSINESS_ZONE = ZoneId.of("Asia/Ho_Chi_Minh");
     private static final Logger log = LoggerFactory.getLogger(DealerServiceImpl.class);
     private static final String CHAR_POOL = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
     private static final SecureRandom RANDOM = new SecureRandom();
@@ -216,6 +222,20 @@ public class DealerServiceImpl implements DealerService {
             code = generateUniqueCode();
         }
 
+        LocalDate today = LocalDate.now(BUSINESS_ZONE);
+        if (request.getPackageStartDate() != null && request.getPackageStartDate().isBefore(today)) {
+            throw new BadRequestException("Không được chọn ngày trong quá khứ", "PAST_DATE_NOT_ALLOWED");
+        }
+        if (request.getPackageExpiryDate() != null) {
+            if (request.getPackageExpiryDate().isBefore(today)) {
+                throw new BadRequestException("Không được chọn ngày trong quá khứ", "PAST_DATE_NOT_ALLOWED");
+            }
+            LocalDate effectiveStart = request.getPackageStartDate() != null ? request.getPackageStartDate() : today;
+            if (request.getPackageExpiryDate().isBefore(effectiveStart)) {
+                throw new BadRequestException("Ngày hết hạn gói đại lý không được trước ngày bắt đầu", "INVALID_DATE_RANGE");
+            }
+        }
+
         // --- Validate Agent Credentials ---
         String effectiveAgentEmail = StringUtils.hasText(request.getAgentEmail())
                 ? request.getAgentEmail().trim()
@@ -228,22 +248,25 @@ public class DealerServiceImpl implements DealerService {
             throw new BadRequestException("Email tài khoản đại lý không hợp lệ: " + effectiveAgentEmail);
         }
 
-        String effectiveAgentUsername = StringUtils.hasText(request.getAgentUsername())
-                ? request.getAgentUsername().trim()
-                : effectiveAgentEmail;
+        String effectiveAgentUsername = UsernameUtils.validateUsername(request.getAgentUsername(), "agentUsername");
 
-        if (!StringUtils.hasText(request.getAgentPassword())) {
-            throw new BadRequestException("Mật khẩu tài khoản đại lý không được để trống");
+        String trimmedAgentPassword = PasswordUtils.trimPassword(request.getAgentPassword());
+        if (!StringUtils.hasText(trimmedAgentPassword)) {
+            throw new BadRequestException("Mật khẩu tài khoản đại lý không được để trống", "PASSWORD_REQUIRED", "agentPassword");
         }
-        if (!PASSWORD_PATTERN.matcher(request.getAgentPassword()).matches()) {
-            throw new BadRequestException("Mật khẩu đại lý phải có ít nhất 8 ký tự, gồm chữ hoa, chữ thường, số và ký tự đặc biệt");
+        if (!PASSWORD_PATTERN.matcher(trimmedAgentPassword).matches()) {
+            throw new BadRequestException("Mật khẩu đại lý phải có ít nhất 8 ký tự, gồm chữ hoa, chữ thường, số và ký tự đặc biệt", ErrorCodes.PASSWORD_POLICY_VIOLATION, "agentPassword");
         }
 
         if (userRepository.existsByUsername(effectiveAgentUsername)) {
-            throw new ConflictException("Tên đăng nhập '" + effectiveAgentUsername + "' đã được sử dụng");
+            throw new ConflictException("Tên đăng nhập '" + effectiveAgentUsername + "' đã được sử dụng", ErrorCodes.USERNAME_ALREADY_EXISTS, "agentUsername");
+        }
+        String existingKcId = keycloakUserService.findUserIdByUsername(effectiveAgentUsername);
+        if (existingKcId != null) {
+            throw new ConflictException("Tên đăng nhập '" + effectiveAgentUsername + "' đã tồn tại trên Keycloak", ErrorCodes.USERNAME_ALREADY_EXISTS, "agentUsername");
         }
         if (userRepository.existsByEmail(effectiveAgentEmail)) {
-            throw new ConflictException("Email '" + effectiveAgentEmail + "' đã được sử dụng");
+            throw new ConflictException("Email '" + effectiveAgentEmail + "' đã được sử dụng", ErrorCodes.EMAIL_ALREADY_EXISTS, "agentEmail");
         }
 
         String effectiveAgentFullName = StringUtils.hasText(request.getAgentFullName())
@@ -255,21 +278,33 @@ public class DealerServiceImpl implements DealerService {
                 : (StringUtils.hasText(request.getPhone()) ? request.getPhone().trim() : null);
 
         // --- Step 1: Create Keycloak User with Role AGENT ---
-        String keycloakUserId = keycloakUserService.createUser(
-                effectiveAgentUsername,
-                effectiveAgentEmail,
-                request.getAgentPassword(),
-                Role.AGENT,
-                true,
-                effectiveAgentFullName
-        );
+        String keycloakUserId;
+        try {
+            keycloakUserId = keycloakUserService.createUser(
+                    effectiveAgentUsername,
+                    effectiveAgentEmail,
+                    trimmedAgentPassword,
+                    Role.AGENT,
+                    true,
+                    effectiveAgentFullName
+            );
+        } catch (BadRequestException e) {
+            String field = "username".equals(e.getField()) ? "agentUsername"
+                    : ("email".equals(e.getField()) ? "agentEmail"
+                    : ("password".equals(e.getField()) ? "agentPassword" : e.getField()));
+            throw new BadRequestException(e.getMessage(), e.getCode(), field);
+        } catch (ConflictException e) {
+            String field = "username".equals(e.getField()) ? "agentUsername"
+                    : ("email".equals(e.getField()) ? "agentEmail" : e.getField());
+            throw new ConflictException(e.getMessage(), e.getCode(), field);
+        }
 
         // --- Step 2: Create Dealer and User with Compensating Rollback ---
         Dealer saved;
         try {
             int maxAccounts = request.getMaxAccounts() != null ? request.getMaxAccounts() : 10;
             int totalAllocatedDays = request.getTotalAllocatedDays() != null ? request.getTotalAllocatedDays() : 3600;
-            LocalDate startDate = request.getPackageStartDate() != null ? request.getPackageStartDate() : LocalDate.now();
+            LocalDate startDate = request.getPackageStartDate() != null ? request.getPackageStartDate() : today;
             LocalDate expiryDate = request.getPackageExpiryDate() != null ? request.getPackageExpiryDate() : startDate.plusDays(360);
             String pkgStatus = (request.getPackageStatus() != null && !request.getPackageStatus().isBlank())
                     ? request.getPackageStatus().trim().toUpperCase()
@@ -359,7 +394,7 @@ public class DealerServiceImpl implements DealerService {
 
         String code = request.getCode().trim().toUpperCase();
         if (dealerRepository.existsByCodeAndIdNotAndDeletedFalse(code, id)) {
-            throw new ConflictException("Mã đại lý '" + code + "' đã được sử dụng bởi đại lý khác");
+            throw new ConflictException("Mã đại lý '" + code + "' đã được sử dụng bởi đại lý khác", "DEALER_CODE_ALREADY_EXISTS", "code");
         }
 
         dealer.setCode(code);
@@ -407,11 +442,26 @@ public class DealerServiceImpl implements DealerService {
             }
         }
 
+        LocalDate today = LocalDate.now(BUSINESS_ZONE);
         if (request.getPackageStartDate() != null) {
+            if (!Objects.equals(request.getPackageStartDate(), dealer.getPackageStartDate())
+                    && request.getPackageStartDate().isBefore(today)) {
+                throw new BadRequestException("Không được chọn ngày trong quá khứ", "PAST_DATE_NOT_ALLOWED");
+            }
             dealer.setPackageStartDate(request.getPackageStartDate());
             packageChanged = true;
         }
         if (request.getPackageExpiryDate() != null) {
+            if (!Objects.equals(request.getPackageExpiryDate(), dealer.getPackageExpiryDate())
+                    && request.getPackageExpiryDate().isBefore(today)) {
+                throw new BadRequestException("Không được chọn ngày trong quá khứ", "PAST_DATE_NOT_ALLOWED");
+            }
+            LocalDate effectiveStart = request.getPackageStartDate() != null
+                    ? request.getPackageStartDate()
+                    : dealer.getPackageStartDate();
+            if (effectiveStart != null && request.getPackageExpiryDate().isBefore(effectiveStart)) {
+                throw new BadRequestException("Ngày hết hạn gói đại lý không được trước ngày bắt đầu", "INVALID_DATE_RANGE");
+            }
             dealer.setPackageExpiryDate(request.getPackageExpiryDate());
             packageChanged = true;
         }
@@ -432,13 +482,36 @@ public class DealerServiceImpl implements DealerService {
 
         if (agentUser != null) {
             boolean agentChanged = false;
+            String newAgentUsername = UsernameUtils.validateOptionalUsername(request.getAgentUsername(), "agentUsername");
+            if (newAgentUsername != null && !newAgentUsername.equals(agentUser.getUsername())) {
+                if (userRepository.existsByUsernameAndIdNot(newAgentUsername, agentUser.getId())) {
+                    throw new ConflictException("Tên đăng nhập '" + newAgentUsername + "' đã được sử dụng bởi người dùng khác", ErrorCodes.USERNAME_ALREADY_EXISTS, "agentUsername");
+                }
+                String existingKcId = keycloakUserService.findUserIdByUsername(newAgentUsername);
+                if (existingKcId != null && !existingKcId.equals(agentUser.getKeycloakUserId())) {
+                    throw new ConflictException("Tên đăng nhập '" + newAgentUsername + "' đã tồn tại trên Keycloak", ErrorCodes.USERNAME_ALREADY_EXISTS, "agentUsername");
+                }
+                if (StringUtils.hasText(agentUser.getKeycloakUserId())) {
+                    try {
+                        keycloakUserService.updateUsername(agentUser.getKeycloakUserId(), newAgentUsername);
+                    } catch (BadRequestException e) {
+                        String field = "username".equals(e.getField()) ? "agentUsername" : e.getField();
+                        throw new BadRequestException(e.getMessage(), e.getCode(), field);
+                    } catch (ConflictException e) {
+                        String field = "username".equals(e.getField()) ? "agentUsername" : e.getField();
+                        throw new ConflictException(e.getMessage(), e.getCode(), field);
+                    }
+                }
+                agentUser.setUsername(newAgentUsername);
+                agentChanged = true;
+            }
             if (StringUtils.hasText(request.getAgentEmail()) && !request.getAgentEmail().equalsIgnoreCase(agentUser.getEmail())) {
                 String newEmail = request.getAgentEmail().trim();
                 if (!EMAIL_PATTERN.matcher(newEmail).matches()) {
-                    throw new BadRequestException("Email tài khoản đại lý không hợp lệ: " + newEmail);
+                    throw new BadRequestException("Email tài khoản đại lý không hợp lệ: " + newEmail, ErrorCodes.EMAIL_INVALID_FORMAT, "agentEmail");
                 }
                 if (userRepository.existsByEmailAndIdNot(newEmail, agentUser.getId())) {
-                    throw new ConflictException("Email '" + newEmail + "' đã được sử dụng bởi người dùng khác");
+                    throw new ConflictException("Email '" + newEmail + "' đã được sử dụng bởi người dùng khác", ErrorCodes.EMAIL_ALREADY_EXISTS, "agentEmail");
                 }
                 agentUser.setEmail(newEmail);
                 agentChanged = true;
@@ -454,44 +527,73 @@ public class DealerServiceImpl implements DealerService {
             if (agentChanged) {
                 userRepository.save(agentUser);
                 if (StringUtils.hasText(agentUser.getKeycloakUserId())) {
-                    keycloakUserService.updateUser(agentUser.getKeycloakUserId(), agentUser.getEmail(), agentUser.isEnabled(), agentUser.getFullName());
+                    try {
+                        keycloakUserService.updateUser(agentUser.getKeycloakUserId(), agentUser.getEmail(), agentUser.isEnabled(), agentUser.getFullName());
+                    } catch (BadRequestException e) {
+                        String field = "email".equals(e.getField()) ? "agentEmail" : e.getField();
+                        throw new BadRequestException(e.getMessage(), e.getCode(), field);
+                    } catch (ConflictException e) {
+                        String field = "email".equals(e.getField()) ? "agentEmail" : e.getField();
+                        throw new ConflictException(e.getMessage(), e.getCode(), field);
+                    }
                 }
             }
-            if (StringUtils.hasText(request.getAgentPassword())) {
-                if (!PASSWORD_PATTERN.matcher(request.getAgentPassword()).matches()) {
-                    throw new BadRequestException("Mật khẩu đại lý phải có ít nhất 8 ký tự, gồm chữ hoa, chữ thường, số và ký tự đặc biệt");
+            String trimmedUpdatePass = PasswordUtils.trimOptionalPassword(request.getAgentPassword());
+            if (StringUtils.hasText(trimmedUpdatePass)) {
+                if (!PASSWORD_PATTERN.matcher(trimmedUpdatePass).matches()) {
+                    throw new BadRequestException("Mật khẩu đại lý phải có ít nhất 8 ký tự, gồm chữ hoa, chữ thường, số và ký tự đặc biệt", ErrorCodes.PASSWORD_POLICY_VIOLATION, "agentPassword");
                 }
                 if (StringUtils.hasText(agentUser.getKeycloakUserId())) {
-                    keycloakUserService.resetPassword(agentUser.getKeycloakUserId(), request.getAgentPassword());
+                    try {
+                        keycloakUserService.resetPassword(agentUser.getKeycloakUserId(), trimmedUpdatePass);
+                    } catch (BadRequestException e) {
+                        String field = "password".equals(e.getField()) ? "agentPassword" : e.getField();
+                        throw new BadRequestException(e.getMessage(), e.getCode(), field);
+                    }
                 }
             }
-        } else if (StringUtils.hasText(request.getAgentPassword())) {
+        } else if (StringUtils.hasText(PasswordUtils.trimOptionalPassword(request.getAgentPassword()))) {
             // Reconcile legacy dealer without AGENT: create new AGENT if password is provided
+            String reconcilePass = PasswordUtils.trimPassword(request.getAgentPassword());
             String effectiveEmail = StringUtils.hasText(request.getAgentEmail())
                     ? request.getAgentEmail().trim()
                     : (StringUtils.hasText(dealer.getEmail()) ? dealer.getEmail().trim() : null);
             if (!StringUtils.hasText(effectiveEmail)) {
-                throw new BadRequestException("Email tài khoản đại lý là bắt buộc");
+                throw new BadRequestException("Email tài khoản đại lý là bắt buộc", "EMAIL_REQUIRED", "agentEmail");
             }
-            String effectiveUsername = StringUtils.hasText(request.getAgentUsername())
-                    ? request.getAgentUsername().trim()
-                    : effectiveEmail;
+            String effectiveUsername = UsernameUtils.validateUsername(request.getAgentUsername(), "agentUsername");
 
             if (userRepository.existsByUsername(effectiveUsername)) {
-                throw new ConflictException("Tên đăng nhập '" + effectiveUsername + "' đã được sử dụng");
+                throw new ConflictException("Tên đăng nhập '" + effectiveUsername + "' đã được sử dụng", ErrorCodes.USERNAME_ALREADY_EXISTS, "agentUsername");
+            }
+            String existingKcId = keycloakUserService.findUserIdByUsername(effectiveUsername);
+            if (existingKcId != null) {
+                throw new ConflictException("Tên đăng nhập '" + effectiveUsername + "' đã tồn tại trên Keycloak", ErrorCodes.USERNAME_ALREADY_EXISTS, "agentUsername");
             }
             if (userRepository.existsByEmail(effectiveEmail)) {
-                throw new ConflictException("Email '" + effectiveEmail + "' đã được sử dụng");
+                throw new ConflictException("Email '" + effectiveEmail + "' đã được sử dụng", ErrorCodes.EMAIL_ALREADY_EXISTS, "agentEmail");
             }
 
-            String keycloakUserId = keycloakUserService.createUser(
-                    effectiveUsername,
-                    effectiveEmail,
-                    request.getAgentPassword(),
-                    Role.AGENT,
-                    true,
-                    StringUtils.hasText(request.getAgentFullName()) ? request.getAgentFullName() : dealer.getName()
-            );
+            String keycloakUserId;
+            try {
+                keycloakUserId = keycloakUserService.createUser(
+                        effectiveUsername,
+                        effectiveEmail,
+                        reconcilePass,
+                        Role.AGENT,
+                        true,
+                        StringUtils.hasText(request.getAgentFullName()) ? request.getAgentFullName() : dealer.getName()
+                );
+            } catch (BadRequestException e) {
+                String field = "username".equals(e.getField()) ? "agentUsername"
+                        : ("email".equals(e.getField()) ? "agentEmail"
+                        : ("password".equals(e.getField()) ? "agentPassword" : e.getField()));
+                throw new BadRequestException(e.getMessage(), e.getCode(), field);
+            } catch (ConflictException e) {
+                String field = "username".equals(e.getField()) ? "agentUsername"
+                        : ("email".equals(e.getField()) ? "agentEmail" : e.getField());
+                throw new ConflictException(e.getMessage(), e.getCode(), field);
+            }
 
             User newAgent = User.builder()
                     .keycloakUserId(keycloakUserId)

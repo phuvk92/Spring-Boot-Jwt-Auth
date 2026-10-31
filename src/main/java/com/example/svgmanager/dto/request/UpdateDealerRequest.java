@@ -1,11 +1,17 @@
 package com.example.svgmanager.dto.request;
 
+import com.example.svgmanager.util.PasswordUtils;
+import com.fasterxml.jackson.annotation.JsonSetter;
+
 import com.fasterxml.jackson.annotation.JsonFormat;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
+
+import com.example.svgmanager.util.UsernameUtils;
+import jakarta.validation.constraints.Pattern;
 
 import java.time.LocalDate;
 
@@ -49,6 +55,8 @@ public class UpdateDealerRequest {
     private String notes;
 
     // --- Thông tin tài khoản AGENT liên kết ---
+    @Size(min = 3, max = 50, message = "Tên đăng nhập phải từ 3 đến 50 ký tự")
+    @Pattern(regexp = "^[A-Za-z0-9_-]+$", message = "Chỉ được sử dụng chữ cái tiếng Anh, số, dấu gạch dưới (_) và dấu gạch ngang (-)")
     @Schema(description = "Tên đăng nhập (chỉ dùng nếu đại lý cũ chưa có AGENT)", example = "agent_saigon")
     private String agentUsername;
 
@@ -161,11 +169,12 @@ public class UpdateDealerRequest {
     }
 
     public String getAgentUsername() {
-        return agentUsername;
+        return UsernameUtils.trimUsername(agentUsername);
     }
 
+    @JsonSetter
     public void setAgentUsername(String agentUsername) {
-        this.agentUsername = agentUsername;
+        this.agentUsername = UsernameUtils.trimUsername(agentUsername);
     }
 
     public String getAgentEmail() {
@@ -177,11 +186,12 @@ public class UpdateDealerRequest {
     }
 
     public String getAgentPassword() {
-        return agentPassword;
+        return PasswordUtils.trimOptionalPassword(agentPassword);
     }
 
+    @JsonSetter
     public void setAgentPassword(String agentPassword) {
-        this.agentPassword = agentPassword;
+        this.agentPassword = PasswordUtils.trimOptionalPassword(agentPassword);
     }
 
     public String getAgentFullName() {

@@ -68,6 +68,34 @@ public final class ErrorCodes {
     /** Refresh token hết hạn hoặc bị thu hồi khi gọi /api/internal/auth/refresh — phiên chết hẳn. */
     public static final String REFRESH_EXPIRED = "REFRESH_EXPIRED";
 
+    // --- User / Authentication / Integration Error Codes ---
+    /** Tên đăng nhập là bắt buộc. */
+    public static final String USERNAME_REQUIRED = "USERNAME_REQUIRED";
+    /** Tên đăng nhập chứa khoảng trắng. */
+    public static final String USERNAME_CONTAINS_WHITESPACE = "USERNAME_CONTAINS_WHITESPACE";
+    /** Độ dài tên đăng nhập không hợp lệ (phải từ 3 đến 50 ký tự). */
+    public static final String USERNAME_LENGTH_INVALID = "USERNAME_LENGTH_INVALID";
+    /** Tên đăng nhập không đúng định dạng (chỉ cho phép A-Z, a-z, 0-9, _, -). */
+    public static final String USERNAME_INVALID_FORMAT = "USERNAME_INVALID_FORMAT";
+    /** Tên đăng nhập đã tồn tại trong hệ thống hoặc Keycloak. */
+    public static final String USERNAME_ALREADY_EXISTS = "USERNAME_ALREADY_EXISTS";
+
+    /** Định dạng email không hợp lệ. */
+    public static final String EMAIL_INVALID_FORMAT = "EMAIL_INVALID_FORMAT";
+    /** Email đã được sử dụng bởi tài khoản khác. */
+    public static final String EMAIL_ALREADY_EXISTS = "EMAIL_ALREADY_EXISTS";
+
+    /** Mật khẩu không đáp ứng chính sách bảo mật (độ dài, ký tự đặc biệt, etc.). */
+    public static final String PASSWORD_POLICY_VIOLATION = "PASSWORD_POLICY_VIOLATION";
+
+    /** Không tìm thấy tài khoản người dùng. */
+    public static final String USER_NOT_FOUND = "USER_NOT_FOUND";
+
+    /** Lỗi kết nối hoặc thực thi với cơ sở dữ liệu. */
+    public static final String DATABASE_ERROR = "DATABASE_ERROR";
+    /** Lỗi tích hợp với dịch vụ xác thực Keycloak. */
+    public static final String KEYCLOAK_ERROR = "KEYCLOAK_ERROR";
+
     private ErrorCodes() {
     }
 }

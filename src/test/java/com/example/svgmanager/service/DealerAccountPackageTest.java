@@ -125,6 +125,7 @@ class DealerAccountPackageTest {
         });
 
         CreateUserRequest request = CreateUserRequest.builder()
+                .username("client01")
                 .email("client01@test.com")
                 .password("Password123!")
                 .role(Role.USER)
@@ -151,6 +152,7 @@ class DealerAccountPackageTest {
         when(dealerRepository.countActiveUserAccountsByDealerId(1L)).thenReturn(10L); // Already 10
 
         CreateUserRequest request = CreateUserRequest.builder()
+                .username("client11")
                 .email("client11@test.com")
                 .password("Password123!")
                 .role(Role.USER)
@@ -175,6 +177,7 @@ class DealerAccountPackageTest {
         when(dealerRepository.countActiveUserAccountsByDealerId(1L)).thenReturn(5L);
 
         CreateUserRequest request = CreateUserRequest.builder()
+                .username("client_over")
                 .email("client_over@test.com")
                 .password("Password123!")
                 .role(Role.USER)
@@ -243,6 +246,7 @@ class DealerAccountPackageTest {
         when(dealerRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(dealer));
 
         CreateUserRequest request = CreateUserRequest.builder()
+                .username("client_exp")
                 .email("client_exp@test.com")
                 .password("Password123!")
                 .role(Role.USER)
@@ -264,6 +268,7 @@ class DealerAccountPackageTest {
         when(dealerRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(dealer));
 
         CreateUserRequest request = CreateUserRequest.builder()
+                .username("client_sus")
                 .email("client_sus@test.com")
                 .password("Password123!")
                 .role(Role.USER)
@@ -283,6 +288,7 @@ class DealerAccountPackageTest {
         when(currentUserService.isAdmin()).thenReturn(false);
 
         CreateUserRequest request = CreateUserRequest.builder()
+                .username("client_diff")
                 .email("client_diff@test.com")
                 .password("Password123!")
                 .role(Role.USER)
@@ -304,6 +310,7 @@ class DealerAccountPackageTest {
         when(dealerRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(dealer));
 
         CreateUserRequest requestZero = CreateUserRequest.builder()
+                .username("client_zero")
                 .email("client_zero@test.com")
                 .password("Password123!")
                 .role(Role.USER)
@@ -364,6 +371,7 @@ class DealerAccountPackageTest {
         when(userRepository.save(any(User.class))).thenThrow(new RuntimeException("DB Connection Timeout"));
 
         CreateUserRequest request = CreateUserRequest.builder()
+                .username("client_fail")
                 .email("client_fail@test.com")
                 .password("Password123!")
                 .role(Role.USER)
@@ -387,6 +395,7 @@ class DealerAccountPackageTest {
         when(userRepository.existsByDealerIdAndRoleAndDeletedFalse(1L, Role.AGENT)).thenReturn(true);
 
         CreateUserRequest request = CreateUserRequest.builder()
+                .username("agent_second")
                 .email("agent_second@test.com")
                 .password("Password123!")
                 .role(Role.AGENT)
@@ -420,6 +429,7 @@ class DealerAccountPackageTest {
         when(userRepository.save(any(User.class))).thenAnswer(inv -> inv.getArgument(0));
 
         CreateUserRequest request = CreateUserRequest.builder()
+                .username("fresh_agent")
                 .email("fresh_agent@dealer.com")
                 .password("Password123!")
                 .role(Role.AGENT)
@@ -461,5 +471,50 @@ class DealerAccountPackageTest {
         assertThatThrownBy(() -> dealerService.updateDealer(1L, invalidDaysReq))
                 .isInstanceOf(BadRequestException.class)
                 .hasMessageContaining("Không thể giảm tổng quỹ ngày xuống 1000 ngày vì đại lý đã phân bổ 1500 ngày cho Thợ cắt");
+    }
+
+    @Test
+    @DisplayName("Tạo đại lý: packageStartDate trong quá khứ -> ném PAST_DATE_NOT_ALLOWED")
+    void testCreateDealer_PastStartDate_ThrowsBadRequest() {
+        CreateDealerRequest req = new CreateDealerRequest();
+        req.setCode("DL-PAST-START");
+        req.setName("Đại lý Ngày Quá Khứ");
+        req.setEmail("contact@paststart.com");
+        req.setPackageStartDate(LocalDate.now().minusDays(1));
+
+        assertThatThrownBy(() -> dealerService.createDealer(req))
+                .isInstanceOf(BadRequestException.class)
+                .satisfies(ex -> assertThat(((BadRequestException) ex).getCode()).isEqualTo("PAST_DATE_NOT_ALLOWED"));
+    }
+
+    @Test
+    @DisplayName("Tạo đại lý: packageExpiryDate trước packageStartDate -> ném INVALID_DATE_RANGE")
+    void testCreateDealer_ExpiryBeforeStart_ThrowsBadRequest() {
+        CreateDealerRequest req = new CreateDealerRequest();
+        req.setCode("DL-EXP-BEFORE-START");
+        req.setName("Đại lý Hạn Ngược");
+        req.setEmail("contact@expbeforestart.com");
+        req.setPackageStartDate(LocalDate.now().plusDays(10));
+        req.setPackageExpiryDate(LocalDate.now().plusDays(5));
+
+        assertThatThrownBy(() -> dealerService.createDealer(req))
+                .isInstanceOf(BadRequestException.class)
+                .satisfies(ex -> assertThat(((BadRequestException) ex).getCode()).isEqualTo("INVALID_DATE_RANGE"));
+    }
+
+    @Test
+    @DisplayName("Cập nhật đại lý: đổi packageExpiryDate sang ngày quá khứ -> ném PAST_DATE_NOT_ALLOWED")
+    void testUpdateDealer_PastExpiryDate_ThrowsBadRequest() {
+        dealer.setPackageExpiryDate(LocalDate.now().plusDays(30));
+        when(dealerRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(dealer));
+
+        UpdateDealerRequest req = new UpdateDealerRequest();
+        req.setCode("DL01");
+        req.setName("Đại lý Miền Bắc");
+        req.setPackageExpiryDate(LocalDate.now().minusDays(1));
+
+        assertThatThrownBy(() -> dealerService.updateDealer(1L, req))
+                .isInstanceOf(BadRequestException.class)
+                .satisfies(ex -> assertThat(((BadRequestException) ex).getCode()).isEqualTo("PAST_DATE_NOT_ALLOWED"));
     }
 }

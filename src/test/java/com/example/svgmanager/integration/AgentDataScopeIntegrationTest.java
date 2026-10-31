@@ -499,8 +499,8 @@ class AgentDataScopeIntegrationTest {
     }
 
     @Test
-    @DisplayName("Case 34: Creating user without username automatically uses email as username -> 201 Created")
-    void createUser_WithoutUsername_DefaultsToEmail() throws Exception {
+    @DisplayName("Case 34: Creating user without username fails validation -> 400 Bad Request")
+    void createUser_WithoutUsername_FailsValidation() throws Exception {
         CreateUserRequest req = CreateUserRequest.builder()
                 .email("auto_email_user@example.com")
                 .fullName("Auto Email User")
@@ -514,9 +514,8 @@ class AgentDataScopeIntegrationTest {
                         .with(jwtAdmin())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(req)))
-                .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.username").value("auto_email_user@example.com"))
-                .andExpect(jsonPath("$.email").value("auto_email_user@example.com"));
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("Tên đăng nhập không được để trống")));
     }
 
     @Test
@@ -547,6 +546,7 @@ class AgentDataScopeIntegrationTest {
         userRepository.save(agentA);
 
         CreateUserRequest req = CreateUserRequest.builder()
+                .username("tech_cutter_alpha")
                 .email("tech_cutter@alpha.com")
                 .fullName("Tho Cat Alpha")
                 .password("Password123!")
@@ -558,7 +558,7 @@ class AgentDataScopeIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(req)))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.username").value("tech_cutter@alpha.com"))
+                .andExpect(jsonPath("$.username").value("tech_cutter_alpha"))
                 .andExpect(jsonPath("$.email").value("tech_cutter@alpha.com"))
                 .andExpect(jsonPath("$.dealerId").value(dealerA.getId()))
                 .andExpect(jsonPath("$.dealerName").value("Alpha Auto Film"));
@@ -581,6 +581,7 @@ class AgentDataScopeIntegrationTest {
         userRepository.save(agentA);
 
         CreateUserRequest req = new CreateUserRequest();
+        req.setUsername("intruder_user");
         req.setEmail("intruder@beta.com");
         req.setPassword("Secret@123456");
         req.setFullName("Intruder");

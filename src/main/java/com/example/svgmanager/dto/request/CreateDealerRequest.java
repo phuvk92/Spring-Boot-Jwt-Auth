@@ -1,11 +1,17 @@
 package com.example.svgmanager.dto.request;
 
+import com.example.svgmanager.util.PasswordUtils;
+import com.fasterxml.jackson.annotation.JsonSetter;
+
 import com.fasterxml.jackson.annotation.JsonFormat;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
+
+import com.example.svgmanager.util.UsernameUtils;
+import jakarta.validation.constraints.Pattern;
 
 import java.time.LocalDate;
 
@@ -48,8 +54,10 @@ public class CreateDealerRequest {
     private String notes;
 
     // --- Thông tin tài khoản đăng nhập đại lý (Role AGENT) ---
-    @Schema(description = "Tên đăng nhập tài khoản đại lý (nếu để trống tự động lấy theo email)", example = "agent_saigon")
-    @Size(max = 255, message = "Tên đăng nhập tối đa 255 ký tự")
+    @NotBlank(message = "Tên đăng nhập không được để trống")
+    @Size(min = 3, max = 50, message = "Tên đăng nhập phải từ 3 đến 50 ký tự")
+    @Pattern(regexp = "^[A-Za-z0-9_-]+$", message = "Chỉ được sử dụng chữ cái tiếng Anh, số, dấu gạch dưới (_) và dấu gạch ngang (-)")
+    @Schema(description = "Tên đăng nhập tài khoản đại lý", example = "agent_saigon")
     private String agentUsername;
 
     @Schema(description = "Email đăng nhập đại lý (nếu để trống sẽ lấy theo email đại lý)", example = "agent_saigon@gmail.com")
@@ -164,11 +172,12 @@ public class CreateDealerRequest {
     }
 
     public String getAgentUsername() {
-        return agentUsername;
+        return UsernameUtils.trimUsername(agentUsername);
     }
 
+    @JsonSetter
     public void setAgentUsername(String agentUsername) {
-        this.agentUsername = agentUsername;
+        this.agentUsername = UsernameUtils.trimUsername(agentUsername);
     }
 
     public String getAgentEmail() {
@@ -180,11 +189,12 @@ public class CreateDealerRequest {
     }
 
     public String getAgentPassword() {
-        return agentPassword;
+        return PasswordUtils.trimPassword(agentPassword);
     }
 
+    @JsonSetter
     public void setAgentPassword(String agentPassword) {
-        this.agentPassword = agentPassword;
+        this.agentPassword = PasswordUtils.trimPassword(agentPassword);
     }
 
     public String getAgentFullName() {

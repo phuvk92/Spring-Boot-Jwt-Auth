@@ -8,6 +8,7 @@ import com.example.svgmanager.dto.request.UpdateUserStatusRequest;
 import com.example.svgmanager.dto.response.ErrorResponse;
 import com.example.svgmanager.dto.response.PageResponse;
 import com.example.svgmanager.dto.response.UserResponse;
+import com.example.svgmanager.dto.response.UserStatsResponse;
 import com.example.svgmanager.entity.Role;
 import com.example.svgmanager.service.UserService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -59,6 +60,29 @@ public class UserController {
     ) {
         String querySearch = org.springframework.util.StringUtils.hasText(search) ? search : username;
         PageResponse<UserResponse> response = userService.getUsers(querySearch, email, role, enabled, expirationStatus, dealerId, page, size, sortBy, sortDirection);
+        return ResponseEntity.ok(response);
+    }
+
+    @GetMapping("/stats")
+    @Operation(summary = "Thống kê số lượng người dùng theo vai trò",
+            description = "Đếm số tài khoản hợp lệ (chưa bị xoá mềm) theo từng vai trò ADMIN, AGENT, USER trong phạm vi phân quyền và bộ lọc.")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Thống kê người dùng thành công",
+                    content = @Content(schema = @Schema(implementation = UserStatsResponse.class))),
+            @ApiResponse(responseCode = "401", description = "Unauthorized", content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+            @ApiResponse(responseCode = "403", description = "Forbidden - Requires ADMIN or AGENT role", content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    })
+    public ResponseEntity<UserStatsResponse> getUserStats(
+            @Parameter(description = "Filter by username (partial match)") @RequestParam(required = false) String username,
+            @Parameter(description = "Filter by search query (username/displayName)") @RequestParam(required = false) String search,
+            @Parameter(description = "Filter by email (partial match)") @RequestParam(required = false) String email,
+            @Parameter(description = "Filter by exact role (ADMIN, AGENT, USER)") @RequestParam(required = false) Role role,
+            @Parameter(description = "Filter by enabled status") @RequestParam(required = false) Boolean enabled,
+            @Parameter(description = "Filter by expiration status (ALL, VALID, EXPIRED, NO_EXPIRATION)") @RequestParam(required = false) String expirationStatus,
+            @Parameter(description = "Filter by dealer ID") @RequestParam(required = false) Long dealerId
+    ) {
+        String querySearch = org.springframework.util.StringUtils.hasText(search) ? search : username;
+        UserStatsResponse response = userService.getUserStats(querySearch, email, role, enabled, expirationStatus, dealerId);
         return ResponseEntity.ok(response);
     }
 

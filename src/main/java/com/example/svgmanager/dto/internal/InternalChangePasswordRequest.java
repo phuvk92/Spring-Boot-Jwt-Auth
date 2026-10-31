@@ -1,5 +1,7 @@
 package com.example.svgmanager.dto.internal;
 
+import com.example.svgmanager.util.PasswordUtils;
+
 import com.fasterxml.jackson.annotation.JsonAlias;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotBlank;
@@ -26,6 +28,11 @@ public record InternalChangePasswordRequest(
         @JsonAlias({"ip", "ip_address", "diaChiIp", "dia_chi_ip"})
         String ipAddress
 ) {
+    public InternalChangePasswordRequest {
+        currentPassword = PasswordUtils.trimPassword(currentPassword);
+        newPassword = PasswordUtils.trimPassword(newPassword);
+        confirmPassword = PasswordUtils.trimPassword(confirmPassword);
+    }
     public InternalChangePasswordRequest(String currentPassword, String newPassword, String confirmPassword) {
         this(currentPassword, newPassword, confirmPassword, null, null);
     }

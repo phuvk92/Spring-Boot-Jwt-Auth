@@ -1,5 +1,7 @@
 package com.example.svgmanager.dto.internal;
 
+import com.example.svgmanager.util.PasswordUtils;
+
 import com.fasterxml.jackson.annotation.JsonAlias;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotBlank;

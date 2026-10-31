@@ -1,9 +1,13 @@
 package com.example.svgmanager.service.impl;
 
+import com.example.svgmanager.util.PasswordUtils;
+
 import com.example.svgmanager.entity.Role;
 import com.example.svgmanager.exception.BadRequestException;
 import com.example.svgmanager.exception.ConflictException;
+import com.example.svgmanager.exception.ErrorCodes;
 import com.example.svgmanager.service.KeycloakUserService;
+import com.example.svgmanager.util.KeycloakErrorParser;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -82,7 +86,7 @@ public class KeycloakUserServiceImpl implements KeycloakUserService {
             throw new BadRequestException("Failed to obtain admin token from Keycloak");
         } catch (Exception e) {
             log.error("Error obtaining Keycloak admin token: {}", e.getMessage());
-            throw new BadRequestException("Keycloak service is unavailable: " + e.getMessage());
+            throw KeycloakErrorParser.parseException(e, "getAdminToken");
         }
     }
 
@@ -158,12 +162,12 @@ public class KeycloakUserServiceImpl implements KeycloakUserService {
             throw new BadRequestException("Failed to create user in Keycloak");
         } catch (HttpClientErrorException.Conflict e) {
             log.warn("Keycloak conflict creating user '{}': {}", username, e.getMessage());
-            throw new ConflictException("User already exists in Keycloak with username or email");
+            throw KeycloakErrorParser.parseException(e, "createUser:" + username);
         } catch (ConflictException e) {
             throw e;
         } catch (Exception e) {
-            log.error("Failed to create user in Keycloak: {}", e.getMessage());
-            throw new BadRequestException("Keycloak user creation failed: " + e.getMessage());
+            log.error("Failed to create user in Keycloak for username '{}': {}", username, e.getMessage());
+            throw KeycloakErrorParser.parseException(e, "createUser:" + username);
         }
     }
 
@@ -230,7 +234,41 @@ public class KeycloakUserServiceImpl implements KeycloakUserService {
                     keycloakUserId, email, enabled, fullName);
         } catch (Exception e) {
             log.error("Failed to update user in Keycloak: id={}, error={}", keycloakUserId, e.getMessage());
-            throw new BadRequestException("Keycloak user update failed: " + e.getMessage());
+            throw KeycloakErrorParser.parseException(e, "updateUser:" + keycloakUserId);
+        }
+    }
+
+    @Override
+    public void updateUsername(String keycloakUserId, String newUsername) {
+        if (!syncEnabled || !StringUtils.hasText(keycloakUserId) || !StringUtils.hasText(newUsername)) {
+            return;
+        }
+
+        String adminToken = getAdminToken();
+        String updateUrl = getBaseUrl() + "/admin/realms/" + realm + "/users/" + keycloakUserId;
+
+        Map<String, Object> updatePayload = new HashMap<>();
+        updatePayload.put("username", newUsername);
+
+        try {
+            restClient.put()
+                    .uri(updateUrl)
+                    .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(updatePayload)
+                    .retrieve()
+                    .toBodilessEntity();
+
+            log.info("[KEYCLOAK_USERNAME_UPDATED] Updated username in Keycloak: id={}, newUsername='{}'",
+                    keycloakUserId, newUsername);
+        } catch (HttpClientErrorException.Conflict e) {
+            log.warn("Keycloak conflict updating username to '{}': {}", newUsername, e.getMessage());
+            throw new ConflictException("Tên đăng nhập '" + newUsername + "' đã tồn tại trên Keycloak", ErrorCodes.USERNAME_ALREADY_EXISTS, "username");
+        } catch (ConflictException e) {
+            throw e;
+        } catch (Exception e) {
+            log.error("Failed to update username in Keycloak: id={}, error={}", keycloakUserId, e.getMessage());
+            throw KeycloakErrorParser.parseException(e, "updateUsername:" + newUsername);
         }
     }
 
@@ -375,7 +413,7 @@ public class KeycloakUserServiceImpl implements KeycloakUserService {
             log.info("[KEYCLOAK_PASSWORD_RESET] Password reset in Keycloak for user id={}", keycloakUserId);
         } catch (Exception e) {
             log.error("Failed to reset password in Keycloak: id={}, error={}", keycloakUserId, e.getMessage());
-            throw new BadRequestException("Failed to reset password: " + e.getMessage());
+            throw KeycloakErrorParser.parseException(e, "resetPassword:" + keycloakUserId);
         }
     }
 

@@ -1,5 +1,8 @@
 package com.example.svgmanager.dto.request;
 
+import com.example.svgmanager.util.PasswordUtils;
+import com.fasterxml.jackson.annotation.JsonSetter;
+
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
@@ -19,14 +22,14 @@ public class ResetPasswordRequest {
     }
 
     public ResetPasswordRequest(String newPassword) {
-        this.newPassword = newPassword;
+        this.newPassword = PasswordUtils.trimPassword(newPassword);
     }
 
     public String getNewPassword() {
-        return newPassword;
+        return PasswordUtils.trimPassword(newPassword);
     }
 
     public void setNewPassword(String newPassword) {
-        this.newPassword = newPassword;
+        this.newPassword = PasswordUtils.trimPassword(newPassword);
     }
 }

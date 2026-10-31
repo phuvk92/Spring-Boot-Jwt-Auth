@@ -5,6 +5,8 @@ import java.time.LocalDate;
 import java.util.List;
 
 import com.example.svgmanager.entity.Role;
+import com.example.svgmanager.util.PasswordUtils;
+import com.fasterxml.jackson.annotation.JsonSetter;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
@@ -15,8 +17,10 @@ import jakarta.validation.constraints.Size;
 @Schema(description = "Request object for creating a new user by Admin or Agent")
 public class CreateUserRequest {
 
-    @Size(max = 255, message = "Username cannot exceed 255 characters")
-    @Schema(example = "agent01@gmail.com", description = "Tên đăng nhập (tùy chọn, nếu để trống sẽ tự động lấy theo email/gmail)")
+    @NotBlank(message = "Tên đăng nhập không được để trống")
+    @Size(min = 3, max = 50, message = "Tên đăng nhập phải từ 3 đến 50 ký tự")
+    @Pattern(regexp = "^[A-Za-z0-9_-]+$", message = "Chỉ được sử dụng chữ cái tiếng Anh, số, dấu gạch dưới (_) và dấu gạch ngang (-)")
+    @Schema(example = "agent_001", description = "Tên đăng nhập (chỉ gồm chữ cái tiếng Anh, chữ số, dấu _ và -)")
     private String username;
 
     @NotBlank(message = "Địa chỉ email/gmail là bắt buộc")
@@ -69,11 +73,11 @@ public class CreateUserRequest {
     }
 
     public CreateUserRequest(String username, String email, String fullName, String phone, String password, Role role, Long agentId, Long dealerId, Boolean enabled) {
-        this.username = username;
+        this.username = com.example.svgmanager.util.UsernameUtils.trimUsername(username);
         this.email = email;
         this.fullName = fullName;
         this.phone = phone;
-        this.password = password;
+        this.password = PasswordUtils.trimPassword(password);
         this.role = role;
         this.agentId = agentId;
         this.dealerId = dealerId;
@@ -99,7 +103,7 @@ public class CreateUserRequest {
         private List<Long> partCategoryIds;
 
         public Builder username(String username) {
-            this.username = username;
+            this.username = com.example.svgmanager.util.UsernameUtils.trimUsername(username);
             return this;
         }
 
@@ -119,7 +123,7 @@ public class CreateUserRequest {
         }
 
         public Builder password(String password) {
-            this.password = password;
+            this.password = PasswordUtils.trimPassword(password);
             return this;
         }
 
@@ -172,7 +176,7 @@ public class CreateUserRequest {
     }
 
     public void setUsername(String username) {
-        this.username = username;
+        this.username = com.example.svgmanager.util.UsernameUtils.trimUsername(username);
     }
 
     public String getEmail() {
@@ -200,11 +204,11 @@ public class CreateUserRequest {
     }
 
     public String getPassword() {
-        return password;
+        return PasswordUtils.trimPassword(password);
     }
 
     public void setPassword(String password) {
-        this.password = password;
+        this.password = PasswordUtils.trimPassword(password);
     }
 
     public Role getRole() {

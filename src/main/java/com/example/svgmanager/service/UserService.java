@@ -7,9 +7,19 @@ import com.example.svgmanager.dto.request.UpdateUserRoleRequest;
 import com.example.svgmanager.dto.request.UpdateUserStatusRequest;
 import com.example.svgmanager.dto.response.PageResponse;
 import com.example.svgmanager.dto.response.UserResponse;
+import com.example.svgmanager.dto.response.UserStatsResponse;
 import com.example.svgmanager.entity.Role;
 
 public interface UserService {
+
+    UserStatsResponse getUserStats(
+            String username,
+            String email,
+            Role role,
+            Boolean enabled,
+            String expirationStatus,
+            Long dealerId
+    );
 
     default PageResponse<UserResponse> getUsers(
             String username,

@@ -374,4 +374,125 @@ class UserManagementIntegrationTest {
                 .andExpect(jsonPath("$.dealerId").value(dealer.getId()))
                 .andExpect(jsonPath("$.agentId").value(agent.getId()));
     }
+
+    @Test
+    @DisplayName("Admin cập nhật người dùng có đại lý cũ đã bị xóa mềm sang đại lý active mới -> Thành công")
+    void admin_UpdateUser_FromDeletedDealerToActiveDealer_Success() throws Exception {
+        Dealer deletedDealer = dealerRepository.save(Dealer.builder()
+                .name("Đại lý Đã Xóa")
+                .code("DL-DELETED-TEST")
+                .status("ACTIVE")
+                .packageStatus("ACTIVE")
+                .deleted(true)
+                .build());
+
+        User userInDeletedDealer = userRepository.save(User.builder()
+                .keycloakUserId("kc-user-deleted-dealer-uuid")
+                .username("live_user_test_case")
+                .email("live_user_test_case@example.com")
+                .fullName("Live User Test")
+                .role(Role.USER)
+                .dealer(deletedDealer)
+                .allocatedDays(0)
+                .enabled(true)
+                .deleted(false)
+                .expirationDate(LocalDate.of(2026, 10, 1))
+                .build());
+
+        Dealer newActiveDealer = dealerRepository.save(Dealer.builder()
+                .name("Đại lý Mới Active")
+                .code("DL-NEW-ACTIVE")
+                .status("ACTIVE")
+                .packageStatus("ACTIVE")
+                .maxAccounts(10)
+                .totalAllocatedDays(3600)
+                .usedAllocatedDays(0)
+                .packageExpiryDate(LocalDate.now().plusDays(365))
+                .deleted(false)
+                .build());
+
+        UpdateUserRequest request = UpdateUserRequest.builder()
+                .email("live_user_test_case@example.com")
+                .fullName("Live User Test Đã Cập Nhật")
+                .role(Role.USER)
+                .dealerId(newActiveDealer.getId())
+                .allocatedDays(360)
+                .enabled(true)
+                .build();
+
+        mockMvc.perform(put("/api/users/" + userInDeletedDealer.getId())
+                        .with(jwtAdmin())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(userInDeletedDealer.getId()))
+                .andExpect(jsonPath("$.dealerId").value(newActiveDealer.getId()))
+                .andExpect(jsonPath("$.allocatedDays").value(360));
+
+        User reloadedUser = userRepository.findById(userInDeletedDealer.getId()).orElseThrow();
+        assertThat(reloadedUser.getDealer().getId()).isEqualTo(newActiveDealer.getId());
+        assertThat(reloadedUser.getAllocatedDays()).isEqualTo(360);
+
+        Dealer reloadedDealer = dealerRepository.findById(newActiveDealer.getId()).orElseThrow();
+        assertThat(reloadedDealer.getUsedAllocatedDays()).isEqualTo(360);
+    }
+
+    @Test
+    @DisplayName("Admin tạo người dùng với expirationDate trong quá khứ -> 400 PAST_DATE_NOT_ALLOWED")
+    void admin_CreateUser_PastExpirationDate_ThrowsBadRequest() throws Exception {
+        com.example.svgmanager.dto.request.CreateUserRequest request = com.example.svgmanager.dto.request.CreateUserRequest.builder()
+                .username("past_date_user")
+                .email("past_date_user@example.com")
+                .password("StrongPass123!@#")
+                .role(Role.USER)
+                .expirationDate(LocalDate.now().minusDays(1))
+                .build();
+
+        mockMvc.perform(post("/api/users")
+                        .with(jwtAdmin())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("PAST_DATE_NOT_ALLOWED"));
+    }
+
+    @Test
+    @DisplayName("Admin cập nhật người dùng với expirationDate đổi sang ngày quá khứ -> 400 PAST_DATE_NOT_ALLOWED")
+    void admin_UpdateUser_PastExpirationDate_ThrowsBadRequest() throws Exception {
+        UpdateUserRequest request = UpdateUserRequest.builder()
+                .email(targetUser.getEmail())
+                .fullName(targetUser.getFullName())
+                .role(Role.USER)
+                .expirationDate(LocalDate.now().minusDays(2))
+                .build();
+
+        mockMvc.perform(put("/api/users/" + targetUser.getId())
+                        .with(jwtAdmin())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("PAST_DATE_NOT_ALLOWED"));
+    }
+
+    @Test
+    @DisplayName("Admin cập nhật người dùng giữ nguyên expirationDate cũ trong quá khứ -> Thành công 200")
+    void admin_UpdateUser_KeepExistingPastExpirationDate_Success() throws Exception {
+        LocalDate pastDate = LocalDate.of(2026, 10, 1);
+        targetUser.setExpirationDate(pastDate);
+        userRepository.save(targetUser);
+
+        UpdateUserRequest request = UpdateUserRequest.builder()
+                .email("target_cutter_user@example.com")
+                .fullName("Thợ Cắt Giữ Nguyên Hạn Cũ")
+                .role(Role.USER)
+                .expirationDate(pastDate)
+                .build();
+
+        mockMvc.perform(put("/api/users/" + targetUser.getId())
+                        .with(jwtAdmin())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.expirationDate").value(pastDate.toString()));
+    }
 }

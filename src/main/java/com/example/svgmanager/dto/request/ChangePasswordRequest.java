@@ -1,5 +1,8 @@
 package com.example.svgmanager.dto.request;
 
+import com.example.svgmanager.util.PasswordUtils;
+import com.fasterxml.jackson.annotation.JsonSetter;
+
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
@@ -26,9 +29,9 @@ public class ChangePasswordRequest {
     }
 
     public ChangePasswordRequest(String currentPassword, String newPassword, String confirmPassword) {
-        this.currentPassword = currentPassword;
-        this.newPassword = newPassword;
-        this.confirmPassword = confirmPassword;
+        this.currentPassword = PasswordUtils.trimPassword(currentPassword);
+        this.newPassword = PasswordUtils.trimPassword(newPassword);
+        this.confirmPassword = PasswordUtils.trimPassword(confirmPassword);
     }
 
     public static Builder builder() {
@@ -41,17 +44,17 @@ public class ChangePasswordRequest {
         private String confirmPassword;
 
         public Builder currentPassword(String currentPassword) {
-            this.currentPassword = currentPassword;
+            this.currentPassword = PasswordUtils.trimPassword(currentPassword);
             return this;
         }
 
         public Builder newPassword(String newPassword) {
-            this.newPassword = newPassword;
+            this.newPassword = PasswordUtils.trimPassword(newPassword);
             return this;
         }
 
         public Builder confirmPassword(String confirmPassword) {
-            this.confirmPassword = confirmPassword;
+            this.confirmPassword = PasswordUtils.trimPassword(confirmPassword);
             return this;
         }
 
@@ -61,26 +64,26 @@ public class ChangePasswordRequest {
     }
 
     public String getCurrentPassword() {
-        return currentPassword;
+        return PasswordUtils.trimPassword(currentPassword);
     }
 
     public void setCurrentPassword(String currentPassword) {
-        this.currentPassword = currentPassword;
+        this.currentPassword = PasswordUtils.trimPassword(currentPassword);
     }
 
     public String getNewPassword() {
-        return newPassword;
+        return PasswordUtils.trimPassword(newPassword);
     }
 
     public void setNewPassword(String newPassword) {
-        this.newPassword = newPassword;
+        this.newPassword = PasswordUtils.trimPassword(newPassword);
     }
 
     public String getConfirmPassword() {
-        return confirmPassword;
+        return PasswordUtils.trimPassword(confirmPassword);
     }
 
     public void setConfirmPassword(String confirmPassword) {
-        this.confirmPassword = confirmPassword;
+        this.confirmPassword = PasswordUtils.trimPassword(confirmPassword);
     }
 }

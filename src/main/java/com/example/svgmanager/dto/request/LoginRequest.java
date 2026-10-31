@@ -1,5 +1,8 @@
 package com.example.svgmanager.dto.request;
 
+import com.example.svgmanager.util.PasswordUtils;
+import com.fasterxml.jackson.annotation.JsonSetter;
+
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotBlank;
 
@@ -19,7 +22,7 @@ public class LoginRequest {
 
     public LoginRequest(String username, String password) {
         this.username = username;
-        this.password = password;
+        this.password = PasswordUtils.trimPassword(password);
     }
 
     public static Builder builder() {
@@ -36,7 +39,7 @@ public class LoginRequest {
         }
 
         public Builder password(String password) {
-            this.password = password;
+            this.password = PasswordUtils.trimPassword(password);
             return this;
         }
 
@@ -54,10 +57,10 @@ public class LoginRequest {
     }
 
     public String getPassword() {
-        return password;
+        return PasswordUtils.trimPassword(password);
     }
 
     public void setPassword(String password) {
-        this.password = password;
+        this.password = PasswordUtils.trimPassword(password);
     }
 }

@@ -14,6 +14,8 @@ public interface KeycloakUserService {
 
     void updateUser(String keycloakUserId, String email, Boolean enabled, String fullName);
 
+    void updateUsername(String keycloakUserId, String newUsername);
+
     String findUserIdByUsername(String username);
 
     void deleteUser(String keycloakUserId);

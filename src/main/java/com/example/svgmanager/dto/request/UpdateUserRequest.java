@@ -5,6 +5,9 @@ import java.time.LocalDate;
 import java.util.List;
 
 import com.example.svgmanager.entity.Role;
+import com.example.svgmanager.util.PasswordUtils;
+import com.example.svgmanager.util.UsernameUtils;
+import com.fasterxml.jackson.annotation.JsonSetter;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
@@ -13,6 +16,11 @@ import jakarta.validation.constraints.Size;
 
 @Schema(description = "Request object for updating an existing user")
 public class UpdateUserRequest {
+
+    @Size(min = 3, max = 50, message = "Tên đăng nhập phải từ 3 đến 50 ký tự")
+    @Pattern(regexp = "^[A-Za-z0-9_-]+$", message = "Chỉ được sử dụng chữ cái tiếng Anh, số, dấu gạch dưới (_) và dấu gạch ngang (-)")
+    @Schema(example = "updated_user", description = "Tên đăng nhập mới (tùy chọn, để trống nếu giữ nguyên)")
+    private String username;
 
     @NotBlank(message = "Email cannot be blank")
     @Email(message = "Email must be a valid email address")
@@ -67,6 +75,11 @@ public class UpdateUserRequest {
     }
 
     public UpdateUserRequest(String email, String fullName, String phone, Role role, Long agentId, Long dealerId, Boolean enabled, String password) {
+        this(null, email, fullName, phone, role, agentId, dealerId, enabled, password);
+    }
+
+    public UpdateUserRequest(String username, String email, String fullName, String phone, Role role, Long agentId, Long dealerId, Boolean enabled, String password) {
+        this.username = UsernameUtils.trimUsername(username);
         this.email = email;
         this.fullName = fullName;
         this.phone = phone;
@@ -82,6 +95,7 @@ public class UpdateUserRequest {
     }
 
     public static class Builder {
+        private String username;
         private String email;
         private String fullName;
         private String phone;
@@ -94,6 +108,11 @@ public class UpdateUserRequest {
         private LocalDate expirationDate;
         private Integer maxDevices;
         private List<Long> partCategoryIds;
+
+        public Builder username(String username) {
+            this.username = UsernameUtils.trimUsername(username);
+            return this;
+        }
 
         public Builder email(String email) {
             this.email = email;
@@ -156,13 +175,22 @@ public class UpdateUserRequest {
         }
 
         public UpdateUserRequest build() {
-            UpdateUserRequest req = new UpdateUserRequest(email, fullName, phone, role, agentId, dealerId, enabled, password);
+            UpdateUserRequest req = new UpdateUserRequest(username, email, fullName, phone, role, agentId, dealerId, enabled, password);
             req.setAllocatedDays(this.allocatedDays);
             req.setExpirationDate(this.expirationDate);
             req.setMaxDevices(this.maxDevices);
             req.setPartCategoryIds(this.partCategoryIds);
             return req;
         }
+    }
+
+    public String getUsername() {
+        return UsernameUtils.trimUsername(username);
+    }
+
+    @JsonSetter
+    public void setUsername(String username) {
+        this.username = UsernameUtils.trimUsername(username);
     }
 
     public String getEmail() {
@@ -222,11 +250,12 @@ public class UpdateUserRequest {
     }
 
     public String getPassword() {
-        return password;
+        return PasswordUtils.trimOptionalPassword(password);
     }
 
+    @JsonSetter
     public void setPassword(String password) {
-        this.password = (password != null && !password.trim().isEmpty()) ? password.trim() : null;
+        this.password = PasswordUtils.trimOptionalPassword(password);
     }
 
     public Integer getMaxDevices() {

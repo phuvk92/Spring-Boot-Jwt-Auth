@@ -83,4 +83,17 @@ public interface UserRepository extends JpaRepository<User, Long>, JpaSpecificat
     @Query("SELECT COUNT(u) FROM User u WHERE u.deleted = false AND u.dealer.id = :dealerId " +
             "AND (SELECT COUNT(d) FROM UserDevice d WHERE d.user.id = u.id AND d.status = :status) >= COALESCE(u.maxDevices, :defaultMax)")
     long countUsersAtLimitAndDealerId(@Param("status") DeviceStatus status, @Param("defaultMax") int defaultMax, @Param("dealerId") Long dealerId);
+
+    // ── Thống kê vai trò người dùng (ADMIN, AGENT, USER) ─────────────────────────
+
+    @Query("SELECT COUNT(DISTINCT u.id) FROM User u WHERE (u.deleted IS NULL OR u.deleted = false) AND u.role = :role")
+    long countByRoleAndDeletedFalse(@Param("role") Role role);
+
+    @Query("SELECT COUNT(DISTINCT u.id) FROM User u WHERE (u.deleted IS NULL OR u.deleted = false) AND u.role = :role " +
+            "AND (u.agent.id = :agentId OR (u.dealer IS NOT NULL AND u.dealer.id = :dealerId))")
+    long countByRoleAndDeletedFalseAndAgentScope(@Param("role") Role role, @Param("agentId") Long agentId, @Param("dealerId") Long dealerId);
+
+    @Query("SELECT COUNT(DISTINCT u.id) FROM User u WHERE (u.deleted IS NULL OR u.deleted = false) AND u.role = :role " +
+            "AND u.agent.id = :agentId")
+    long countByRoleAndDeletedFalseAndAgentId(@Param("role") Role role, @Param("agentId") Long agentId);
 }

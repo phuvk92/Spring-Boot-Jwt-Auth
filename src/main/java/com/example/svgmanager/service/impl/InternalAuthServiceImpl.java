@@ -1,5 +1,7 @@
 package com.example.svgmanager.service.impl;
 
+import com.example.svgmanager.util.PasswordUtils;
+
 import com.example.svgmanager.dto.internal.InternalChangePasswordRequest;
 import com.example.svgmanager.dto.internal.InternalChangePasswordResponse;
 import com.example.svgmanager.dto.internal.InternalLoginRequest;
@@ -176,7 +178,7 @@ public class InternalAuthServiceImpl implements InternalAuthService {
             form.add("grant_type", "password");
             form.add("client_id", clientId);
             form.add("username", keycloakUser);
-            form.add("password", request.password());
+            form.add("password", PasswordUtils.trimPassword(request.password()));
             // F-01: thợ chọn ghi nhớ → xin offline token (sống theo Offline Session Idle/Max, không phải 10 giờ như refresh thường)
             if (Boolean.TRUE.equals(request.rememberMe())) {
                 form.add("scope", "offline_access");
@@ -450,19 +452,23 @@ public class InternalAuthServiceImpl implements InternalAuthService {
         String clientInfo = (request != null) ? formatClientInfo(request.device(), request.ipAddress()) : "";
 
         // 1. Validate request inputs
-        if (request == null || request.currentPassword() == null || request.currentPassword().isBlank()) {
+        String currentPassword = PasswordUtils.trimPassword(request.currentPassword());
+        String newPassword = PasswordUtils.trimPassword(request.newPassword());
+        String confirmPassword = PasswordUtils.trimPassword(request.confirmPassword());
+
+        if (currentPassword == null || currentPassword.isBlank()) {
             throw new BadRequestException("Current password is required");
         }
-        if (request.newPassword() == null || request.newPassword().isBlank()) {
+        if (newPassword == null || newPassword.isBlank()) {
             throw new BadRequestException("New password is required");
         }
-        if (request.confirmPassword() == null || request.confirmPassword().isBlank()) {
+        if (confirmPassword == null || confirmPassword.isBlank()) {
             throw new BadRequestException("Confirm password is required");
         }
-        if (!request.newPassword().equals(request.confirmPassword())) {
+        if (!newPassword.equals(confirmPassword)) {
             throw new BadRequestException("Confirm password does not match new password");
         }
-        if (request.newPassword().equals(request.currentPassword())) {
+        if (newPassword.equals(currentPassword)) {
             throw new BadRequestException("New password must be different from current password");
         }
 
@@ -482,7 +488,7 @@ public class InternalAuthServiceImpl implements InternalAuthService {
             form.add("grant_type", "password");
             form.add("client_id", clientId);
             form.add("username", username);
-            form.add("password", request.currentPassword());
+            form.add("password", currentPassword);
 
             ResponseEntity<Map> response = restClient.post()
                     .uri(tokenUri)
@@ -506,7 +512,7 @@ public class InternalAuthServiceImpl implements InternalAuthService {
         }
 
         // 4. Update password via Keycloak admin service
-        keycloakUserService.resetPassword(keycloakUserId, request.newPassword());
+        keycloakUserService.resetPassword(keycloakUserId, newPassword);
 
         // 4b. F-01: mật khẩu đã lộ → thu hồi mọi phiên khác của user (kể cả offline token trên máy ghi nhớ).
         //     Phiên đang đổi mật khẩu giữ lại để thợ không bị đá ra giữa chừng.
