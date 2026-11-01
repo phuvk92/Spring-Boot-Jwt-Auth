@@ -112,7 +112,10 @@ public class SecurityConfig {
                                 "/api/internal/auth/login",
                                 "/api/internal/auth/refresh-token",
                                 "/api/internal/auth/refresh",
-                                "/api/internal/auth/logout"
+                                "/api/internal/auth/logout",
+                                "/api/internal/v2/shares/*/verify",
+                                "/api/internal/v2/shares/*/preview",
+                                "/api/internal/v2/shares/*/download"
                         ).permitAll()
                         // Internal client endpoints
                         .requestMatchers("/api/internal/**").hasAnyRole("ADMIN", "AGENT", "USER")

@@ -96,6 +96,20 @@ public final class ErrorCodes {
     /** Lỗi tích hợp với dịch vụ xác thực Keycloak. */
     public static final String KEYCLOAK_ERROR = "KEYCLOAK_ERROR";
 
+    // --- Client Share Error Codes (V2 Share ID & Password) ---
+    /** Không tìm thấy lượt chia sẻ hoặc liên kết không hợp lệ. */
+    public static final String CLIENT_SHARE_NOT_FOUND = "CLIENT_SHARE_NOT_FOUND";
+    /** Lượt chia sẻ đã bị thu hồi bởi người tạo. */
+    public static final String CLIENT_SHARE_REVOKED = "CLIENT_SHARE_REVOKED";
+    /** Lượt chia sẻ đã hết hạn sử dụng. */
+    public static final String CLIENT_SHARE_EXPIRED = "CLIENT_SHARE_EXPIRED";
+    /** Không có quyền thực hiện thao tác trên lượt chia sẻ này. */
+    public static final String CLIENT_SHARE_FORBIDDEN = "CLIENT_SHARE_FORBIDDEN";
+    /** Mật khẩu truy cập lượt chia sẻ không chính xác. */
+    public static final String CLIENT_SHARE_INVALID_PASSWORD = "CLIENT_SHARE_INVALID_PASSWORD";
+    /** Mã xác thực chia sẻ (Share Token) không hợp lệ hoặc đã hết hạn. */
+    public static final String CLIENT_SHARE_TOKEN_INVALID = "CLIENT_SHARE_TOKEN_INVALID";
+
     private ErrorCodes() {
     }
 }

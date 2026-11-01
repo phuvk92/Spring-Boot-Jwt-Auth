@@ -45,6 +45,15 @@ public class UserSvgFileV2Share {
     @Column(nullable = false, length = 20)
     private String status = "ACTIVE";
 
+    @Column(name = "revoked_at")
+    private LocalDateTime revokedAt;
+
+    @Column(name = "revoked_by_id")
+    private Long revokedById;
+
+    @Column(name = "revoke_reason", columnDefinition = "TEXT")
+    private String revokeReason;
+
     @CreatedDate
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
@@ -70,6 +79,12 @@ public class UserSvgFileV2Share {
     public void setSharedByUser(User sharedByUser) { this.sharedByUser = sharedByUser; }
     public String getStatus() { return status; }
     public void setStatus(String status) { this.status = status; }
+    public LocalDateTime getRevokedAt() { return revokedAt; }
+    public void setRevokedAt(LocalDateTime revokedAt) { this.revokedAt = revokedAt; }
+    public Long getRevokedById() { return revokedById; }
+    public void setRevokedById(Long revokedById) { this.revokedById = revokedById; }
+    public String getRevokeReason() { return revokeReason; }
+    public void setRevokeReason(String revokeReason) { this.revokeReason = revokeReason; }
     public LocalDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
     public LocalDateTime getUpdatedAt() { return updatedAt; }

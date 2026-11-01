@@ -756,6 +756,94 @@ def create_document():
         title="QUY TẮC TRUY VẾT & AUDIT LOG DÀNH CHO CLIENT TÍCH HỢP"
     )
 
+
+    add_header_styled(doc, "3.5. Nhóm Internal API V2 – Chia Sẻ File SVG Giữa Các Client (Client-to-Client SVG Sharing)", level=2)
+    p_c2c = doc.add_paragraph()
+    p_c2c.add_run(
+        "Chức năng Chia Sẻ File SVG Giữa Các Client (Client-to-Client SVG Sharing) cho phép thợ cắt (Client A) chủ động chia sẻ file SVG thuộc quyền sở hữu của mình cho thợ cắt khác (Client B) thông qua cơ chế mã hoá và bảo vệ bằng Share ID và Mật khẩu riêng biệt. "
+        "Hệ thống duy trì hai cơ chế chia sẻ độc lập: Admin chia sẻ cho Client và Client chia sẻ trực tiếp cho Client.\n\n"
+        "1. Quy tắc sinh Share ID an toàn:\n"
+        "   • Share ID có định dạng ddMMyyyy + 6 ký tự ngẫu nhiên an toàn mật mã (SecureRandom), ví dụ: 01112026Ab1234.\n"
+        "   • Phần ngày tháng ddMMyyyy được lấy theo múi giờ chuẩn Asia/Ho_Chi_Minh.\n"
+        "   • Ràng buộc UNIQUE constraint trong Database đảm bảo tuyệt đối không trùng lặp; tự động thử lại khi có va chạm collision.\n"
+        "   • Share ID đã thu hồi tuyệt đối không được kích hoạt lại hoặc tái sử dụng.\n\n"
+        "2. Bảo vệ mật khẩu & Phòng chống Brute-Force:\n"
+        "   • Mật khẩu do Client A tự cấu hình, được Backend băm một chiều an toàn bằng BCrypt.\n"
+        "   • Tuyệt đối không lưu plaintext password, không ghi log và không trả về password trong response.\n"
+        "   • Cơ chế chống dò mật khẩu (Brute-force Protection): Sau 5 lần nhập sai mật khẩu liên tiếp, lượt chia sẻ sẽ tự động bị khoá tạm thời trong vòng 15 phút (trả mã lỗi RATE_LIMIT_EXCEEDED / 429 Too Many Requests).\n\n"
+        "3. Quy trình Thu hồi (Unshare / Revoke) & Vô hiệu hoá Token tức thì:\n"
+        "   • Client A có toàn quyền xem danh sách và thu hồi lượt chia sẻ do mình tạo bất cứ lúc nào (DELETE /api/internal/v2/shares/{shareId}).\n"
+        "   • Khi thu hồi: Trạng thái chuyển thành REVOKED, lưu vết revoked_at, revoked_by và lý do thu hồi. Thao tác có tính chất idempotent.\n"
+        "   • File SVG gốc của Client A KHÔNG bị xoá.\n"
+        "   • Mọi Share Token đã cấp trước đó cho Client B lập tức mất hiệu lực ngay tại thời điểm thu hồi, do toàn bộ endpoint Preview/Download đều truy vấn trạng thái thời gian thực từ cơ sở dữ liệu."
+    )
+
+    c2c_headers = ["Phương thức", "Endpoint", "Xác thực", "Chức năng & Mô tả bảo mật"]
+    c2c_data = [
+        ["POST", "/api/internal/v2/shares", "JWT Client A", "Tạo lượt chia sẻ file SVG: Sinh Share ID ngẫu nhiên, hash BCrypt mật khẩu, lưu CSDL và trả về Share ID"],
+        ["GET", "/api/internal/v2/shares", "JWT Client A", "Xem danh sách lượt chia sẻ do A tạo: Hỗ trợ phân trang, tìm kiếm theo keyword, lọc status (ACTIVE, REVOKED, EXPIRED), date range"],
+        ["GET", "/api/internal/v2/shares/{shareId}", "JWT Owner/ADMIN", "Xem chi tiết lượt chia sẻ: Bao gồm số lượt verify, preview, download, thời điểm thu hồi (chỉ Owner hoặc Admin)"],
+        ["DELETE", "/api/internal/v2/shares/{shareId}", "JWT Owner/ADMIN", "Thu hồi lượt chia sẻ (Unshare): Vô hiệu hóa Share ID và mọi Share Token ngay lập tức, không xóa file gốc"],
+        ["POST", "/api/internal/v2/shares/{shareId}/verify", "Public / Client B", "Client B nhập Share ID + Password: Xác thực BCrypt, sinh Share Token (HMAC-SHA256, thời hạn 60 phút)"],
+        ["GET", "/api/internal/v2/shares/{shareId}/preview", "Share Token", "Xem trước file SVG chia sẻ: Giải mã AES-256-GCM on-the-fly, stream inline kèm header CSP & X-Content-Type-Options"],
+        ["GET", "/api/internal/v2/shares/{shareId}/download", "Share Token", "Tải xuống file SVG chia sẻ: Giải mã AES-256-GCM on-the-fly, trả về attachment kèm tên file gốc"]
+    ]
+    add_custom_table(doc, c2c_headers, c2c_data, [1.1, 2.7, 1.1, 1.6])
+
+    p_c2c_sample1 = doc.add_paragraph()
+    p_c2c_sample1.add_run("Ví dụ Request Body Tạo Lượt Chia Sẻ (POST /api/internal/v2/shares):").bold = True
+    c2c_sample_req1 = '''{
+  "fileId": 8001,
+  "password": "MySecretPass@2026",
+  "expiresAt": "2026-12-31T23:59:59"
+}'''
+    add_code_block(doc, c2c_sample_req1)
+
+    p_c2c_sample2 = doc.add_paragraph()
+    p_c2c_sample2.add_run("Ví dụ Response Tạo Lượt Chia Sẻ Thành Công (HTTP 201 Created):").bold = True
+    c2c_sample_res1 = '''{
+  "shareId": "01112026Ab1234",
+  "fileId": 8001,
+  "fileName": "BMW_X5_G05_DOOR_ENCRYPTED.svg",
+  "createdAt": "2026-11-01T10:15:30",
+  "status": "ACTIVE",
+  "expiresAt": "2026-12-31T23:59:59"
+}'''
+    add_code_block(doc, c2c_sample_res1)
+
+    p_c2c_sample3 = doc.add_paragraph()
+    p_c2c_sample3.add_run("Ví dụ Request Xác Thực & Nhận Share Token (POST /api/internal/v2/shares/01112026Ab1234/verify):").bold = True
+    c2c_sample_req2 = '''{
+  "password": "MySecretPass@2026"
+}'''
+    add_code_block(doc, c2c_sample_req2)
+
+    p_c2c_sample4 = doc.add_paragraph()
+    p_c2c_sample4.add_run("Ví dụ Response Xác Thực Thành Công (HTTP 200 OK):").bold = True
+    c2c_sample_res2 = '''{
+  "shareId": "01112026Ab1234",
+  "fileId": 8001,
+  "fileName": "BMW_X5_G05_DOOR_ENCRYPTED.svg",
+  "shareToken": "eyJhbGciOiJIUzI1NiJ9...",
+  "expiresAt": "2026-11-01T11:15:30"
+}'''
+    add_code_block(doc, c2c_sample_res2)
+
+    add_callout(
+        doc,
+        "Sự kiện Audit Log được ghi nhận tự động cho Client Share:\n"
+        "• CLIENT_SHARE_CREATED: Client A tạo thành công một lượt chia sẻ mới.\n"
+        "• CLIENT_SHARE_LISTED: Client A truy vấn danh sách các lượt chia sẻ của mình.\n"
+        "• CLIENT_SHARE_VIEWED: Chủ sở hữu hoặc Admin xem chi tiết thông số lượt chia sẻ.\n"
+        "• CLIENT_SHARE_REVOKED: Chủ sở hữu hoặc Admin thu hồi quyền truy cập của lượt chia sẻ.\n"
+        "• CLIENT_SHARE_VERIFY_SUCCESS: Client B xác thực thành công Share ID và Password.\n"
+        "• CLIENT_SHARE_VERIFY_FAILED: Nhập sai mật khẩu hoặc Share ID không tồn tại/đã bị thu hồi.\n"
+        "• CLIENT_SHARE_PREVIEWED: Truy cập xem trước bản vẽ SVG bằng Share Token.\n"
+        "• CLIENT_SHARE_DOWNLOADED: Tải xuống file SVG nhị phân bằng Share Token.\n\n"
+        "Nguyên tắc an toàn: Audit log lưu vết đầy đủ Client A, Client B, Share ID, File ID, IP, thời gian nhưng TUYỆT ĐỐI KHÔNG lưu mật khẩu, chuỗi băm mật khẩu, Share Token hay nội dung file SVG.",
+        title="TIÊU CHUẨN AUDIT LOG CHO CHỨC NĂNG CLIENT SHARE V2"
+    )
+
     # ==================== CHƯƠNG 4: NHÓM API CẤU HÌNH XE ====================
     add_header_styled(doc, "4. Nhóm API Quản lý Cấu hình Xe (Vehicle Configurations)", level=1)
     
@@ -1057,7 +1145,80 @@ def create_document():
     ]
     add_custom_table(doc, audit_v2_headers, audit_v2_data, [1.1, 2.5, 1.1, 1.8])
 
-    # ==================== CHƯƠNG 8: BẢNG MÃ LỖI & BEST PRACTICES ====================
+
+    add_header_styled(doc, "7.5. Nhóm API Quản Trị Tập Trung File Share (/api/admin/shares)", level=2)
+    add_callout(
+        doc,
+        "1. Quản trị tập trung toàn diện: ADMIN quản lý và giám sát cả 2 loại hình chia sẻ file SVG trong hệ thống: ADMIN -> CLIENT (chia sẻ trực tiếp) và CLIENT A -> CLIENT B (chia sẻ bằng Share ID + Password).\n"
+        "2. Thống kê thời gian thực: Cung cấp API thống kê tổng quan (tổng lượt share, phân bổ theo loại, trạng thái ACTIVE/REVOKED/EXPIRED, tổng số lượt xem, tải xuống, xác thực, số lượng client hoạt động và lượt tạo mới hôm nay/tháng này).\n"
+        "3. Tra cứu & Phân trang đa tiêu chí: Hỗ trợ tìm kiếm theo Share ID, tên file, File ID, username, Client ID; lọc theo loại chia sẻ, trạng thái, đại lý và khoảng thời gian tạo.\n"
+        "4. Xem chi tiết & Timeline sự kiện: Xem toàn bộ metadata file, người chia sẻ, người nhận, thời gian hết hạn, số lượt truy cập và toàn bộ timeline các sự kiện thao tác.\n"
+        "5. Quyền Thu Hồi (Revoke) của ADMIN: ADMIN có quyền chủ động thu hồi bất kỳ lượt chia sẻ nào. Khi thu hồi, trạng thái chuyển sang REVOKED, Share ID và mọi Token đã cấp lập tức bị vô hiệu hóa; thao tác an toàn (idempotent), không xóa file gốc và ghi vết đầy đủ vào Audit Log.",
+        title="QUẢN TRỊ TẬP TRUNG FILE SHARE (ADMIN)"
+    )
+
+    share_admin_headers = ["Phương thức", "Endpoint", "Vai trò", "Chức năng"]
+    share_admin_data = [
+        ["GET", "/api/admin/shares", "ADMIN", "Lấy danh sách hợp nhất toàn bộ lượt chia sẻ (Admin Share & Client Share), hỗ trợ phân trang, sắp xếp và lọc đa tiêu chí"],
+        ["GET", "/api/admin/shares/statistics", "ADMIN", "Lấy số liệu thống kê tổng hợp toàn hệ thống về lượt chia sẻ, truy cập và trạng thái"],
+        ["GET", "/api/admin/shares/{shareId}", "ADMIN", "Xem chi tiết thông số, người chia sẻ/nhận, trạng thái và thống kê truy cập của một lượt chia sẻ"],
+        ["GET", "/api/admin/shares/{shareId}/history", "ADMIN", "Lấy danh sách timeline lịch sử thao tác của riêng lượt chia sẻ tương ứng (Create, Verify, Preview, Download, Revoke)"],
+        ["GET", "/api/admin/shares/activity-history", "ADMIN", "Lấy danh sách lịch sử hoạt động chia sẻ file SVG toàn hệ thống, hỗ trợ phân trang và lọc theo hành động, kết quả"],
+        ["POST", "/api/admin/shares/{shareId}/revoke", "ADMIN", "ADMIN thu hồi quyền chia sẻ (vô hiệu hoá tức thì quyền truy cập và token đã cấp, lưu lý do thu hồi)"]
+    ]
+    add_custom_table(doc, share_admin_headers, share_admin_data, [1.1, 2.5, 1.1, 1.8])
+
+    p_sample_revoke = doc.add_paragraph()
+    p_sample_revoke.add_run("Ví dụ Request Body ADMIN Thu Hồi Lượt Chia Sẻ (POST /api/admin/shares/{shareId}/revoke):").bold = True
+    sample_revoke_json = """{
+  "reason": "Vi phạm chính sách bảo mật chia sẻ dữ liệu hoặc yêu cầu từ quản trị viên"
+}"""
+    add_code_block(doc, sample_revoke_json)
+
+    p_sample_share_item = doc.add_paragraph()
+    p_sample_share_item.add_run("Ví dụ Response Chi Tiết Lượt Chia Sẻ (AdminShareItemResponse):").bold = True
+    sample_share_item_json = """{
+  "uid": "C2C_101",
+  "originalId": 101,
+  "shareId": "01112026Ab1234",
+  "shareType": "CLIENT_TO_CLIENT",
+  "fileId": 450,
+  "fileName": "bonnet_cut_model_v2.svg",
+  "categoryName": "PPF Pre-cut",
+  "sharedBy": {
+    "id": 12,
+    "username": "client_hcm_01",
+    "fullName": "Đại lý HCM - Kỹ thuật viên A",
+    "role": "USER",
+    "dealerId": 3,
+    "dealerName": "Đại Lý Miền Nam"
+  },
+  "recipient": {
+    "id": 15,
+    "username": "client_hn_02",
+    "fullName": "Chi nhánh Hà Nội - Kỹ thuật viên B",
+    "role": "USER",
+    "dealerId": 2,
+    "dealerName": "Đại Lý Miền Bắc"
+  },
+  "status": "ACTIVE",
+  "expiresAt": "2026-11-08T10:00:00",
+  "revokedAt": null,
+  "revokedBy": null,
+  "revokeReason": null,
+  "verifyCount": 3,
+  "failedVerifyCount": 0,
+  "previewCount": 5,
+  "downloadCount": 2,
+  "lastAccessedAt": "2026-11-01T10:30:00",
+  "createdAt": "2026-11-01T08:00:00",
+  "updatedAt": "2026-11-01T10:30:00",
+  "version": "V2"
+}"""
+    add_code_block(doc, sample_share_item_json)
+
+
+        # ==================== CHƯƠNG 8: BẢNG MÃ LỖI & BEST PRACTICES ====================
     add_header_styled(doc, "8. Bảng Mã Lỗi Nghiệp Vụ & Khuyến Nghị Tích Hợp", level=1)
 
     add_header_styled(doc, "8.1. Bảng Tra Cứu Toàn Bộ Mã Lỗi Hệ Thống (Business Error Codes)", level=2)
@@ -1090,7 +1251,14 @@ def create_document():
         ["409 Conflict", "CONFIG_ALREADY_EXISTS", "Cấu hình xe cho nhóm sản phẩm, hãng, dòng, năm và mã đời này đã tồn tại."],
         ["409 Conflict", "CONFIG_IN_USE", "Cấu hình xe đang được gán cho các file SVG trong hệ thống, không thể xóa."],
         ["409 Conflict", "USER_FILE_SHARE_ALREADY_EXISTS", "File SVG đã được chia sẻ cho người dùng này trước đó."],
-        ["429 Too Many Requests", "RATE_LIMIT_EXCEEDED", "Tần suất gửi request vượt quá giới hạn an toàn của hệ thống."]
+        ["400 Bad Request", "CLIENT_SHARE_INVALID_REQUEST", "Dữ liệu yêu cầu chia sẻ file SVG không hợp lệ hoặc thiếu thông tin bắt buộc."],
+        ["401 Unauthorized", "CLIENT_SHARE_INVALID_PASSWORD", "Mật khẩu chia sẻ không chính xác. Sau 5 lần nhập sai liên tiếp sẽ bị khoá tạm thời."],
+        ["401 Unauthorized", "CLIENT_SHARE_TOKEN_INVALID", "Share Token không hợp lệ, chữ ký bị giả mạo hoặc token đã hết hạn sử dụng."],
+        ["403 Forbidden", "CLIENT_SHARE_FORBIDDEN", "Không có quyền thao tác trên lượt chia sẻ này (chỉ chủ sở hữu Owner hoặc ADMIN mới có quyền)."],
+        ["404 Not Found", "CLIENT_SHARE_NOT_FOUND", "Không tìm thấy lượt chia sẻ tương ứng với Share ID được cung cấp."],
+        ["410 Gone", "CLIENT_SHARE_REVOKED", "Lượt chia sẻ này đã bị chủ sở hữu hoặc quản trị viên thu hồi quyền truy cập (Unshare)."],
+        ["410 Gone", "CLIENT_SHARE_EXPIRED", "Lượt chia sẻ này đã hết thời hạn hiệu lực."],
+        ["429 Too Many Requests", "RATE_LIMIT_EXCEEDED", "Tần suất gửi request vượt quá giới hạn hoặc lượt share bị khoá tạm thời do nhập sai password quá 5 lần."]
     ]
     add_custom_table(doc, err_headers, err_data, [1.4, 2.3, 2.8])
 

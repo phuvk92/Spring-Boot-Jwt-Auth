@@ -80,6 +80,18 @@ public class CurrentUserService {
     }
 
     @Transactional
+    public Optional<User> getOptionalCurrentUser() {
+        if (getCurrentJwt().isEmpty()) {
+            return Optional.empty();
+        }
+        try {
+            return Optional.of(getCurrentUser());
+        } catch (Exception e) {
+            return Optional.empty();
+        }
+    }
+
+    @Transactional
     public User getCurrentUser() {
         Jwt jwt = getCurrentJwt()
                 .orElseThrow(() -> new UnauthorizedException("No authenticated JWT token found in security context"));
