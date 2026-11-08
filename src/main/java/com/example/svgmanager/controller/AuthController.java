@@ -72,6 +72,22 @@ public class AuthController {
         return ResponseEntity.ok(response);
     }
 
+    @PutMapping("/me")
+    @SecurityRequirement(name = "bearerAuth")
+    @Operation(summary = "Update current user profile", description = "Updates full name, phone number, and avatar for the authenticated user")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Profile updated successfully",
+                    content = @Content(schema = @Schema(implementation = UserResponse.class))),
+            @ApiResponse(responseCode = "400", description = "Validation error or invalid avatar format",
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+            @ApiResponse(responseCode = "401", description = "Unauthorized - Valid JWT token required",
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    })
+    public ResponseEntity<UserResponse> updateCurrentUser(@Valid @RequestBody com.example.svgmanager.dto.request.UpdateProfileRequest request) {
+        UserResponse response = authService.updateProfile(request);
+        return ResponseEntity.ok(response);
+    }
+
     @PostMapping("/change-password")
     @SecurityRequirement(name = "bearerAuth")
     @Operation(summary = "Change password", description = "Allows authenticated user to change password")

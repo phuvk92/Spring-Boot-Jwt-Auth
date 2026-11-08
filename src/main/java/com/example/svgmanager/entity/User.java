@@ -71,6 +71,12 @@ public class User {
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
 
+    @Column(name = "avatar", columnDefinition = "TEXT")
+    private String avatar;
+
+    @Column(name = "last_login_at")
+    private LocalDateTime lastLoginAt;
+
     public User() {
     }
 
@@ -354,5 +360,21 @@ public class User {
             return false;
         }
         return this.expirationDate != null && currentDate != null && currentDate.isAfter(this.expirationDate);
+    }
+
+    public String getAvatar() {
+        return avatar;
+    }
+
+    public void setAvatar(String avatar) {
+        this.avatar = avatar;
+    }
+
+    public LocalDateTime getLastLoginAt() {
+        return lastLoginAt;
+    }
+
+    public void setLastLoginAt(LocalDateTime lastLoginAt) {
+        this.lastLoginAt = lastLoginAt;
     }
 }

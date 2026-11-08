@@ -68,6 +68,9 @@ public class UserMapper {
                 ? user.getMaxDevices()
                 : Math.max(1, defaultMaxDevices));
 
+        response.setAvatar(user.getAvatar());
+        response.setLastLoginAt(user.getLastLoginAt());
+
         if (userPartCategoryPermissionRepository != null && user.getId() != null) {
             List<Long> categoryIds = userPartCategoryPermissionRepository.findPartCategoryIdsByUserId(user.getId());
             response.setPartCategoryIds(categoryIds != null ? categoryIds : Collections.emptyList());

@@ -5,6 +5,7 @@ import com.example.svgmanager.util.PasswordUtils;
 import com.example.svgmanager.dto.request.ChangePasswordRequest;
 import com.example.svgmanager.dto.request.LoginRequest;
 import com.example.svgmanager.dto.request.RefreshTokenRequest;
+import com.example.svgmanager.dto.request.UpdateProfileRequest;
 import com.example.svgmanager.dto.response.AuthResponse;
 import com.example.svgmanager.dto.response.MessageResponse;
 import com.example.svgmanager.dto.response.UserResponse;
@@ -284,6 +285,7 @@ public class AuthServiceImpl implements AuthService {
                 if (user != null) {
                     user.setKeycloakUserId(sub);
                     user.setRole(role);
+                    user.setLastLoginAt(java.time.LocalDateTime.now());
                     user = userRepository.save(user);
                 } else {
                     user = User.builder()
@@ -293,13 +295,15 @@ public class AuthServiceImpl implements AuthService {
                             .role(role)
                             .enabled(true)
                             .build();
+                    user.setLastLoginAt(java.time.LocalDateTime.now());
                     user = userRepository.save(user);
                 }
             } else {
                 if (user.getRole() != role) {
                     user.setRole(role);
-                    user = userRepository.save(user);
                 }
+                user.setLastLoginAt(java.time.LocalDateTime.now());
+                user = userRepository.save(user);
             }
 
             return userMapper.toUserSummaryResponse(user);
@@ -314,6 +318,62 @@ public class AuthServiceImpl implements AuthService {
     public UserResponse getCurrentUser() {
         User user = currentUserService.getCurrentUser();
         return userMapper.toUserResponse(user);
+    }
+
+    @Override
+    @Transactional
+    public UserResponse updateProfile(UpdateProfileRequest request) {
+        User currentUser = currentUserService.getCurrentUser();
+
+        if (request.getFullName() != null) {
+            String name = request.getFullName().trim();
+            currentUser.setFullName(name.isEmpty() ? null : name);
+        }
+
+        if (request.getPhone() != null) {
+            String phone = request.getPhone().trim();
+            currentUser.setPhone(phone.isEmpty() ? null : phone);
+        }
+
+        if (request.getAvatar() != null) {
+            String avatar = request.getAvatar().trim();
+            if (avatar.isEmpty()) {
+                currentUser.setAvatar(null);
+            } else {
+                if (avatar.startsWith("data:image/")) {
+                    if (!avatar.matches("^data:image\\/(png|jpeg|jpg|webp|gif);base64,[A-Za-z0-9+/=]+$")) {
+                        throw new BadRequestException("Ảnh đại diện không hợp lệ. Chỉ chấp nhận định dạng PNG, JPG, WEBP, GIF.");
+                    }
+                    if (avatar.length() > 3_000_000) {
+                        throw new BadRequestException("Kích thước ảnh đại diện quá lớn. Vui lòng chọn ảnh dưới 2MB.");
+                    }
+                    currentUser.setAvatar(avatar);
+                } else if (avatar.startsWith("http://") || avatar.startsWith("https://")) {
+                    if (avatar.length() > 1000) {
+                        throw new BadRequestException("Đường dẫn ảnh đại diện quá dài");
+                    }
+                    currentUser.setAvatar(avatar);
+                } else {
+                    throw new BadRequestException("Định dạng ảnh đại diện không được hỗ trợ");
+                }
+            }
+        }
+
+        currentUser = userRepository.save(currentUser);
+
+        if (auditLogService != null) {
+            auditLogService.log(
+                    currentUser.getUsername(),
+                    currentUser.getRole() != null ? currentUser.getRole().name() : "ADMIN",
+                    "USER_PROFILE_UPDATED",
+                    "User",
+                    currentUser.getId(),
+                    "Cập nhật thông tin hồ sơ cá nhân"
+            );
+        }
+
+        log.info("[PROFILE_UPDATED] User '{}' updated their profile", currentUser.getUsername());
+        return userMapper.toUserResponse(currentUser);
     }
 
     private String getBaseKeycloakUrl() {

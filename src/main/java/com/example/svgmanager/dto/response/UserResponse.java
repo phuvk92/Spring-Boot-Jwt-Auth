@@ -57,6 +57,12 @@ public class UserResponse {
     @Schema(description = "Account last update timestamp", example = "2026-03-30T10:00:00")
     private LocalDateTime updatedAt;
 
+    @Schema(description = "User avatar URL or base64 data")
+    private String avatar;
+
+    @Schema(description = "Last login timestamp", example = "2026-03-30T10:00:00")
+    private LocalDateTime lastLoginAt;
+
     @Schema(description = "Ngày hết hạn tài khoản (yyyy-MM-dd). null = không hết hạn. Riêng ADMIN không áp dụng điều kiện hết hạn.", example = "2026-12-31")
     @JsonFormat(pattern = "yyyy-MM-dd")
     private LocalDate expirationDate;
@@ -396,5 +402,21 @@ public class UserResponse {
 
     public void setPartCategoryIds(List<Long> partCategoryIds) {
         this.partCategoryIds = partCategoryIds;
+    }
+
+    public String getAvatar() {
+        return avatar;
+    }
+
+    public void setAvatar(String avatar) {
+        this.avatar = avatar;
+    }
+
+    public LocalDateTime getLastLoginAt() {
+        return lastLoginAt;
+    }
+
+    public void setLastLoginAt(LocalDateTime lastLoginAt) {
+        this.lastLoginAt = lastLoginAt;
     }
 }
