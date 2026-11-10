@@ -48,6 +48,9 @@ public class WebMvcConfig implements WebMvcConfigurer {
                         "/api/audit-logs/**",
                         "/api/admin/audit/v2/**",
                         "/api/admin/v2/audit-logs/**",
+                        // AccessLogController tự ghi dòng audit có nghĩa (OPEN_FILE…); để interceptor
+                        // ghi thêm "POST /api/v1/access-log" là mỗi lượt mở file ra hai dòng.
+                        "/api/v1/access-log",
                         "/swagger-ui/**",
                         "/swagger-ui.html",
                         "/v3/api-docs/**",
