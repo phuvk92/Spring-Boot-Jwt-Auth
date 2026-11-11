@@ -30,6 +30,9 @@ import java.nio.charset.StandardCharsets;
 @SecurityRequirement(name = "bearerAuth")
 public class InternalUserFilesV2Controller {
 
+    private static final MediaType SVG_MEDIA_TYPE = MediaType.parseMediaType("image/svg+xml;charset=UTF-8");
+    private static final String CSP_HEADER_VALUE = "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; sandbox";
+
     private final InternalUserFileV2Service userFileV2Service;
     private final CurrentUserService currentUserService;
 
@@ -281,14 +284,13 @@ public class InternalUserFilesV2Controller {
         User currentUser = currentUserService.getCurrentUser();
         byte[] bytes = userFileV2Service.getUserFileBytes(currentUser, id);
 
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.parseMediaType("image/svg+xml;charset=UTF-8"));
-        headers.setContentDisposition(ContentDisposition.inline().build());
-        headers.add("X-Content-Type-Options", "nosniff");
-        headers.add("Content-Security-Policy", "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; sandbox");
-        headers.add("Cache-Control", "private, no-store");
-
-        return ResponseEntity.ok().headers(headers).body(bytes);
+        return ResponseEntity.ok()
+                .contentType(SVG_MEDIA_TYPE)
+                .header(HttpHeaders.CONTENT_DISPOSITION, "inline")
+                .header("X-Content-Type-Options", "nosniff")
+                .header("Content-Security-Policy", CSP_HEADER_VALUE)
+                .header("Cache-Control", "private, no-store")
+                .body(bytes);
     }
 
     @DeleteMapping("/{id}")

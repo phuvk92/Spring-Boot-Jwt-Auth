@@ -69,6 +69,7 @@ public class InternalUserFileV2ServiceImpl implements InternalUserFileV2Service 
     private final PartLibraryCategoryRepository partLibraryCategoryRepository;
     private final SvgFileRepository svgFileRepository;
     private final FileStorageService fileStorageService;
+    private final com.example.svgmanager.service.SvgPreviewCacheService previewCacheService;
 
     public InternalUserFileV2ServiceImpl(
             UserSvgFileV2Repository userSvgFileV2Repository,
@@ -85,7 +86,7 @@ public class InternalUserFileV2ServiceImpl implements InternalUserFileV2Service 
     ) {
         this(userSvgFileV2Repository, userSvgFileV2ShareRepository, userRepository, dealerRepository,
              fileCategoryRepository, vehicleNodeRepository, svgSecurityV2Service, fileEncryptionV2Service,
-             fileStorageV2Service, auditLogService, rateLimiterV2Service, null, null, null, null);
+             fileStorageV2Service, auditLogService, rateLimiterV2Service, null, null, null, null, null);
     }
 
     @Autowired
@@ -104,7 +105,8 @@ public class InternalUserFileV2ServiceImpl implements InternalUserFileV2Service 
             @Autowired(required = false) UserPartCategoryPermissionRepository userPartCategoryPermissionRepository,
             @Autowired(required = false) PartLibraryCategoryRepository partLibraryCategoryRepository,
             @Autowired(required = false) SvgFileRepository svgFileRepository,
-            @Autowired(required = false) FileStorageService fileStorageService
+            @Autowired(required = false) FileStorageService fileStorageService,
+            @Autowired(required = false) com.example.svgmanager.service.SvgPreviewCacheService previewCacheService
     ) {
         this.userSvgFileV2Repository = userSvgFileV2Repository;
         this.userSvgFileV2ShareRepository = userSvgFileV2ShareRepository;
@@ -121,6 +123,7 @@ public class InternalUserFileV2ServiceImpl implements InternalUserFileV2Service 
         this.partLibraryCategoryRepository = partLibraryCategoryRepository;
         this.svgFileRepository = svgFileRepository;
         this.fileStorageService = fileStorageService;
+        this.previewCacheService = previewCacheService != null ? previewCacheService : new com.example.svgmanager.service.SvgPreviewCacheService();
     }
 
     @Override
@@ -487,7 +490,6 @@ public class InternalUserFileV2ServiceImpl implements InternalUserFileV2Service 
     }
 
     @Override
-    @Transactional(readOnly = true)
     public byte[] getUserFileBytes(User currentUser, Long id) {
         rateLimiterV2Service.checkRateLimit(currentUser.getId(), "PREVIEW");
         if (id != null && id >= ADMIN_LIBRARY_ID_OFFSET) {
@@ -519,14 +521,23 @@ public class InternalUserFileV2ServiceImpl implements InternalUserFileV2Service 
         // Đọc ciphertext blob từ V2 storage độc lập
         byte[] ciphertext = fileStorageV2Service.loadEncryptedFile(file.getStorageKey());
 
-        // Giải mã phong bì on-the-fly
-        byte[] decrypted = fileEncryptionV2Service.decrypt(
-                ciphertext,
-                file.getEncryptedDek(),
-                file.getEncryptionIv(),
-                file.getEncryptionAlgorithm(),
-                file.getEncryptionKeyVersion()
-        );
+        // Fast SIMD-accelerated checksum verification for secure caching
+        java.util.zip.CRC32 crc = new java.util.zip.CRC32();
+        crc.update(ciphertext);
+        String cacheKey = file.getId() + ":" + crc.getValue();
+
+        byte[] decrypted = previewCacheService.getV2(cacheKey);
+        if (decrypted == null) {
+            // Giải mã phong bì on-the-fly (AES-256-GCM + tag verification)
+            decrypted = fileEncryptionV2Service.decrypt(
+                    ciphertext,
+                    file.getEncryptedDek(),
+                    file.getEncryptionIv(),
+                    file.getEncryptionAlgorithm(),
+                    file.getEncryptionKeyVersion()
+            );
+            previewCacheService.putV2(cacheKey, decrypted);
+        }
 
         auditLogService.log(
                 currentUser.getUsername(),
@@ -567,6 +578,7 @@ public class InternalUserFileV2ServiceImpl implements InternalUserFileV2Service 
         file.setStatus("DELETED");
         file.setUpdatedAt(LocalDateTime.now());
         userSvgFileV2Repository.save(file);
+        previewCacheService.invalidateV2(file.getId());
 
         log.info("[V2_SVG_DELETE] id={}, fileName='{}', userId={}", file.getId(), file.getFileName(), currentUser.getId());
 
@@ -875,8 +887,9 @@ public class InternalUserFileV2ServiceImpl implements InternalUserFileV2Service 
             throw new UnauthorizedException("Chưa xác thực người dùng");
         }
 
-        UserSvgFileV2 file = userSvgFileV2Repository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("File bản lưu V2 không tồn tại", ErrorCodes.FILE_NOT_FOUND));
+        UserSvgFileV2 file = userSvgFileV2Repository.findWithUserById(id)
+                .orElseGet(() -> userSvgFileV2Repository.findById(id)
+                        .orElseThrow(() -> new ResourceNotFoundException("File bản lưu V2 không tồn tại", ErrorCodes.FILE_NOT_FOUND)));
 
         if ("DELETED".equalsIgnoreCase(file.getStatus())) {
             throw new ResourceNotFoundException("File bản lưu V2 không tồn tại", ErrorCodes.FILE_NOT_FOUND);

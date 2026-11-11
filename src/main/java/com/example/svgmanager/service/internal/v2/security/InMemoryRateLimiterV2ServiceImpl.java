@@ -24,32 +24,34 @@ public class InMemoryRateLimiterV2ServiceImpl implements RateLimiterV2Service {
     }
 
     @Override
-    public synchronized void checkRateLimit(Long userId, String action) throws RateLimitExceededException {
+    public void checkRateLimit(Long userId, String action) throws RateLimitExceededException {
         if (!properties.getRateLimit().isEnabled() || userId == null) {
             return;
         }
 
         long now = System.currentTimeMillis();
         long windowStart = now - 60_000L; // Cửa sổ trượt 1 phút
-
         String key = userId + ":" + action;
+
         Deque<Long> timestamps = requestHistory.computeIfAbsent(key, k -> new ArrayDeque<>());
-
-        // Loại bỏ các request đã quá 1 phút
-        while (!timestamps.isEmpty() && timestamps.peekFirst() < windowStart) {
-            timestamps.pollFirst();
-        }
-
         int maxLimit = properties.getRateLimit().getMaxRequestsPerMinute();
-        if (timestamps.size() >= maxLimit) {
-            log.warn("[RATE_LIMIT_TRIGGERED] User {} exceeded rate limit for action {} (current: {}, max: {})",
-                    userId, action, timestamps.size(), maxLimit);
-            throw new RateLimitExceededException(
-                    "Bạn đã thao tác quá nhanh (" + maxLimit + " yêu cầu/phút). Vui lòng thử lại sau 1 phút.",
-                    ErrorCodes.RATE_LIMIT_EXCEEDED
-            );
-        }
 
-        timestamps.addLast(now);
+        synchronized (timestamps) {
+            // Loại bỏ các request đã quá 1 phút
+            while (!timestamps.isEmpty() && timestamps.peekFirst() < windowStart) {
+                timestamps.pollFirst();
+            }
+
+            if (timestamps.size() >= maxLimit) {
+                log.warn("[RATE_LIMIT_TRIGGERED] User {} exceeded rate limit for action {} (current: {}, max: {})",
+                        userId, action, timestamps.size(), maxLimit);
+                throw new RateLimitExceededException(
+                        "Bạn đã thao tác quá nhanh (" + maxLimit + " yêu cầu/phút). Vui lòng thử lại sau 1 phút.",
+                        ErrorCodes.RATE_LIMIT_EXCEEDED
+                );
+            }
+
+            timestamps.addLast(now);
+        }
     }
 }

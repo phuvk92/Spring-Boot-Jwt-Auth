@@ -121,7 +121,7 @@ public class InternalApiV2AuditFilter extends OncePerRequestFilter {
                 String errorCode = resolveErrorCode(request, status, caughtException);
 
                 // 8. Thu thập Principal, User, Role, Dealer và Client ID đã xác minh
-                IdentityDetails identity = resolveIdentity();
+                IdentityDetails identity = resolveIdentity(request);
 
                 // 9. Thu thập Client IP và User-Agent an toàn
                 String clientIp = resolveClientIp(request);
@@ -230,7 +230,7 @@ public class InternalApiV2AuditFilter extends OncePerRequestFilter {
         };
     }
 
-    private IdentityDetails resolveIdentity() {
+    private IdentityDetails resolveIdentity(HttpServletRequest request) {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
 
         if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getPrincipal())) {
@@ -267,13 +267,16 @@ public class InternalApiV2AuditFilter extends OncePerRequestFilter {
                 role = "USER";
             }
 
-            // Tìm thông tin User và Dealer trong database nội bộ (Fetch join để tránh LazyInitializationException)
+            // Tìm thông tin User và Dealer trong database nội bộ (Ưu tiên cache trong request)
             Long userId = null;
             Long dealerId = null;
             String dealerName = null;
             try {
                 Optional<User> userOpt = Optional.empty();
-                if (StringUtils.hasText(keycloakUserId)) {
+                Object cachedObj = request != null ? request.getAttribute(CurrentUserService.CACHED_AUTH_USER_ATTR) : null;
+                if (cachedObj instanceof User cachedUser) {
+                    userOpt = Optional.of(cachedUser);
+                } else if (StringUtils.hasText(keycloakUserId)) {
                     userOpt = userRepository.findByKeycloakUserIdWithDealer(keycloakUserId);
                 }
                 if (userOpt.isEmpty() && StringUtils.hasText(username)) {

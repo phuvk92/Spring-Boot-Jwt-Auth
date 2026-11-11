@@ -15,12 +15,17 @@ import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import org.springframework.web.context.request.RequestAttributes;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
+
 import java.util.Optional;
 
 @Service
 public class CurrentUserService {
 
     private static final Logger log = LoggerFactory.getLogger(CurrentUserService.class);
+    public static final String CACHED_AUTH_USER_ATTR = "CACHED_AUTH_USER";
 
     private final UserRepository userRepository;
 
@@ -106,8 +111,18 @@ public class CurrentUserService {
 
         Role role = getCurrentRole();
 
-        // 1. Find by Keycloak sub
-        Optional<User> userOpt = userRepository.findByKeycloakUserId(keycloakUserId);
+        // 0. Check request-scoped cache first to prevent duplicate DB queries in the same request thread
+        RequestAttributes requestAttrs = RequestContextHolder.getRequestAttributes();
+        if (requestAttrs instanceof ServletRequestAttributes servletAttrs) {
+            Object cached = servletAttrs.getRequest().getAttribute(CACHED_AUTH_USER_ATTR);
+            if (cached instanceof User cachedUser && keycloakUserId.equals(cachedUser.getKeycloakUserId())) {
+                validateAccountStatus(cachedUser);
+                return cachedUser;
+            }
+        }
+
+        // 1. Find by Keycloak sub (with Dealer eagerly fetched)
+        Optional<User> userOpt = userRepository.findByKeycloakUserIdWithDealer(keycloakUserId);
         if (userOpt.isPresent()) {
             User existing = userOpt.get();
             validateAccountStatus(existing);
@@ -122,20 +137,25 @@ public class CurrentUserService {
                 existing.setRole(role);
                 changed = true;
             }
-            if (changed) {
-                return userRepository.save(existing);
+            User result = changed ? userRepository.save(existing) : existing;
+            if (requestAttrs instanceof ServletRequestAttributes servletAttrs) {
+                servletAttrs.getRequest().setAttribute(CACHED_AUTH_USER_ATTR, result);
             }
-            return existing;
+            return result;
         }
 
         // 2. Fallback check by username for seeded accounts (e.g., initial Admin / Agent)
-        Optional<User> byUsernameOpt = userRepository.findByUsername(username);
+        Optional<User> byUsernameOpt = userRepository.findByUsernameWithDealer(username);
         if (byUsernameOpt.isPresent()) {
             User existing = byUsernameOpt.get();
             validateAccountStatus(existing);
             existing.setKeycloakUserId(keycloakUserId);
             existing.setRole(role);
-            return userRepository.save(existing);
+            User saved = userRepository.save(existing);
+            if (requestAttrs instanceof ServletRequestAttributes servletAttrs) {
+                servletAttrs.getRequest().setAttribute(CACHED_AUTH_USER_ATTR, saved);
+            }
+            return saved;
         }
 
         // 3. User was created directly in Keycloak console without application registration
