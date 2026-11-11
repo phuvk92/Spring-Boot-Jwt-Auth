@@ -2,7 +2,9 @@ package com.example.svgmanager.security;
 
 import com.example.svgmanager.entity.Role;
 import com.example.svgmanager.entity.User;
+import com.example.svgmanager.exception.ErrorCodes;
 import com.example.svgmanager.exception.UnauthorizedException;
+import com.example.svgmanager.exception.UserAccountExpiredException;
 import com.example.svgmanager.repository.UserRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -108,9 +110,7 @@ public class CurrentUserService {
         Optional<User> userOpt = userRepository.findByKeycloakUserId(keycloakUserId);
         if (userOpt.isPresent()) {
             User existing = userOpt.get();
-            if (existing.isDeleted()) {
-                throw new UnauthorizedException("User account has been deactivated/deleted");
-            }
+            validateAccountStatus(existing);
             boolean changed = false;
             if (!username.equals(existing.getUsername())) {
                 if (!userRepository.existsByUsernameAndIdNot(username, existing.getId())) {
@@ -132,9 +132,7 @@ public class CurrentUserService {
         Optional<User> byUsernameOpt = userRepository.findByUsername(username);
         if (byUsernameOpt.isPresent()) {
             User existing = byUsernameOpt.get();
-            if (existing.isDeleted()) {
-                throw new UnauthorizedException("User account has been deactivated/deleted");
-            }
+            validateAccountStatus(existing);
             existing.setKeycloakUserId(keycloakUserId);
             existing.setRole(role);
             return userRepository.save(existing);
@@ -144,6 +142,19 @@ public class CurrentUserService {
         // Strict boundary: Do NOT auto-provision unknown Keycloak users into PostgreSQL
         log.warn("[UNREGISTERED_USER_REJECTED] Rejected access for unmapped Keycloak user: username='{}', sub='{}'", username, keycloakUserId);
         throw new UnauthorizedException("User account '" + username + "' is not registered in the application. Users must be created through the Admin Application.");
+    }
+
+    private void validateAccountStatus(User user) {
+        if (user.isDeleted() || !user.isEnabled()) {
+            log.warn("[USER_INACTIVE_OR_DELETED] Access rejected for inactive/deleted user: id={}, username='{}', enabled={}, deleted={}",
+                    user.getId(), user.getUsername(), user.isEnabled(), user.isDeleted());
+            throw new UnauthorizedException("Tài khoản người dùng đã bị vô hiệu hóa hoặc đã bị xóa. Vui lòng liên hệ quản trị viên.", ErrorCodes.ACCOUNT_DISABLED);
+        }
+        if (user.getRole() != Role.ADMIN && user.isExpired()) {
+            log.warn("[USER_ACCOUNT_EXPIRED] Access rejected for expired user: id={}, username='{}', expirationDate={}",
+                    user.getId(), user.getUsername(), user.getExpirationDate());
+            throw new UserAccountExpiredException("Tài khoản của bạn đã hết hạn sử dụng. Vui lòng liên hệ quản trị viên hoặc đại lý.");
+        }
     }
 
     @Transactional

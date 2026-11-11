@@ -231,7 +231,11 @@ public class InternalAuthServiceImpl implements InternalAuthService {
                 displayName,
                 dealerId,
                 dealerName,
-                roleStr
+                roleStr,
+                user.getExpirationDate(),
+                user.isExpired(),
+                user.isEnabled(),
+                user.getAllocatedDays()
         );
 
         String accessToken = (String) tokenResponse.get("access_token");
@@ -345,7 +349,11 @@ public class InternalAuthServiceImpl implements InternalAuthService {
                 displayName,
                 dealerId,
                 dealerName,
-                roleStr
+                roleStr,
+                user.getExpirationDate(),
+                user.isExpired(),
+                user.isEnabled(),
+                user.getAllocatedDays()
         );
 
         auditLogService.log(user.getUsername(), roleStr, "TOKEN_REFRESH", "User", user.getId(),

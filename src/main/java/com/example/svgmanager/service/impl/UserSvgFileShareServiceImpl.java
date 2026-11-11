@@ -93,6 +93,10 @@ public class UserSvgFileShareServiceImpl implements UserSvgFileShareService {
             throw new BadRequestException("Chỉ được chia sẻ cho người dùng máy cắt (USER)", ErrorCodes.INVALID_SHARE_TARGET);
         }
 
+        if (!targetUser.isEnabled() || (targetUser.getRole() != Role.ADMIN && targetUser.isExpired())) {
+            throw new BadRequestException("Người dùng nhận quyền đã bị vô hiệu hoá hoặc hết hạn", ErrorCodes.INVALID_SHARE_TARGET);
+        }
+
         // Kiểm tra bản ghi chia sẻ đã tồn tại hay chưa
         Optional<UserSvgFileShare> existingOpt = userSvgFileShareRepository.findByUserSvgFileIdAndSharedToUserId(fileId, targetUserId);
         UserSvgFileShare savedShare;

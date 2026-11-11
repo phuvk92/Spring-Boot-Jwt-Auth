@@ -18,6 +18,8 @@ public final class ErrorCodes {
     public static final String AUTH_SERVICE_UNAVAILABLE = "AUTH_SERVICE_UNAVAILABLE";
     /** Tài khoản người dùng đã hết hạn sử dụng. */
     public static final String USER_ACCOUNT_EXPIRED = "USER_ACCOUNT_EXPIRED";
+    /** Tài khoản người dùng đã bị vô hiệu hóa hoặc ngừng kích hoạt. */
+    public static final String ACCOUNT_DISABLED = "ACCOUNT_DISABLED";
     /** GET /api/v1/files/{id}/parts với id không tồn tại — khác với "file không có part nào" (mảng rỗng). */
     public static final String FILE_NOT_FOUND = "FILE_NOT_FOUND";
     /** Tạo/đổi tên node xe trùng tên node khác trong cùng cha (V15). */

@@ -297,6 +297,11 @@ public class ClientSvgShareServiceImpl implements ClientSvgShareService {
             throw new BadRequestException("Lượt chia sẻ đã hết hạn sử dụng", ErrorCodes.CLIENT_SHARE_EXPIRED);
         }
 
+        // Kiểm tra chủ sở hữu lượt chia sẻ còn hiệu lực
+        if (share.getOwnerUser() != null && (!share.getOwnerUser().isEnabled() || share.getOwnerUser().isDeleted() || (share.getOwnerUser().getRole() != Role.ADMIN && share.getOwnerUser().isExpired()))) {
+            throw new BadRequestException("Tài khoản người chia sẻ đã hết hạn hoặc bị vô hiệu hóa", ErrorCodes.USER_ACCOUNT_EXPIRED);
+        }
+
         // Chống tấn công brute-force mật khẩu (khóa tạm thời nếu nhập sai liên tiếp)
         if (share.getFailedVerifyAttempts() >= MAX_FAILED_ATTEMPTS) {
             auditLogService.log(
@@ -482,6 +487,10 @@ public class ClientSvgShareServiceImpl implements ClientSvgShareService {
                             shareId, clientB, requestId)
             );
             throw new ForbiddenException("Lượt chia sẻ đã hết hạn sử dụng", ErrorCodes.CLIENT_SHARE_EXPIRED);
+        }
+
+        if (share.getOwnerUser() != null && (!share.getOwnerUser().isEnabled() || share.getOwnerUser().isDeleted() || (share.getOwnerUser().getRole() != Role.ADMIN && share.getOwnerUser().isExpired()))) {
+            throw new ForbiddenException("Tài khoản người chia sẻ đã hết hạn hoặc bị vô hiệu hóa", ErrorCodes.USER_ACCOUNT_EXPIRED);
         }
 
         if (!clientShareTokenService.validateToken(shareToken, share)) {

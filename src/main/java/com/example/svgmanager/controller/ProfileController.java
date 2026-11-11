@@ -70,14 +70,20 @@ public class ProfileController {
         // Gói lấy nhãn trên hồ sơ đại lý (mô hình gói thật chờ C1/C10/C11). expiresAt để null:
         // dealers.due_date là chuỗi tự do ("12/2026", "—") không đổi được sang timestamp mà
         // không đoán định dạng — đoán sai là hiển thị sai hạn gói, tệ hơn để trống.
+        java.time.LocalDateTime planExpiresAt = user.getExpirationDate() != null
+                ? user.getExpirationDate().atTime(23, 59, 59)
+                : null;
         ProfileResponse.PlanBlock planBlock = dealer == null || !StringUtils.hasText(dealer.getPlan()) ? null
-                : new ProfileResponse.PlanBlock(dealer.getPlan(), null, null, null);
+                : new ProfileResponse.PlanBlock(dealer.getPlan(), planExpiresAt, null, null);
 
         String displayName = StringUtils.hasText(user.getFullName()) ? user.getFullName() : user.getUsername();
         ProfileResponse.UserBlock userBlock = new ProfileResponse.UserBlock(
                 user.getId(), user.getUsername(), displayName,
                 user.getRole() != null ? user.getRole().name() : null,
-                user.getEmail(), user.getPhone());
+                user.getEmail(), user.getPhone(),
+                user.getExpirationDate(),
+                user.isExpired(),
+                user.getAllocatedDays());
 
         // quota chờ A6a — chưa có chỗ lưu nên trả null thay vì chuỗi bịa.
         return new ProfileResponse(userBlock, dealerBlock, planBlock, null, devices);

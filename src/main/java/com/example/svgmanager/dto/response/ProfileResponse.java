@@ -31,7 +31,13 @@ public record ProfileResponse(
             @Schema(description = "Tên hiển thị — rơi về username khi chưa nhập họ tên") String displayName,
             String role,
             String email,
-            @Schema(description = "Số điện thoại — null khi chưa khai báo") String phone) {
+            @Schema(description = "Số điện thoại — null khi chưa khai báo") String phone,
+            @Schema(description = "Ngày hết hạn tài khoản (YYYY-MM-DD)") java.time.LocalDate expirationDate,
+            @Schema(description = "Trạng thái tài khoản đã hết hạn hay chưa") Boolean isExpired,
+            @Schema(description = "Số ngày được cấp phép") Integer allocatedDays) {
+        public UserBlock(Long id, String username, String displayName, String role, String email, String phone) {
+            this(id, username, displayName, role, email, phone, null, false, 0);
+        }
     }
 
     @Schema(description = "Khối đại lý: tên + mã")
