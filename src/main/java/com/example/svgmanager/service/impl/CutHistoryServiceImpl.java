@@ -47,6 +47,7 @@ public class CutHistoryServiceImpl implements CutHistoryService {
     private final UserSvgFileRepository userSvgFileRepository;
     private final CurrentUserService currentUserService;
     private final AuditLogService auditLogService;
+    private final com.example.svgmanager.service.CutQuotaService cutQuotaService;
 
     private final Map<String, IdempotentRecord> idempotencyCache = new ConcurrentHashMap<>();
 
@@ -58,13 +59,15 @@ public class CutHistoryServiceImpl implements CutHistoryService {
                                  WorkDesignRepository workDesignRepository,
                                  UserSvgFileRepository userSvgFileRepository,
                                  CurrentUserService currentUserService,
-                                 AuditLogService auditLogService) {
+                                 AuditLogService auditLogService,
+                                 com.example.svgmanager.service.CutQuotaService cutQuotaService) {
         this.cutJobRepository = cutJobRepository;
         this.userDeviceRepository = userDeviceRepository;
         this.workDesignRepository = workDesignRepository;
         this.userSvgFileRepository = userSvgFileRepository;
         this.currentUserService = currentUserService;
         this.auditLogService = auditLogService;
+        this.cutQuotaService = cutQuotaService;
     }
 
     @Override
@@ -222,6 +225,14 @@ public class CutHistoryServiceImpl implements CutHistoryService {
 
         User currentUser = currentUserService.getCurrentUser();
 
+        // 1. Resolve Dealer from authenticated user context (User -> User ID -> User-Agency Mapping -> Agency ID -> Agency Information)
+        com.example.svgmanager.entity.Dealer dealer = cutQuotaService.resolveDealerForUser(currentUser);
+        if (dealer == null) {
+            throw new com.example.svgmanager.exception.ForbiddenException(
+                    "Tài khoản chưa được gán vào đại lý hợp lệ để sử dụng lượt Cut.",
+                    ErrorCodes.FORBIDDEN);
+        }
+
         // Xử lý designId:
         // Chấp nhận khi là id user_svg_files thuộc chính user (ưu tiên — board 04/10 hướng phuvk).
         // Vẫn nhận work_designs của user như cũ.
@@ -271,6 +282,10 @@ public class CutHistoryServiceImpl implements CutHistoryService {
 
         CutJob job = new CutJob();
         job.setUserDevice(device);
+        job.setUser(currentUser);
+        job.setUsername(currentUser.getUsername());
+        job.setDealer(dealer);
+        job.setDealerName(dealer.getName());
         job.setCutAt(request.getCutAt() != null ? request.getCutAt() : LocalDateTime.now());
         job.setPartLabel(request.getPartLabel());
         job.setVehicleLabel(request.getVehicleLabel());
@@ -281,16 +296,28 @@ public class CutHistoryServiceImpl implements CutHistoryService {
         job.setDesignId(effectiveDesignId);
         job.setDesignVersion(effectiveDesignVersion);
         job.setCreatedAt(LocalDateTime.now());
+        job.setRequestId(java.util.UUID.randomUUID().toString());
+        job.setIdempotencyKey(StringUtils.hasText(idempotencyKey) ? idempotencyKey.trim() : null);
+        job.setStatus("SUCCESS");
+        job.setCutsConsumed(1);
+
+        // 2. Deduct Quota atomically with pessimistic locking and database idempotency
+        com.example.svgmanager.entity.CutQuotaLedger quotaLedger = cutQuotaService.deductQuotaForCut(
+                currentUser, dealer, job, idempotencyKey, job.getRequestId(), null);
+
+        job.setBalanceBefore(quotaLedger.getBalanceBefore());
+        job.setBalanceAfter(quotaLedger.getBalanceAfter());
 
         CutJob saved = cutJobRepository.save(job);
+        quotaLedger.setCutJob(saved);
         CutJobResponse response = toDto(saved);
 
-        // Audit nghiệp vụ: interceptor chỉ ghi "POST /api/v1/cuts" + HTTP status, nên ghi thêm
-        // một dòng mang nội dung lượt cắt để admin tra ở trang Audit. Lượt gửi lại cùng
-        // Idempotency-Key đã return ở trên nên không ghi đôi.
+        // Audit nghiệp vụ:
         auditLogService.log(currentUser.getUsername(),
                 currentUser.getRole() != null ? currentUser.getRole().name() : "USER",
-                "CUT_RECORDED", "CutJob", saved.getId(), auditDetails(saved, device));
+                "CUT_RECORDED", "CutJob", saved.getId(),
+                dealer.getId(), dealer.getName(), job.getRequestId(), "SUCCESS", -1, quotaLedger.getBalanceAfter(),
+                auditDetails(saved, device));
 
         if (cacheKey != null) {
             idempotencyCache.put(cacheKey, new IdempotentRecord(response, System.currentTimeMillis() + IDEMPOTENCY_TTL_MILLIS));

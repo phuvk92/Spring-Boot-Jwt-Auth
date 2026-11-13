@@ -30,9 +30,16 @@ public class AuditLogServiceImpl implements AuditLogService {
     @Override
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void log(String actor, String actorRole, String action, String entity, Long entityId, String details) {
+        log(actor, actorRole, action, entity, entityId, null, null, null, null, null, null, details);
+    }
+
+    @Override
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void log(String actor, String actorRole, String action, String entity, Long entityId,
+                    Long dealerId, String dealerName, String requestId, String status, Integer cutDelta, Integer balanceAfter, String details) {
         try {
-            log.info("[AUDIT] actor='{}' role='{}' action='{}' entity='{}' entityId={} details='{}'",
-                    actor, actorRole, action, entity, entityId, details);
+            log.info("[AUDIT] actor='{}' role='{}' action='{}' entity='{}' entityId={} dealerId={} dealerName='{}' delta={} balAfter={} details='{}'",
+                    actor, actorRole, action, entity, entityId, dealerId, dealerName, cutDelta, balanceAfter, details);
 
             String safeActor = actor != null ? (actor.length() > 100 ? actor.substring(0, 100) : actor) : "system";
             String safeRole = actorRole != null ? (actorRole.length() > 50 ? actorRole.substring(0, 50) : actorRole) : "SYSTEM";
@@ -45,6 +52,12 @@ public class AuditLogServiceImpl implements AuditLogService {
                     .action(safeAction)
                     .entity(safeEntity)
                     .entityId(entityId)
+                    .dealerId(dealerId)
+                    .dealerName(dealerName)
+                    .requestId(requestId)
+                    .status(status)
+                    .cutDelta(cutDelta)
+                    .balanceAfter(balanceAfter)
                     .details(details)
                     .timestamp(LocalDateTime.now())
                     .build();
@@ -68,7 +81,15 @@ public class AuditLogServiceImpl implements AuditLogService {
     @Transactional(readOnly = true)
     public Page<AuditLog> getLogs(String keyword, String entity, String actor, String actorRole, String action,
                                    LocalDateTime from, LocalDateTime to, Pageable pageable) {
-        Specification<AuditLog> spec = AuditLogSpecification.filter(keyword, entity, actor, actorRole, action, from, to);
+        Specification<AuditLog> spec = AuditLogSpecification.filter(keyword, entity, actor, actorRole, action, null, from, to);
+        return auditLogRepository.findAll(spec, pageable);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Page<AuditLog> getLogs(String keyword, String entity, String actor, String actorRole, String action,
+                                   Long dealerId, LocalDateTime from, LocalDateTime to, Pageable pageable) {
+        Specification<AuditLog> spec = AuditLogSpecification.filter(keyword, entity, actor, actorRole, action, dealerId, from, to);
         return auditLogRepository.findAll(spec, pageable);
     }
 

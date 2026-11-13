@@ -42,6 +42,9 @@ import java.time.LocalDateTime;
 @PreAuthorize("hasRole('ADMIN')")
 public class AdminUserFilesV2Controller {
 
+    private static final MediaType MEDIA_TYPE_SVG = MediaType.parseMediaType("image/svg+xml;charset=UTF-8");
+    private static final String CSP_HEADER_VALUE = "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; sandbox";
+
     private final InternalUserFileV2Service userFileV2Service;
     private final CurrentUserService currentUserService;
 
@@ -130,10 +133,10 @@ public class AdminUserFilesV2Controller {
         byte[] bytes = userFileV2Service.getAdminFileBytes(id);
 
         HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.parseMediaType("image/svg+xml;charset=UTF-8"));
+        headers.setContentType(MEDIA_TYPE_SVG);
         headers.setContentDisposition(ContentDisposition.inline().build());
         headers.add("X-Content-Type-Options", "nosniff");
-        headers.add("Content-Security-Policy", "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; sandbox");
+        headers.add("Content-Security-Policy", CSP_HEADER_VALUE);
         headers.add("Cache-Control", "private, no-store");
 
         return ResponseEntity.ok().headers(headers).body(bytes);

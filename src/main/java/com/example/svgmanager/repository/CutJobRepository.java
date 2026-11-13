@@ -14,5 +14,9 @@ public interface CutJobRepository extends JpaRepository<CutJob, Long> {
 
     Optional<CutJob> findByIdAndUserDeviceId(Long id, Long userDeviceId);
 
+    Optional<CutJob> findByIdAndDealerId(Long id, Long dealerId);
+
+    Optional<CutJob> findByDealerIdAndIdempotencyKey(Long dealerId, String idempotencyKey);
+
     boolean existsByUserDeviceIdAndDesignId(Long userDeviceId, String designId);
 }

@@ -30,6 +30,24 @@ public class AuditLogResponse {
     @Schema(description = "ID thực thể (nếu có)", example = "5001", nullable = true)
     private Long entityId;
 
+    @Schema(description = "ID đại lý (nếu có)", example = "1", nullable = true)
+    private Long dealerId;
+
+    @Schema(description = "Tên đại lý (nếu có)", example = "Đại lý Hà Nội", nullable = true)
+    private String dealerName;
+
+    @Schema(description = "Mã request duy nhất (nếu có)", example = "req-12345", nullable = true)
+    private String requestId;
+
+    @Schema(description = "Trạng thái nghiệp vụ", example = "SUCCESS", nullable = true)
+    private String status;
+
+    @Schema(description = "Biến động quota lượt cut (+/-)", example = "-1", nullable = true)
+    private Integer cutDelta;
+
+    @Schema(description = "Số dư quota sau biến động", example = "99", nullable = true)
+    private Integer balanceAfter;
+
     @Schema(description = "Chi tiết thông số, IP, thiết bị, thời gian", example = "HTTP 200 (15ms) | IP: 192.168.1.10 | Device: Roland-GX24")
     private String details;
 
@@ -52,10 +70,29 @@ public class AuditLogResponse {
                 ? (log.getEntityId() != null ? log.getEntity() + " #" + log.getEntityId() : log.getEntity())
                 : "General");
         res.setEntityId(log.getEntityId());
+        res.setDealerId(log.getDealerId());
+        res.setDealerName(log.getDealerName());
+        res.setRequestId(log.getRequestId());
+        res.setStatus(log.getStatus());
+        res.setCutDelta(log.getCutDelta());
+        res.setBalanceAfter(log.getBalanceAfter());
         res.setDetails(log.getDetails());
         res.setTimestamp(log.getTimestamp());
         return res;
     }
+
+    public Long getDealerId() { return dealerId; }
+    public void setDealerId(Long dealerId) { this.dealerId = dealerId; }
+    public String getDealerName() { return dealerName; }
+    public void setDealerName(String dealerName) { this.dealerName = dealerName; }
+    public String getRequestId() { return requestId; }
+    public void setRequestId(String requestId) { this.requestId = requestId; }
+    public String getStatus() { return status; }
+    public void setStatus(String status) { this.status = status; }
+    public Integer getCutDelta() { return cutDelta; }
+    public void setCutDelta(Integer cutDelta) { this.cutDelta = cutDelta; }
+    public Integer getBalanceAfter() { return balanceAfter; }
+    public void setBalanceAfter(Integer balanceAfter) { this.balanceAfter = balanceAfter; }
 
     public Long getId() {
         return id;

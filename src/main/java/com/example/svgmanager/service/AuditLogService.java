@@ -9,8 +9,12 @@ import java.util.Optional;
 
 public interface AuditLogService {
     void log(String actor, String actorRole, String action, String entity, Long entityId, String details);
+    void log(String actor, String actorRole, String action, String entity, Long entityId,
+             Long dealerId, String dealerName, String requestId, String status, Integer cutDelta, Integer balanceAfter, String details);
     Page<AuditLog> getLogs(String entity, Pageable pageable);
     Page<AuditLog> getLogs(String keyword, String entity, String actor, String actorRole, String action,
                            LocalDateTime from, LocalDateTime to, Pageable pageable);
+    Page<AuditLog> getLogs(String keyword, String entity, String actor, String actorRole, String action,
+                           Long dealerId, LocalDateTime from, LocalDateTime to, Pageable pageable);
     Optional<AuditLog> getLogById(Long id);
 }

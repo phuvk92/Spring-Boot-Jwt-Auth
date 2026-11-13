@@ -17,6 +17,8 @@ public interface DealerRepository extends JpaRepository<Dealer, Long>, JpaSpecif
 
     Optional<Dealer> findByIdAndDeletedFalse(Long id);
 
+    Optional<Dealer> findByAgentUserIdAndDeletedFalse(Long agentUserId);
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT d FROM Dealer d WHERE d.id = :id AND d.deleted = false")
     Optional<Dealer> findByIdForUpdate(@Param("id") Long id);

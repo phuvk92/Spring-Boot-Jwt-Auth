@@ -114,16 +114,25 @@ class CutHistoryPostgresIntegrationTest {
     @Autowired
     private UserSvgFileRepository userSvgFileRepository;
 
+    @Autowired
+    private com.example.svgmanager.repository.DealerRepository dealerRepository;
+
     private User userA;
     private User userB;
     private UserDevice deviceA;
 
     @BeforeEach
     void setUp() {
+        var dealer = dealerRepository.save(com.example.svgmanager.entity.Dealer.builder()
+                .code("D-PG-CUT")
+                .name("Đại lý PG Cắt")
+                .status("ACTIVE")
+                .build());
+
         userA = userRepository.save(User.builder().username("pg_cut_user_a").email("pg_cut_a@t.vn")
-                .keycloakUserId("kc-pg-cut-a").role(Role.USER).enabled(true).build());
+                .keycloakUserId("kc-pg-cut-a").role(Role.USER).enabled(true).dealer(dealer).build());
         userB = userRepository.save(User.builder().username("pg_cut_user_b").email("pg_cut_b@t.vn")
-                .keycloakUserId("kc-pg-cut-b").role(Role.USER).enabled(true).build());
+                .keycloakUserId("kc-pg-cut-b").role(Role.USER).enabled(true).dealer(dealer).build());
 
         LocalDateTime now = LocalDateTime.now();
         deviceA = userDeviceRepository.save(UserDevice.register(userA, "pg-dev-a", "Máy Xưởng PG", "windows", "10.0.0.1", "sid-pg-A", now));

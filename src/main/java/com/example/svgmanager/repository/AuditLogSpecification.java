@@ -23,6 +23,19 @@ public final class AuditLogSpecification {
             LocalDateTime fromTimestamp,
             LocalDateTime toTimestamp
     ) {
+        return filter(keyword, entity, actor, actorRole, action, null, fromTimestamp, toTimestamp);
+    }
+
+    public static Specification<AuditLog> filter(
+            String keyword,
+            String entity,
+            String actor,
+            String actorRole,
+            String action,
+            Long dealerId,
+            LocalDateTime fromTimestamp,
+            LocalDateTime toTimestamp
+    ) {
         return (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
 
@@ -49,6 +62,10 @@ public final class AuditLogSpecification {
 
             if (StringUtils.hasText(action)) {
                 predicates.add(cb.like(cb.lower(root.get("action")), "%" + action.trim().toLowerCase() + "%"));
+            }
+
+            if (dealerId != null) {
+                predicates.add(cb.equal(root.get("dealerId"), dealerId));
             }
 
             if (fromTimestamp != null) {

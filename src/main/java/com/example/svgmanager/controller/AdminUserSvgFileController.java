@@ -49,6 +49,9 @@ import java.util.Collections;
 @PreAuthorize("hasRole('ADMIN')")
 public class AdminUserSvgFileController {
 
+    private static final MediaType MEDIA_TYPE_SVG = MediaType.parseMediaType("image/svg+xml;charset=UTF-8");
+    private static final String CSP_HEADER_VALUE = "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; sandbox";
+
     private final UserSvgFileService userSvgFileService;
     private final UserSvgFileShareService userSvgFileShareService;
     private final CurrentUserService currentUserService;
@@ -191,9 +194,9 @@ public class AdminUserSvgFileController {
         byte[] bytes = userSvgFileService.getAdminFileBytes(id);
 
         HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.parseMediaType("image/svg+xml;charset=UTF-8"));
+        headers.setContentType(MEDIA_TYPE_SVG);
         headers.add("X-Content-Type-Options", "nosniff");
-        headers.add("Content-Security-Policy", "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; sandbox");
+        headers.add("Content-Security-Policy", CSP_HEADER_VALUE);
         headers.add("Cache-Control", "no-cache, no-store, must-revalidate");
 
         return ResponseEntity.ok().headers(headers).body(bytes);

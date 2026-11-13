@@ -39,6 +39,7 @@ public class AuditLogController {
             @Parameter(description = "Tài khoản thực hiện (actor)") @RequestParam(required = false) String actor,
             @Parameter(description = "Vai trò (USER, AGENT, ADMIN)") @RequestParam(required = false) String actorRole,
             @Parameter(description = "Hành động (action)") @RequestParam(required = false) String action,
+            @Parameter(description = "ID Đại lý") @RequestParam(required = false) Long dealerId,
             @Parameter(description = "Từ thời điểm") @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime from,
             @Parameter(description = "Đến thời điểm") @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime to,
             @RequestParam(defaultValue = "0") int page,
@@ -52,7 +53,7 @@ public class AuditLogController {
         );
         Pageable pageable = PageRequest.of(Math.max(0, page), Math.max(1, size), sort);
 
-        Page<AuditLog> logs = auditLogService.getLogs(keyword, entity, actor, actorRole, action, from, to, pageable);
+        Page<AuditLog> logs = auditLogService.getLogs(keyword, entity, actor, actorRole, action, dealerId, from, to, pageable);
         Page<AuditLogResponse> responsePage = logs.map(AuditLogResponse::fromEntity);
 
         return ResponseEntity.ok(PageResponse.of(responsePage));

@@ -284,12 +284,12 @@ public class SvgServiceImpl implements SvgService {
             }
             throw new ResourceNotFoundException("File không có bản đã xếp (nested): " + svgFile.getId());
         }
-        // Mặc định bản đã xếp nếu có, không thì bản chưa xếp
-        if (svgFile.getFilePath() != null && !svgFile.getFilePath().isBlank()) {
-            return svgFile.getFilePath();
-        }
+        // Mặc định bản chưa xếp (raw) nếu có, không thì bản đã xếp (nested)
         if (svgFile.getRawFilePath() != null && !svgFile.getRawFilePath().isBlank()) {
             return svgFile.getRawFilePath();
+        }
+        if (svgFile.getFilePath() != null && !svgFile.getFilePath().isBlank()) {
+            return svgFile.getFilePath();
         }
         throw new ResourceNotFoundException("Không tìm thấy nội dung file SVG với ID: " + svgFile.getId());
     }

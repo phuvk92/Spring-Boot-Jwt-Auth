@@ -67,6 +67,10 @@ class CutHistoryIntegrationTest {
     @Autowired
     private AuditLogRepository auditLogRepository;
 
+    @Autowired
+    private com.example.svgmanager.repository.DealerRepository dealerRepository;
+
+    private com.example.svgmanager.entity.Dealer dealer;
     private User userA;
     private User userB;
     private UserDevice deviceA;
@@ -75,10 +79,16 @@ class CutHistoryIntegrationTest {
 
     @BeforeEach
     void setUp() {
+        dealer = dealerRepository.save(com.example.svgmanager.entity.Dealer.builder()
+                .code("D-CUT-TEST")
+                .name("Đại lý Cắt Test")
+                .status("ACTIVE")
+                .build());
+
         userA = userRepository.save(User.builder().username("cut_user_a").email("cut_a@t.vn")
-                .keycloakUserId("kc-cut-a").role(Role.USER).enabled(true).build());
+                .keycloakUserId("kc-cut-a").role(Role.USER).enabled(true).dealer(dealer).build());
         userB = userRepository.save(User.builder().username("cut_user_b").email("cut_b@t.vn")
-                .keycloakUserId("kc-cut-b").role(Role.USER).enabled(true).build());
+                .keycloakUserId("kc-cut-b").role(Role.USER).enabled(true).dealer(dealer).build());
 
         LocalDateTime now = LocalDateTime.now();
         deviceA = userDeviceRepository.save(UserDevice.register(userA, "dev-a", "Máy A", "windows", "10.0.0.1", "sid-A", now));

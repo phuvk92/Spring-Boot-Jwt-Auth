@@ -66,6 +66,38 @@ public class CutJob {
     @Column(name = "design_version")
     private Integer designVersion;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "user_id")
+    private User user;
+
+    @Column(name = "username", length = 100)
+    private String username;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "dealer_id")
+    private Dealer dealer;
+
+    @Column(name = "dealer_name", length = 255)
+    private String dealerName;
+
+    @Column(name = "request_id", length = 100)
+    private String requestId;
+
+    @Column(name = "idempotency_key", length = 128)
+    private String idempotencyKey;
+
+    @Column(name = "status", length = 50)
+    private String status = "SUCCESS";
+
+    @Column(name = "cuts_consumed")
+    private Integer cutsConsumed = 1;
+
+    @Column(name = "balance_before")
+    private Integer balanceBefore;
+
+    @Column(name = "balance_after")
+    private Integer balanceAfter;
+
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt = LocalDateTime.now();
 
@@ -96,4 +128,25 @@ public class CutJob {
     public void setDesignVersion(Integer designVersion) { this.designVersion = designVersion; }
     public LocalDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
+
+    public User getUser() { return user; }
+    public void setUser(User user) { this.user = user; }
+    public String getUsername() { return username; }
+    public void setUsername(String username) { this.username = username; }
+    public Dealer getDealer() { return dealer; }
+    public void setDealer(Dealer dealer) { this.dealer = dealer; }
+    public String getDealerName() { return dealerName; }
+    public void setDealerName(String dealerName) { this.dealerName = dealerName; }
+    public String getRequestId() { return requestId; }
+    public void setRequestId(String requestId) { this.requestId = requestId; }
+    public String getIdempotencyKey() { return idempotencyKey; }
+    public void setIdempotencyKey(String idempotencyKey) { this.idempotencyKey = idempotencyKey; }
+    public String getStatus() { return status; }
+    public void setStatus(String status) { this.status = status; }
+    public Integer getCutsConsumed() { return cutsConsumed; }
+    public void setCutsConsumed(Integer cutsConsumed) { this.cutsConsumed = cutsConsumed; }
+    public Integer getBalanceBefore() { return balanceBefore; }
+    public void setBalanceBefore(Integer balanceBefore) { this.balanceBefore = balanceBefore; }
+    public Integer getBalanceAfter() { return balanceAfter; }
+    public void setBalanceAfter(Integer balanceAfter) { this.balanceAfter = balanceAfter; }
 }

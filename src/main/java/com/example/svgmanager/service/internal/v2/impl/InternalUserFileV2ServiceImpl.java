@@ -822,13 +822,21 @@ public class InternalUserFileV2ServiceImpl implements InternalUserFileV2Service 
         }
 
         byte[] ciphertext = fileStorageV2Service.loadEncryptedFile(file.getStorageKey());
-        byte[] decrypted = fileEncryptionV2Service.decrypt(
-                ciphertext,
-                file.getEncryptedDek(),
-                file.getEncryptionIv(),
-                file.getEncryptionAlgorithm(),
-                file.getEncryptionKeyVersion()
-        );
+        java.util.zip.CRC32 crc = new java.util.zip.CRC32();
+        crc.update(ciphertext);
+        String cacheKey = file.getId() + ":" + crc.getValue();
+
+        byte[] decrypted = previewCacheService.getV2(cacheKey);
+        if (decrypted == null) {
+            decrypted = fileEncryptionV2Service.decrypt(
+                    ciphertext,
+                    file.getEncryptedDek(),
+                    file.getEncryptionIv(),
+                    file.getEncryptionAlgorithm(),
+                    file.getEncryptionKeyVersion()
+            );
+            previewCacheService.putV2(cacheKey, decrypted);
+        }
 
         auditLogService.log(
                 "admin",
@@ -855,6 +863,7 @@ public class InternalUserFileV2ServiceImpl implements InternalUserFileV2Service 
         file.setStatus("DELETED");
         file.setUpdatedAt(LocalDateTime.now());
         userSvgFileV2Repository.save(file);
+        previewCacheService.invalidateV2(file.getId());
 
         log.info("[V2_SVG_ADMIN_DELETE] id={}, fileName='{}'", file.getId(), file.getFileName());
 

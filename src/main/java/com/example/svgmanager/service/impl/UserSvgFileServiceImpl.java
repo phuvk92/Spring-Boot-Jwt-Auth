@@ -703,7 +703,13 @@ public class UserSvgFileServiceImpl implements UserSvgFileService {
     public byte[] getAdminFileBytes(Long id) {
         UserSvgFile file = userSvgFileRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("File bản lưu không tồn tại", ErrorCodes.FILE_NOT_FOUND));
-        return fileStorageService.loadFileAsBytes(file.getFilePath());
+        byte[] cached = previewCacheService.getV1(file.getId(), file.getChecksum());
+        if (cached != null) {
+            return cached;
+        }
+        byte[] bytes = fileStorageService.loadFileAsBytes(file.getFilePath());
+        previewCacheService.putV1(file.getId(), file.getChecksum(), bytes);
+        return bytes;
     }
 
     private UserSavedFileResponse toResponse(UserSvgFile entity, User currentUser) {

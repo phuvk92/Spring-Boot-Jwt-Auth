@@ -33,6 +33,24 @@ public class AuditLog {
     @Column(name = "entity_id")
     private Long entityId;
 
+    @Column(name = "dealer_id")
+    private Long dealerId;
+
+    @Column(name = "dealer_name", length = 255)
+    private String dealerName;
+
+    @Column(name = "request_id", length = 100)
+    private String requestId;
+
+    @Column(name = "status", length = 50)
+    private String status;
+
+    @Column(name = "cut_delta")
+    private Integer cutDelta;
+
+    @Column(name = "balance_after")
+    private Integer balanceAfter;
+
     @Column(columnDefinition = "TEXT")
     private String details;
 
@@ -43,13 +61,21 @@ public class AuditLog {
     public AuditLog() {
     }
 
-    public AuditLog(Long id, String actor, String actorRole, String action, String entity, Long entityId, String details, LocalDateTime timestamp) {
+    public AuditLog(Long id, String actor, String actorRole, String action, String entity, Long entityId,
+                    Long dealerId, String dealerName, String requestId, String status, Integer cutDelta, Integer balanceAfter,
+                    String details, LocalDateTime timestamp) {
         this.id = id;
         this.actor = actor;
         this.actorRole = actorRole;
         this.action = action;
         this.entity = entity;
         this.entityId = entityId;
+        this.dealerId = dealerId;
+        this.dealerName = dealerName;
+        this.requestId = requestId;
+        this.status = status;
+        this.cutDelta = cutDelta;
+        this.balanceAfter = balanceAfter;
         this.details = details;
         this.timestamp = timestamp;
     }
@@ -65,6 +91,12 @@ public class AuditLog {
         private String action;
         private String entity;
         private Long entityId;
+        private Long dealerId;
+        private String dealerName;
+        private String requestId;
+        private String status;
+        private Integer cutDelta;
+        private Integer balanceAfter;
         private String details;
         private LocalDateTime timestamp;
 
@@ -98,6 +130,36 @@ public class AuditLog {
             return this;
         }
 
+        public Builder dealerId(Long dealerId) {
+            this.dealerId = dealerId;
+            return this;
+        }
+
+        public Builder dealerName(String dealerName) {
+            this.dealerName = dealerName;
+            return this;
+        }
+
+        public Builder requestId(String requestId) {
+            this.requestId = requestId;
+            return this;
+        }
+
+        public Builder status(String status) {
+            this.status = status;
+            return this;
+        }
+
+        public Builder cutDelta(Integer cutDelta) {
+            this.cutDelta = cutDelta;
+            return this;
+        }
+
+        public Builder balanceAfter(Integer balanceAfter) {
+            this.balanceAfter = balanceAfter;
+            return this;
+        }
+
         public Builder details(String details) {
             this.details = details;
             return this;
@@ -109,7 +171,9 @@ public class AuditLog {
         }
 
         public AuditLog build() {
-            return new AuditLog(id, actor, actorRole, action, entity, entityId, details, timestamp);
+            return new AuditLog(id, actor, actorRole, action, entity, entityId,
+                    dealerId, dealerName, requestId, status, cutDelta, balanceAfter,
+                    details, timestamp);
         }
     }
 
@@ -159,6 +223,54 @@ public class AuditLog {
 
     public void setEntityId(Long entityId) {
         this.entityId = entityId;
+    }
+
+    public Long getDealerId() {
+        return dealerId;
+    }
+
+    public void setDealerId(Long dealerId) {
+        this.dealerId = dealerId;
+    }
+
+    public String getDealerName() {
+        return dealerName;
+    }
+
+    public void setDealerName(String dealerName) {
+        this.dealerName = dealerName;
+    }
+
+    public String getRequestId() {
+        return requestId;
+    }
+
+    public void setRequestId(String requestId) {
+        this.requestId = requestId;
+    }
+
+    public String getStatus() {
+        return status;
+    }
+
+    public void setStatus(String status) {
+        this.status = status;
+    }
+
+    public Integer getCutDelta() {
+        return cutDelta;
+    }
+
+    public void setCutDelta(Integer cutDelta) {
+        this.cutDelta = cutDelta;
+    }
+
+    public Integer getBalanceAfter() {
+        return balanceAfter;
+    }
+
+    public void setBalanceAfter(Integer balanceAfter) {
+        this.balanceAfter = balanceAfter;
     }
 
     public String getDetails() {

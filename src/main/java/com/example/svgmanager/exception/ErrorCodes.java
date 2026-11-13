@@ -112,6 +112,11 @@ public final class ErrorCodes {
     /** Mã xác thực chia sẻ (Share Token) không hợp lệ hoặc đã hết hạn. */
     public static final String CLIENT_SHARE_TOKEN_INVALID = "CLIENT_SHARE_TOKEN_INVALID";
 
+    /** Không có quyền truy cập hoặc thực hiện thao tác. */
+    public static final String FORBIDDEN = "FORBIDDEN";
+    /** Đại lý đã hết số lượt Cut được cấp. */
+    public static final String QUOTA_EXCEEDED = "QUOTA_EXCEEDED";
+
     private ErrorCodes() {
     }
 }
